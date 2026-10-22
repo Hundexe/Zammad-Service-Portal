@@ -26,6 +26,17 @@ fi
 set -a; . ./.env; set +a
 [ -n "${PORTAL_HOST:-}" ] || fail "PORTAL_HOST fehlt in .env"
 case "${PUBLIC_URL:-}" in https://*) ;; *) fail "PUBLIC_URL muss mit https:// beginnen";; esac
+HTTPS_PORT="${HTTPS_PORT:-443}"
+if [ "$HTTPS_PORT" = "443" ]; then
+  [ "${PUBLIC_URL%/}" = "https://${PORTAL_HOST}" ] || fail "PUBLIC_URL muss https://${PORTAL_HOST} sein (passend zu PORTAL_HOST)."
+else
+  [ "${PUBLIC_URL%/}" = "https://${PORTAL_HOST}:${HTTPS_PORT}" ] || fail "Bei HTTPS_PORT=${HTTPS_PORT} muss PUBLIC_URL https://${PORTAL_HOST}:${HTTPS_PORT} sein."
+fi
+for p in "$HTTPS_PORT" "${HTTP_PORT:-80}"; do
+  if command -v ss >/dev/null && ss -ltnH "( sport = :$p )" 2>/dev/null | grep -q . && ! docker compose ps -q caddy 2>/dev/null | grep -q .; then
+    fail "Port $p ist auf der VM schon belegt. In .env HTTPS_PORT bzw. HTTP_PORT ändern (z. B. 8443 / 8080)."
+  fi
+done
 [ "$(cd .. && pwd)" = "${PORTAL_DIR:-}" ] || echo "Hinweis: PORTAL_DIR in .env ($PORTAL_DIR) ist nicht dieses Verzeichnis ($(cd .. && pwd)). Für Updates aus der Oberfläche anpassen."
 
 say "3/6 Geheimnisse"
@@ -80,5 +91,9 @@ fi
 
 say "Fertig"
 echo "Portal: ${PUBLIC_URL}"
+echo "IP-Adressen dieser VM: $(hostname -I 2>/dev/null || echo unbekannt)"
+case "$PORTAL_HOST" in
+  *[!0-9.]*) echo "Ohne DNS-Eintrag auf dem eigenen PC in die hosts-Datei: <IP der VM>  ${PORTAL_HOST}";;
+esac
 echo "Weitere Benutzer mit generiertem Passwort:"
 echo "  docker compose exec app /nodejs/bin/node src/server/cli.ts user:create --username max --name \"Max Muster\" --email max@firma.de"

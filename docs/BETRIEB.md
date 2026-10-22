@@ -16,6 +16,7 @@ Sicherheitsrelevante Zahlen haben feste Grenzen, damit sich das Portal nicht ver
 
 | Einstellung | Standard | Erlaubt | Wirkung |
 | --- | --- | --- | --- |
+| `HTTPS_PORT` / `HTTP_PORT` | `443` / `80` | 1–65535 | Ports auf der VM. Bei anderem HTTPS-Port gehört er in `PUBLIC_URL`, z. B. `https://portal.firma.intern:8443` |
 | `LOCAL_LOGIN_ENABLED` | `true` | true/false | Lokale Anmeldung. Bei `false` enden auch offene lokale Sitzungen sofort |
 | `LOCAL_ADMIN_REQUIRE_TOTP` | `true` | true/false | 2FA-Pflicht für lokale Konten mit Verwaltungsrechten. `false` erzeugt eine Warnung in der Verwaltung |
 | `LOCAL_USER_REQUIRE_TOTP` | `false` | true/false | 2FA-Pflicht auch für normale lokale Benutzer |

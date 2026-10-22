@@ -153,6 +153,10 @@ Mindestens ausfüllen:
 | `ENTRA_ALLOWED_TENANTS` | eine oder beide Tenant-IDs |
 | `ADMIN_ALLOWED_CIDRS` | Admin-Netz, z. B. `10.10.50.0/24` (empfohlen) |
 
+**Port ändern** (wenn 443/80 auf der VM schon belegt sind): `HTTPS_PORT=8443` und `HTTP_PORT=8080` setzen und den Port in `PUBLIC_URL` aufnehmen: `PUBLIC_URL=https://serviceportal.firma.intern:8443`. `install.sh` prüft, ob das zusammenpasst und ob der Port frei ist.
+
+**Ohne DNS-Eintrag testen:** Als `PORTAL_HOST` geht auch die IP der VM (`hostname -I` zeigt sie), z. B. `PORTAL_HOST=192.168.1.50` und `PUBLIC_URL=https://192.168.1.50:8443`. Die interne CA von Caddy stellt dafür ein Zertifikat aus; der Browser warnt, bis das Stammzertifikat verteilt ist. Für die Microsoft-Anmeldung braucht es später einen richtigen Hostnamen.
+
 Alle weiteren Einstellungen (Kontosperre, 2FA-Pflicht, Sitzungszeiten, Passwortlänge usw.) stehen kommentiert in derselben Datei und haben sichere Standardwerte. Übersicht: [Betrieb → Einstellungen ändern](BETRIEB.md#einstellungen-ändern-deployenv).
 
 **Zertifikat:** Das Portal ist nur intern erreichbar, daher gibt es kein Let's Encrypt. Zwei Möglichkeiten, eingestellt in `deploy/caddy/tls.caddy`:

@@ -1,7 +1,7 @@
 # Service-Portal – Docker-Compose-Stack
 #
 # Aufbau (siehe docs/ARCHITEKTUR.md):
-#   caddy   – einziger erreichbarer Dienst (443), TLS, Sicherheits-Header
+#   caddy   – einziger erreichbarer Dienst (HTTPS_PORT, Standard 443), TLS, Sicherheits-Header
 #   app     – Web-Oberfläche + API
 #   worker  – stellt Anfragen an Zammad zu
 #   clamav  – Virenscan für Uploads                     (Profil "clamav")
@@ -65,10 +65,13 @@ services:
     cap_add:
       - NET_BIND_SERVICE
     ports:
-      - "${BIND_ADDRESS:-0.0.0.0}:443:443"
-      - "${BIND_ADDRESS:-0.0.0.0}:80:80"
+      # Innen und außen derselbe Port, damit Weiterleitungen und Host-Prüfung stimmen
+      - "${BIND_ADDRESS:-0.0.0.0}:${HTTPS_PORT:-443}:${HTTPS_PORT:-443}"
+      - "${BIND_ADDRESS:-0.0.0.0}:${HTTP_PORT:-80}:${HTTP_PORT:-80}"
     environment:
       PORTAL_HOST: ${PORTAL_HOST:?PORTAL_HOST fehlt in .env}
+      HTTPS_PORT: ${HTTPS_PORT:-443}
+      HTTP_PORT: ${HTTP_PORT:-80}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./caddy/security-headers.caddy:/etc/caddy/security-headers.caddy:ro
