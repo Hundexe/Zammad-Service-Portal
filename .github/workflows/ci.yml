@@ -1,0 +1,63 @@
+# Prüfungen: Typen, Tests (inkl. Sicherheitstests), Docker-Build, Image- und Konfigurations-Scan.
+# Läuft NUR auf Knopfdruck (Actions → CI → Run workflow), damit kein Actions-Guthaben verbraucht wird.
+name: CI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install --no-package-lock --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dockerfiles prüfen (hadolint)
+        run: |
+          docker run --rm -i hadolint/hadolint:v2.12.0 < Dockerfile
+          docker run --rm -i hadolint/hadolint:v2.12.0 < Dockerfile.updater
+      - name: Images bauen
+        run: |
+          docker build -t zammad-service-portal:ci --build-arg APP_VERSION=ci .
+          docker build -t zammad-service-portal-updater:ci -f Dockerfile.updater .
+      - name: Image starten und Healthcheck prüfen
+        run: |
+          docker run -d --name portal --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
+            -e PUBLIC_URL=https://portal.test -e SECRET_KEY="$(openssl rand -base64 32)" -e CLAMAV_REQUIRED=false \
+            zammad-service-portal:ci
+          for i in $(seq 1 30); do
+            s=$(docker inspect -f '{{.State.Health.Status}}' portal); echo "$s"; [ "$s" = healthy ] && break; sleep 2
+          done
+          docker exec portal /nodejs/bin/node src/server/cli.ts user:create --username ci --role Benutzer
+          docker logs portal | tail -20
+          [ "$(docker inspect -f '{{.State.Health.Status}}' portal)" = healthy ]
+      - name: Schwachstellen-Scan (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: zammad-service-portal:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Konfigurations-Scan (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: '1'

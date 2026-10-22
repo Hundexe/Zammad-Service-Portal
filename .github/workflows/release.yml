@@ -1,0 +1,44 @@
+# Optional: signierte Images in die GitHub Container Registry (UPDATE_SOURCE=registry).
+# Wird nur gebraucht, wenn die VM keine Images selbst bauen soll. Läuft nur auf Knopfdruck.
+name: Release-Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version ohne v (z. B. 1.1.0) – der Git-Tag v<version> muss existieren'
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write # für die schlüssellose Signatur mit cosign
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ inputs.version }}
+      - uses: sigstore/cosign-installer@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Bauen und hochladen
+        id: build
+        run: |
+          IMG=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/zammad-service-portal
+          docker build -t $IMG:${{ inputs.version }} --build-arg APP_VERSION=${{ inputs.version }} .
+          docker build -t $IMG-updater:${{ inputs.version }} -f Dockerfile.updater .
+          docker push $IMG:${{ inputs.version }}
+          docker push $IMG-updater:${{ inputs.version }}
+          echo "app=$IMG@$(docker inspect --format='{{index .RepoDigests 0}}' $IMG:${{ inputs.version }} | cut -d@ -f2)" >> "$GITHUB_OUTPUT"
+          echo "upd=$IMG-updater@$(docker inspect --format='{{index .RepoDigests 0}}' $IMG-updater:${{ inputs.version }} | cut -d@ -f2)" >> "$GITHUB_OUTPUT"
+      - name: Signieren (cosign, schlüssellos)
+        run: |
+          cosign sign --yes ${{ steps.build.outputs.app }}
+          cosign sign --yes ${{ steps.build.outputs.upd }}

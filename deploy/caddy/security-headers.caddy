@@ -1,0 +1,18 @@
+# Sicherheits-Header – zusätzlich zu denen der App (doppelt hält besser,
+# z. B. wenn der Proxy selbst eine Fehlerseite ausliefert).
+# Nur statische Dateien komprimieren – API-Antworten mit Tokens nicht (Schutz vor BREACH)
+@compressible not path /api/*
+encode @compressible zstd gzip
+header {
+	Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+	X-Content-Type-Options "nosniff"
+	X-Frame-Options "DENY"
+	Referrer-Policy "no-referrer"
+	Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+	Cross-Origin-Opener-Policy "same-origin"
+	-Server
+	-Via
+}
+request_body {
+	max_size 45MB
+}

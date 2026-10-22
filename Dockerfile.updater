@@ -1,0 +1,17 @@
+# Update-Dienst: holt neue Versionen (Git-Tags oder signierte Images), sichert die
+# Datenbank, startet die neue Version und rollt bei Fehlern automatisch zurück.
+# Hat KEINEN offenen Port. Zugriff auf Docker nur über den eingeschränkten Socket-Proxy.
+
+ARG NODE_VERSION=24
+FROM node:${NODE_VERSION}-alpine
+# Paketversionen kommen aus dem festen Alpine-Zweig des Basis-Images.
+# hadolint ignore=DL3018
+RUN apk add --no-cache git openssh-client docker-cli docker-cli-compose docker-cli-buildx cosign tini
+WORKDIR /app
+COPY --chown=0:0 package.json ./
+COPY --chown=0:0 src ./src
+COPY --chown=0:0 updater ./updater
+ENV NODE_ENV=production NODE_OPTIONS="--disable-warning=ExperimentalWarning"
+# Der Benutzer wird in docker-compose.yml gesetzt (braucht Schreibrechte auf Projektverzeichnis und Backups).
+HEALTHCHECK --interval=60s --timeout=5s --start-period=120s CMD ["sh", "-c", "find /tmp/updater-heartbeat -mmin -3 | grep -q ."]
+ENTRYPOINT ["/sbin/tini", "--", "node", "updater/updater.ts"]

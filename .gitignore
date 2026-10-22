@@ -1,0 +1,17 @@
+node_modules/
+dist/
+data/
+.data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+deploy/.env
+deploy/secrets/*
+!deploy/secrets/.gitkeep
+deploy/certs/*
+!deploy/certs/.gitkeep
+deploy/allowed_signers
+deploy/known_hosts
+pentest/output/
+*.log
+.DS_Store

@@ -1,0 +1,248 @@
+# Service-Portal – Docker-Compose-Stack
+#
+# Aufbau (siehe docs/ARCHITEKTUR.md):
+#   caddy   – einziger erreichbarer Dienst (443), TLS, Sicherheits-Header
+#   app     – Web-Oberfläche + API
+#   worker  – stellt Anfragen an Zammad zu
+#   clamav  – Virenscan für Uploads                     (Profil "clamav")
+#   updater + socket-proxy – Updates aus der Oberfläche (Profil "updater")
+#
+# Start:  docker compose --env-file .env up -d
+name: ${COMPOSE_PROJECT_NAME:-service-portal}
+
+x-hardening: &hardening
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+x-app: &app
+  <<: *hardening
+  image: ${APP_IMAGE:-zammad-service-portal}:${APP_VERSION:-dev}
+  build:
+    context: ..
+    dockerfile: Dockerfile
+    args:
+      APP_VERSION: ${APP_VERSION:-dev}
+  user: "65532:65532"
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  volumes:
+    - portal-data:/data
+  secrets:
+    - secret_key
+    - entra_client_secret
+  # Alle Einstellungen des Portals kommen aus deploy/.env (eine Datei auf dem Server).
+  # Was unten unter "environment" steht, ist fest vorgegeben und kann dort nicht überschrieben werden.
+  env_file:
+    - .env
+  environment:
+    NODE_ENV: production
+    APP_VERSION: ${APP_VERSION:-dev}
+    PUBLIC_URL: ${PUBLIC_URL:?PUBLIC_URL fehlt in .env}
+    SECRET_KEY_FILE: /run/secrets/secret_key
+    ENTRA_CLIENT_SECRET_FILE: /run/secrets/entra_client_secret
+    # Nur der eigene Reverse Proxy darf X-Forwarded-For setzen
+    TRUST_PROXY_CIDRS: ${PROXY_IP:-172.30.10.2}/32
+    CLAMAV_HOST: ${CLAMAV_HOST:-clamav}
+    ALLOW_PRIVATE_TICKET_URLS: "true"
+    DATA_DIR: /data
+    PORT: "3000"
+  mem_limit: 512m
+  pids_limit: 200
+
+services:
+  caddy:
+    <<: *hardening
+    image: caddy:2.11.7-alpine
+    cap_add:
+      - NET_BIND_SERVICE
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:443:443"
+      - "${BIND_ADDRESS:-0.0.0.0}:80:80"
+    environment:
+      PORTAL_HOST: ${PORTAL_HOST:?PORTAL_HOST fehlt in .env}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/security-headers.caddy:/etc/caddy/security-headers.caddy:ro
+      - ./caddy/tls.caddy:/etc/caddy/tls.caddy:ro
+      - ./certs:/certs:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    tmpfs:
+      - /tmp:size=16m
+    networks:
+      edge:
+        ipv4_address: ${PROXY_IP:-172.30.10.2}
+    depends_on:
+      app:
+        condition: service_healthy
+    mem_limit: 256m
+    pids_limit: 100
+
+  app:
+    <<: *app
+    command: ["serve"]
+    networks:
+      - edge
+      - backend
+      - egress
+    healthcheck:
+      test: ["CMD", "/nodejs/bin/node", "src/server/cli.ts", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  worker:
+    <<: *app
+    command: ["worker"]
+    networks:
+      - backend
+      - egress
+    healthcheck:
+      disable: true
+    depends_on:
+      app:
+        condition: service_healthy
+
+  clamav:
+    image: clamav/clamav:1.5.4
+    profiles: ["clamav"]
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - clamav-db:/var/lib/clamav
+    networks:
+      - backend
+      - clamav-update
+    mem_limit: 2g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    profiles: ["updater"]
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /run:size=8m
+      - /tmp:size=8m
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # Nur was "docker compose build/pull/up/stop" braucht – kein exec, keine Secrets, kein Swarm
+      CONTAINERS: 1
+      IMAGES: 1
+      NETWORKS: 1
+      VOLUMES: 1
+      BUILD: ${UPDATER_ALLOW_BUILD:-1}
+      INFO: 1
+      VERSION: 1
+      POST: 1
+      DELETE: 1
+      ALLOW_START: 1
+      ALLOW_STOP: 1
+      ALLOW_RESTARTS: 1
+      EXEC: 0
+      SECRETS: 0
+      SERVICES: 0
+      SWARM: 0
+      SYSTEM: 0
+      PLUGINS: 0
+      AUTH: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - updater
+    mem_limit: 64m
+
+  updater:
+    image: ${APP_IMAGE:-zammad-service-portal}-updater:${APP_VERSION:-dev}
+    build:
+      context: ..
+      dockerfile: Dockerfile.updater
+    profiles: ["updater"]
+    restart: unless-stopped
+    read_only: true
+    # Läuft als root im Container (ohne Docker-Socket, nur Rechte auf Dateien):
+    # braucht Schreibzugriff auf das Projektverzeichnis und auf /data für Backups.
+    user: "0:0"
+    cap_drop:
+      - ALL
+    cap_add:
+      - DAC_OVERRIDE
+      - CHOWN
+      - FOWNER
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m
+      - /root:size=16m
+    environment:
+      DOCKER_HOST: tcp://socket-proxy:2375
+      PORTAL_DIR: ${PORTAL_DIR:-/opt/zammad-service-portal}
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-service-portal}
+      UPDATE_SOURCE: ${UPDATE_SOURCE:-git}
+      UPDATE_REQUIRE_SIGNED_TAGS: ${UPDATE_REQUIRE_SIGNED_TAGS:-true}
+      UPDATE_ALLOWED_SIGNERS: ${PORTAL_DIR:-/opt/zammad-service-portal}/deploy/allowed_signers
+      REGISTRY_IMAGE: ${REGISTRY_IMAGE:-ghcr.io/hundexe/zammad-service-portal}
+      APP_HEALTH_URL: http://app:3000/readyz
+      DATA_DIR: /data
+      GIT_SSH_COMMAND: ssh -i ${PORTAL_DIR:-/opt/zammad-service-portal}/deploy/secrets/deploy_key -o UserKnownHostsFile=${PORTAL_DIR:-/opt/zammad-service-portal}/deploy/known_hosts -o StrictHostKeyChecking=yes
+      GIT_CONFIG_COUNT: 1
+      GIT_CONFIG_KEY_0: safe.directory
+      GIT_CONFIG_VALUE_0: ${PORTAL_DIR:-/opt/zammad-service-portal}
+    volumes:
+      # Gleicher Pfad wie auf dem Host, damit "docker compose" die Bind-Mounts korrekt auflöst
+      - ${PORTAL_DIR:-/opt/zammad-service-portal}:${PORTAL_DIR:-/opt/zammad-service-portal}
+      - portal-data:/data
+    networks:
+      - updater
+      - backend
+      - egress
+    depends_on:
+      - socket-proxy
+    mem_limit: 512m
+
+secrets:
+  secret_key:
+    file: ./secrets/secret_key
+  entra_client_secret:
+    file: ./secrets/entra_client_secret
+
+volumes:
+  portal-data:
+  caddy-data:
+  caddy-config:
+  clamav-db:
+
+networks:
+  # Nur Caddy ↔ App. Die feste IP des Proxys ist der einzige vertrauenswürdige Absender von X-Forwarded-For.
+  edge:
+    ipam:
+      config:
+        - subnet: ${PROXY_NET_CIDR:-172.30.10.0/24}
+          # Dynamische Adressen nur aus der oberen Hälfte – die feste Proxy-IP bleibt frei
+          ip_range: ${PROXY_NET_DYNAMIC:-172.30.10.128/25}
+  # Intern, ohne Internet: App, Worker, ClamAV, Updater
+  backend:
+    internal: true
+  # Ausgehend: Entra ID, Microsoft Graph, Zammad
+  egress: {}
+  # Nur für die Signatur-Updates von ClamAV
+  clamav-update: {}
+  # Updater ↔ Socket-Proxy, intern
+  updater:
+    internal: true

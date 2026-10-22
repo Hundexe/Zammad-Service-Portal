@@ -1,0 +1,11 @@
+# Nur für Demo/Pentest auf dem Entwicklungsrechner
+{
+	admin off
+	auto_https disable_redirects
+	skip_install_trust
+}
+portal.localhost:8443 {
+	tls internal
+	import ../../deploy/caddy/security-headers.caddy
+	reverse_proxy 127.0.0.1:3000
+}

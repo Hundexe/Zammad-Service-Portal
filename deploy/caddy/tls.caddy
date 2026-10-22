@@ -1,0 +1,10 @@
+# TLS für das Portal – eine der beiden Varianten verwenden.
+
+# Variante A (Standard): Zertifikat von der internen CA von Caddy.
+# Das Stammzertifikat liegt danach im Volume caddy-data unter
+# /data/caddy/pki/authorities/local/root.crt und muss per GPO an die Clients verteilt werden.
+tls internal
+
+# Variante B: Zertifikat der eigenen Firmen-CA (empfohlen, wenn vorhanden).
+# Dateien nach deploy/certs/ legen, Zeile oben auskommentieren und diese aktivieren:
+# tls /certs/portal.crt /certs/portal.key

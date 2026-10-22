@@ -1,0 +1,128 @@
+// Tests des Update-Dienstes mit simuliertem Docker/Git.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Db, uuid } from '../src/server/db/db.ts';
+import { Updater, compareVersions, setEnvValue, readEnvFile, type Exec, type UpdaterConfig } from '../updater/updater.ts';
+
+function setup(opts: { healthyVersion: (call: number) => string | null; failCmd?: RegExp }) {
+  const dir = mkdtempSync(join(tmpdir(), 'zsp-upd-'));
+  const db = new Db(join(dir, 'portal.sqlite'));
+  db.migrate();
+  db.run("INSERT INTO settings (key, value) VALUES ('marker', 'vorher')");
+  db.close();
+  const envFile = join(dir, '.env');
+  writeFileSync(envFile, '# Kommentar bleibt\nAPP_VERSION=1.0.0\nPUBLIC_URL=https://portal\n');
+  const calls: string[] = [];
+  const exec: Exec = async (cmd, args) => {
+    const line = `${cmd} ${args.join(' ')}`;
+    calls.push(line);
+    if (opts.failCmd?.test(line)) return { code: 1, stdout: '', stderr: 'simulierter Fehler' };
+    if (args.includes('tag') && args.includes('--list')) return { code: 0, stdout: 'v1.0.0\nv1.1.0\nv1.2.0\nkaputt\n', stderr: '' };
+    if (args.includes('rev-parse') && args.includes('HEAD')) return { code: 0, stdout: 'abc123\n', stderr: '' };
+    if (args.includes('show')) return { code: 0, stdout: '# Changelog\n## 1.2.0\n- Neu\n', stderr: '' };
+    return { code: 0, stdout: '', stderr: '' };
+  };
+  let healthCalls = 0;
+  const fetchImpl = (async () => {
+    const v = opts.healthyVersion(++healthCalls);
+    return new Response(JSON.stringify({ status: 'ok', version: v }), { status: v ? 200 : 503 });
+  }) as unknown as typeof fetch;
+  const cfg: UpdaterConfig = {
+    dataDir: dir, portalDir: dir, composeFile: join(dir, 'docker-compose.yml'), envFile, projectName: 'test', source: 'git',
+    gitRemote: 'origin', requireSignedTags: true, registryImage: 'ghcr.io/x/y', cosignIdentityRegexp: '.*', cosignIssuer: 'x',
+    healthUrl: 'http://app/readyz', healthTimeoutMs: 50, checkIntervalMs: 3600_000, appUid: 65532,
+  };
+  const u = new Updater(cfg, exec, fetchImpl);
+  return { u, dir, calls, envFile, cleanup: () => { u.db.close(); rmSync(dir, { recursive: true, force: true }); } };
+}
+
+function addJob(u: Updater, version: string): string {
+  const id = uuid();
+  u.db.run("INSERT INTO update_jobs (id, target_version, status, created_at) VALUES (?, ?, 'requested', ?)", id, version, Date.now());
+  return id;
+}
+
+test('Versionen vergleichen und .env sicher ändern', () => {
+  assert.ok(compareVersions('1.10.0', '1.9.9') > 0);
+  assert.equal(compareVersions('v1.2.3', '1.2.3'), 0);
+  const dir = mkdtempSync(join(tmpdir(), 'zsp-env-'));
+  const f = join(dir, '.env');
+  writeFileSync(f, '# x\nA=1\n');
+  setEnvValue(f, 'A', '2');
+  setEnvValue(f, 'B', '3');
+  assert.equal(readFileSync(f, 'utf8'), '# x\nA=2\n\nB=3');
+  assert.throws(() => setEnvValue(f, 'A', '1; rm -rf /'));
+  assert.equal(readEnvFile(f).get('B'), '3');
+  rmSync(dir, { recursive: true });
+});
+
+test('Prüfung findet neuere Versionen aus Git-Tags', async () => {
+  const s = setup({ healthyVersion: () => '1.2.0' });
+  try {
+    await s.u.check();
+    const st = s.u.db.get<{ available: string; latest_version: string; changelog: string }>('SELECT * FROM update_state WHERE id = 1')!;
+    assert.deepEqual(JSON.parse(st.available), ['1.0.0', '1.1.0', '1.2.0']);
+    assert.equal(st.latest_version, '1.2.0');
+    assert.match(st.changelog, /1\.2\.0/);
+  } finally { s.cleanup(); }
+});
+
+test('erfolgreiches Update: Signatur, Backup, Build, Neustart, Health', async () => {
+  const s = setup({ healthyVersion: () => '1.2.0' });
+  try {
+    const id = addJob(s.u, '1.2.0');
+    await s.u.tick();
+    const job = s.u.db.get<{ status: string; log: string }>('SELECT * FROM update_jobs WHERE id = ?', id)!;
+    assert.equal(job.status, 'succeeded', job.log);
+    assert.ok(s.calls.some((c) => c.includes('verify-tag v1.2.0')), 'Signatur geprüft');
+    assert.ok(s.calls.some((c) => c.includes('checkout --detach --force v1.2.0')));
+    assert.ok(s.calls.some((c) => c.includes('compose -p test') && c.includes('build --pull app')));
+    assert.ok(s.calls.some((c) => c.includes('up -d --no-deps app worker')));
+    assert.match(job.log, /Datenbank gesichert/);
+    assert.equal(readEnvFile(s.envFile).get('APP_VERSION'), '1.2.0');
+    assert.match(readFileSync(s.envFile, 'utf8'), /# Kommentar bleibt/);
+  } finally { s.cleanup(); }
+});
+
+test('unsignierter Tag: nichts wird verändert', async () => {
+  const s = setup({ healthyVersion: () => '1.2.0', failCmd: /verify-tag/ });
+  try {
+    const id = addJob(s.u, '1.2.0');
+    await s.u.tick();
+    const job = s.u.db.get<{ status: string }>('SELECT * FROM update_jobs WHERE id = ?', id)!;
+    assert.equal(job.status, 'failed');
+    assert.ok(!s.calls.some((c) => c.includes('checkout')));
+    assert.equal(readEnvFile(s.envFile).get('APP_VERSION'), '1.0.0');
+  } finally { s.cleanup(); }
+});
+
+test('neue Version startet nicht: automatische Rücksetzung inkl. Datenbank', async () => {
+  // Health meldet zunächst nie 1.2.0, nach dem Rollback aber 1.0.0
+  const s = setup({ healthyVersion: () => '1.0.0' });
+  try {
+    const id = addJob(s.u, '1.2.0');
+    // Simuliert eine Migration der neuen Version, die Daten verändert
+    const origSwitch = (s.u as any).switchTo.bind(s.u);
+    (s.u as any).switchTo = async (v: string, log: (x: string) => void) => {
+      await origSwitch(v, log);
+      s.u.db.run("UPDATE settings SET value = 'kaputt-migriert' WHERE key = 'marker'");
+    };
+    await s.u.tick();
+    const job = s.u.db.get<{ status: string; log: string }>('SELECT * FROM update_jobs WHERE id = ?', id)!;
+    assert.equal(job.status, 'rolled_back', job.log);
+    assert.equal(s.u.db.get<{ value: string }>("SELECT value FROM settings WHERE key = 'marker'")!.value, 'vorher', 'Datenbank wiederhergestellt');
+    assert.ok(s.calls.some((c) => c.includes('checkout --detach --force abc123')), 'alter Stand ausgecheckt');
+    assert.equal(readEnvFile(s.envFile).get('APP_VERSION'), '1.0.0');
+  } finally { s.cleanup(); }
+});
+
+test('ungültige Versionsangaben werden nicht ausgeführt', async () => {
+  const s = setup({ healthyVersion: () => null });
+  try {
+    await assert.rejects(() => s.u.runJob({ id: 'x', target_version: '1.0.0; rm -rf /' }));
+    assert.equal(s.calls.length, 0);
+  } finally { s.cleanup(); }
+});

@@ -1,0 +1,34 @@
+# Caddy – Reverse Proxy vor dem Service-Portal
+{
+	admin off
+	# Stammzertifikat nicht in den Container-Zertifikatsspeicher eintragen (dort nutzlos)
+	skip_install_trust
+	# Interne Installation: Zertifikate kommen aus tls.caddy (interne CA oder Firmenzertifikat),
+	# es werden keine öffentlichen Zertifikate bei Let's Encrypt angefragt.
+	servers {
+		protocols h1 h2
+	}
+}
+
+{$PORTAL_HOST} {
+	import /etc/caddy/tls.caddy
+	import /etc/caddy/security-headers.caddy
+
+	# Interne Dateien und versteckte Pfade gar nicht erst durchreichen
+	@hidden path /.* */.*
+	respond @hidden 404
+
+	reverse_proxy app:3000 {
+		header_up -X-Forwarded-Host
+		transport http {
+			read_timeout 120s
+		}
+	}
+	log {
+		output stdout
+		format json
+	}
+}
+
+# Andere Hostnamen oder die nackte IP bekommen kein Zertifikat – der TLS-Handshake schlägt fehl.
+# Zusätzlich beantwortet die App nur Anfragen mit dem richtigen Host-Header (sonst 421).
