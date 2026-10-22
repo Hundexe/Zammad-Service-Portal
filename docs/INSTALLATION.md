@@ -132,32 +132,32 @@ Pro Zammad-Instanz (für den Test erst das Test-Zammad):
    - Aktion: *E-Mail* an *Kunde*, Betreff z. B. `Ihre Anfrage #{ticket.number}: #{ticket.title}`
    Der Tag `service-portal` wird an jedes Ticket aus dem Portal gehängt (pro Ticketsystem änderbar). Damit lassen sich auch Übersichten und Berichte in Zammad bauen.
 
-## 6. Konfiguration und Zertifikat
+## 6. Konfiguration
+
+Das Installationsskript fragt alles Nötige ab und schreibt es nach `deploy/.env`:
 
 ```bash
 cd /opt/zammad-service-portal/deploy
-cp .env.example .env
-chmod 600 .env
-nano .env
+./install.sh
 ```
 
-Mindestens ausfüllen:
+| Frage | Vorgabe | Hinweis |
+| --- | --- | --- |
+| Hostname oder IP | IP der VM | Mit DNS-Eintrag den Namen nehmen (z. B. `serviceportal.firma.intern`), zum Testen reicht die IP |
+| HTTPS-Port | 443 | Ist er belegt, schlägt das Skript einen freien vor (z. B. 8443) |
+| HTTP-Port | 80 | Leitet nur auf HTTPS weiter |
+| Virenscanner (ClamAV) | ja ab 4 GB RAM | Braucht etwa 1,5 GB RAM |
+| Updates aus der Oberfläche | nein | Startet den Update-Dienst (siehe [Updates](UPDATES.md)) |
+| Microsoft-Anmeldung | nein | Tenant-ID, Client-ID, erlaubte Tenants, Client-Secret aus Schritt 4. Das Skript zeigt die passende Weiterleitungs-URI an |
+| Erster Admin, normaler Testbenutzer | `admin`, `test.user` | Beide bekommen ein generiertes Passwort |
 
-| Variable | Beispiel |
-| --- | --- |
-| `PORTAL_HOST` | `serviceportal.firma.intern` |
-| `PUBLIC_URL` | `https://serviceportal.firma.intern` |
-| `PORTAL_DIR` | `/opt/zammad-service-portal` |
-| `ENTRA_TENANT_ID` | Verzeichnis-ID aus Schritt 4 |
-| `ENTRA_CLIENT_ID` | Anwendungs-ID aus Schritt 4 |
-| `ENTRA_ALLOWED_TENANTS` | eine oder beide Tenant-IDs |
-| `ADMIN_ALLOWED_CIDRS` | Admin-Netz, z. B. `10.10.50.0/24` (empfohlen) |
+`PUBLIC_URL` und `PORTAL_DIR` setzt das Skript selbst. Beim erneuten Aufruf fragt es, ob die Einstellungen geändert werden sollen; Schlüssel, Daten und Benutzer bleiben erhalten. Für Automatisierung gibt es `./install.sh --ja`: keine Rückfragen, alle Werte aus `deploy/.env`.
 
-**Port ändern** (wenn 443/80 auf der VM schon belegt sind): `HTTPS_PORT=8443` und `HTTP_PORT=8080` setzen und den Port in `PUBLIC_URL` aufnehmen: `PUBLIC_URL=https://serviceportal.firma.intern:8443`. `install.sh` prüft, ob das zusammenpasst und ob der Port frei ist.
-
-**Ohne DNS-Eintrag testen:** Als `PORTAL_HOST` geht auch die IP der VM (`hostname -I` zeigt sie), z. B. `PORTAL_HOST=192.168.1.50` und `PUBLIC_URL=https://192.168.1.50:8443`. Die interne CA von Caddy stellt dafür ein Zertifikat aus; der Browser warnt, bis das Stammzertifikat verteilt ist. Für die Microsoft-Anmeldung braucht es später einen richtigen Hostnamen.
+Wer lieber selbst editiert: `cp .env.example .env`, Werte eintragen, dann `./install.sh --ja`. Mindestens nötig sind `PORTAL_HOST` und `PUBLIC_URL`; bei einem anderen HTTPS-Port als 443 gehört er in `PUBLIC_URL` (`https://serviceportal.firma.intern:8443`). Zusätzlich empfohlen: `ADMIN_ALLOWED_CIDRS` (Admin-Netz, z. B. `10.10.50.0/24`).
 
 Alle weiteren Einstellungen (Kontosperre, 2FA-Pflicht, Sitzungszeiten, Passwortlänge usw.) stehen kommentiert in derselben Datei und haben sichere Standardwerte. Übersicht: [Betrieb → Einstellungen ändern](BETRIEB.md#einstellungen-ändern-deployenv).
+
+**Ohne DNS-Eintrag:** Mit der IP als Hostname stellt die interne CA von Caddy ein Zertifikat für die IP aus; der Browser warnt, bis das Stammzertifikat verteilt ist. Für die Microsoft-Anmeldung braucht es später einen richtigen Hostnamen.
 
 **Zertifikat:** Das Portal ist nur intern erreichbar, daher gibt es kein Let's Encrypt. Zwei Möglichkeiten, eingestellt in `deploy/caddy/tls.caddy`:
 
@@ -166,16 +166,12 @@ Alle weiteren Einstellungen (Kontosperre, 2FA-Pflicht, Sitzungszeiten, Passwortl
 
 ## 7. Installieren und ersten Admin anlegen
 
-```bash
-cd /opt/zammad-service-portal/deploy
-./install.sh admin
-```
-
-Das Skript:
-- prüft Docker und die `.env`,
+Das erledigt derselbe Aufruf von `./install.sh` aus Schritt 6. Das Skript:
+- prüft Docker, die Einstellungen und ob die Ports frei sind,
 - erzeugt den Hauptschlüssel (`secrets/secret_key`) und setzt die Dateirechte,
 - baut die Images und startet den Stack,
-- legt den ersten Admin **mit generiertem Passwort** an.
+- legt den ersten Admin **mit generiertem Passwort** an und auf Wunsch einen normalen Testbenutzer,
+- zeigt am Ende die Adresse des Portals und die IP der VM.
 
 Am Ende steht ein Kasten mit Benutzername und Passwort. Das Passwort erscheint nur dieses eine Mal.
 

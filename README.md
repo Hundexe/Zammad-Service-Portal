@@ -23,8 +23,8 @@ Self-Service-Portal für IT-Abteilungen mit einem oder mehreren Zammad-Systemen:
 sudo mkdir -p /opt/zammad-service-portal && sudo chown "$USER" /opt/zammad-service-portal
 git clone https://github.com/Hundexe/Zammad-Service-Portal.git /opt/zammad-service-portal
 cd /opt/zammad-service-portal/deploy
-cp .env.example .env && nano .env        # Hostname, Entra-IDs eintragen
-./install.sh                             # baut, startet und legt den ersten Admin mit generiertem Passwort an
+./install.sh      # fragt Hostname/IP, Ports, Virenscanner, Microsoft-Anmeldung ab, baut, startet
+                  # und legt den ersten Admin (und auf Wunsch einen Testbenutzer) mit generiertem Passwort an
 ```
 
 Die vollständige Anleitung mit Entra-App-Registrierung, Zammad-API-Benutzer und Zertifikaten steht in [docs/INSTALLATION.md](docs/INSTALLATION.md).
