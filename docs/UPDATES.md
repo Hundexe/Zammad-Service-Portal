@@ -2,6 +2,9 @@
 
 Neue Versionen werden als **signierte Git-Tags** (`v1.1.0`) veröffentlicht. Der Update-Dienst auf der VM holt sie, prüft die Signatur, baut die Images **auf der VM** und startet das Portal neu. Dafür braucht es weder GitHub Actions noch eine Container-Registry.
 
+
+> **Installation ohne Docker** (`deploy/native/install.sh`): Updates einfach mit demselben Befehl wie bei der Installation einspielen (`curl -fsSL https://raw.githubusercontent.com/Hundexe/Zammad-Service-Portal/main/setup.sh | sudo bash`). Die Update-Schaltfläche in der Verwaltung und der Update-Dienst gibt es nur in der Docker-Variante.
+
 ## So läuft ein Update aus der Oberfläche
 
 1. Der Updater prüft alle 6 Stunden (oder nach **Jetzt nach Updates suchen**) die Tags im Repository.

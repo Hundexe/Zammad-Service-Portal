@@ -1,6 +1,29 @@
 # Installation
 
-Diese Anleitung führt von einer frischen VM auf Proxmox bis zum ersten Ticket aus dem Portal. Docker ist auf der VM bereits installiert.
+## Schnellinstallation (ein Befehl)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Hundexe/Zammad-Service-Portal/main/setup.sh | sudo bash
+```
+
+Das Skript (`setup.sh` im Repository) fragt zuerst nach der Variante:
+
+1. **Docker** – installiert Docker bei Bedarf (offizielles Skript von get.docker.com), holt den Code nach `/opt/zammad-service-portal` und startet `deploy/install.sh`.
+2. **Direkt auf Debian/Ubuntu (ohne Docker)** – startet `deploy/native/install.sh`, siehe [Variante ohne Docker](#variante-ohne-docker).
+3. **Nur ausprobieren** – Demo mit Beispieldaten auf Port 3000, siehe [Demo](#demo-ohne-installation).
+
+In beiden echten Varianten folgen dieselben Fragen: Hostname oder IP, HTTPS- und HTTP-Port, Virenscanner, optional Microsoft-Anmeldung, erster Admin und optional ein normaler Testbenutzer. Mehr ist für einen ersten Test nicht nötig – weiter mit [Erste Anmeldung](#8-erste-anmeldung) und [Zammad verbinden](#9-zammad-verbinden-und-formulare-anlegen).
+
+| Option | Wirkung |
+| --- | --- |
+| `… \| sudo bash -s -- --docker` | Variante 1 ohne Menü (`--debian`, `--demo` entsprechend) |
+| `… \| sudo bash -s -- --docker --ja` | zusätzlich ohne Rückfragen: IP des Servers, freie Ports, Virenscanner je nach RAM |
+| `… \| sudo PORTAL_DIR=/srv/portal bash` | anderes Zielverzeichnis |
+| `… \| sudo PORTAL_REF=v1.2.0 bash` | bestimmte Version statt der neuesten |
+
+**Aktualisieren:** denselben Befehl noch einmal ausführen. Einstellungen, Schlüssel, Daten und Benutzer bleiben erhalten.
+
+Die folgenden Abschnitte beschreiben die Docker-Installation Schritt für Schritt, falls du jeden Schritt selbst machen willst, und was in Entra ID und Zammad einzurichten ist.
 
 **Dauer:** etwa eine Stunde, davon das meiste in Entra ID und Zammad.
 
@@ -64,7 +87,7 @@ Weiter als dieser Benutzer: `sudo -iu portal`
 sudo mkdir -p /opt/zammad-service-portal && sudo chown portal: /opt/zammad-service-portal
 git clone https://github.com/Hundexe/Zammad-Service-Portal.git /opt/zammad-service-portal
 cd /opt/zammad-service-portal
-git checkout v1.1.0        # für den Betrieb einen Release-Tag verwenden, zum Ausprobieren geht auch main
+git checkout v1.2.0        # für den Betrieb einen Release-Tag verwenden, zum Ausprobieren geht auch main
 ```
 
 Das Repository ist öffentlich, ein Schlüssel ist zum Klonen und für Updates nicht nötig.
@@ -254,3 +277,43 @@ Danach als Microsoft-Benutzer anmelden und prüfen, ob die Verwaltung erreichbar
 - [ ] Ablaufdatum des Entra-Client-Secrets im Kalender
 
 Nach jeder Änderung an `.env`: `docker compose up -d`.
+
+---
+
+## Variante ohne Docker
+
+`deploy/native/install.sh` (oder Variante 2 von `setup.sh`) installiert das Portal direkt auf Debian 12/13 oder Ubuntu 22.04/24.04:
+
+| Was | Wo |
+| --- | --- |
+| Code | `/opt/zammad-service-portal` |
+| Node.js 24 | `/opt/zammad-service-portal-node` (offizielles Paket von nodejs.org, Prüfsumme wird geprüft) |
+| **Konfiguration** | `/etc/zammad-service-portal/portal.env` – dieselben Einstellungen wie `deploy/.env` |
+| Geheimnisse | `/etc/zammad-service-portal/secrets/` (Hauptschlüssel, Client-Secret) |
+| Daten | `/var/lib/zammad-service-portal` (SQLite-Datenbank, Uploads) |
+| Dienste | `zammad-service-portal` (Web) und `zammad-service-portal-worker` (Zustellung), Benutzer `zsp`, gehärtete systemd-Units |
+| Reverse Proxy | Caddy aus dem offiziellen Paket-Repository, Konfiguration `/etc/caddy/zammad-service-portal.caddy` |
+| Virenscanner | `clamav-daemon` (optional), lauscht nur auf 127.0.0.1:3310 |
+| Kommandozeile | `service-portal-cli` statt `docker compose exec app … cli.ts` |
+
+Die App lauscht nur auf `127.0.0.1:3000`; von außen erreichbar ist nur Caddy. Eine vorhandene Caddy-Konfiguration bleibt erhalten, das Portal wird dann per `import` ergänzt.
+
+```bash
+systemctl status zammad-service-portal                # läuft es?
+journalctl -u zammad-service-portal -f                # Logs
+nano /etc/zammad-service-portal/portal.env            # Einstellungen ändern …
+systemctl restart zammad-service-portal zammad-service-portal-worker   # … und neu starten
+service-portal-cli user:create --username max --name "Max Muster" --email max@firma.de
+service-portal-cli backup                             # Sicherung nach /var/lib/zammad-service-portal/backups
+```
+
+Updates: `setup.sh` erneut ausführen (oder `git -C /opt/zammad-service-portal pull && /opt/zammad-service-portal/deploy/native/install.sh`). Die Update-Schaltfläche in der Verwaltung gibt es nur in der Docker-Variante. Das Stammzertifikat der internen Caddy-CA liegt unter `/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt`.
+
+## Demo ohne Installation
+
+Zum Anschauen und Herumklicken gibt es eine Demo mit Beispieldaten. Zammad und die Microsoft-Anmeldung sind simuliert, Daten werden bei jedem Start zurückgesetzt.
+
+- **Auf dem eigenen Rechner** (Node.js ≥ 22.18): `git clone https://github.com/Hundexe/Zammad-Service-Portal.git && cd Zammad-Service-Portal && npm run demo`, dann <http://localhost:3000>.
+- **Auf einem Server:** `setup.sh` mit Variante 3. Node.js wird bei Bedarf nur für die Demo geladen. Auf Wunsch ist die Demo im Netz unter `http://<IP>:3000` erreichbar (zusätzlich Port 3103 für den simulierten Microsoft-Login).
+
+„Mit Microsoft anmelden“ meldet ohne Passwort als Demo-Admin an. Lokaler Admin der Demo: `admin` / `Demo-Admin-Passwort-2026!` mit TOTP-Schlüssel `JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP`. Die Demo ist nicht für echte Daten gedacht.

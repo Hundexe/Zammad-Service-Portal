@@ -17,7 +17,8 @@ export const CSP = [
 ].join('; ');
 
 export function setSecurityHeaders(res: ServerResponse, https: boolean): void {
-  res.setHeader('Content-Security-Policy', CSP);
+  // upgrade-insecure-requests nur bei HTTPS – sonst bricht z. B. die Demo über http://<IP> (Produktion ist immer HTTPS)
+  res.setHeader('Content-Security-Policy', https ? CSP : CSP.replace(/; upgrade-insecure-requests$/, ''));
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');

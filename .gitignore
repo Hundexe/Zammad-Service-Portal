@@ -15,3 +15,5 @@ deploy/known_hosts
 pentest/output/
 *.log
 .DS_Store
+.node/
+.node-sums.txt

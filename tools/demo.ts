@@ -1,7 +1,8 @@
 // Demo-Umgebung: Portal mit Beispieldaten, zwei Zammad-Simulatoren und Entra-Simulator.
 // Für Screenshots, Pentests und zum Ausprobieren – NICHT für den Produktivbetrieb.
 //
-//   node tools/demo.ts            → Portal auf http://127.0.0.1:3000 (hinter Caddy: https://portal.localhost:8443)
+//   npm run demo                  → Portal auf http://localhost:3000 (ohne Docker, ohne Caddy – nur Node.js)
+//   PUBLIC_URL=https://portal.localhost:8443 node tools/demo.ts   → hinter Caddy (tools/demo-restart.sh)
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -188,9 +189,11 @@ export async function seedDemo(app: App, urls: { zentral: string; nord: string }
   return { systems: { zentral, nord }, forms };
 }
 
-export async function startDemo(opts: { port?: number; publicUrl?: string; dataDir?: string; quiet?: boolean } = {}) {
+export async function startDemo(opts: { port?: number; publicUrl?: string; host?: string; dataDir?: string; quiet?: boolean } = {}) {
   const port = opts.port ?? 3000;
-  const publicUrl = opts.publicUrl ?? 'https://portal.localhost:8443';
+  const publicUrl = opts.publicUrl ?? `http://localhost:${port}`;
+  // DEMO_HOST=0.0.0.0 macht die Demo im Netz erreichbar (z. B. auf einem Server). Nur zum Testen!
+  const listenHost = opts.host ?? '127.0.0.1';
   const dataDir = opts.dataDir ?? join(new URL('..', import.meta.url).pathname, '.data/demo');
   rmSync(dataDir, { recursive: true, force: true });
   mkdirSync(dataDir, { recursive: true });
@@ -204,7 +207,7 @@ export async function startDemo(opts: { port?: number; publicUrl?: string; dataD
   const entra = await startMockEntra([
     { oid: '7e5c1d40-0000-4000-8000-000000000001', tid: TENANT_B, name: 'Alex Berger', email: 'alex.berger@example.org', groups: ['grp-mitarbeiter', 'grp-nord', 'it-admins'] },
     { oid: '7e5c1d40-0000-4000-8000-000000000002', tid: TENANT_A, name: 'Anna Becker', email: 'anna.becker@example.org', groups: ['grp-mitarbeiter'] },
-  ], { port: 3103 });
+  ], { port: 3103, host: listenHost, publicHost: new URL(publicUrl).hostname });
   const env = process.env.DEMO_ENV === 'production' ? 'production' : 'development';
   process.env.NODE_ENV = env;
   await startFakeClamd(3104);
@@ -220,10 +223,11 @@ export async function startDemo(opts: { port?: number; publicUrl?: string; dataD
     cfg.version, '1.1.0\n- Beispiel-Eintrag aus dem Changelog\n- Verbesserte Übersichten', Date.now() - 3600_000, Date.now());
   const { server } = createServer(app, { entra: new EntraClient(cfg) });
   const stopWorker = startWorker(app, 1000);
-  await new Promise<void>((r) => server.listen(port, '127.0.0.1', () => r()));
+  await new Promise<void>((r) => server.listen(port, listenHost, () => r()));
   writeFileSync(join(dataDir, 'demo.json'), JSON.stringify({ publicUrl, ...seeded }, null, 2));
   if (!opts.quiet) {
-    console.log(`\nDemo läuft: ${publicUrl} (direkt: http://127.0.0.1:${port})`);
+    console.log(`\nDemo läuft: ${publicUrl}  (Beenden mit Strg+C)`);
+    console.log('„Mit Microsoft anmelden“ meldet ohne Passwort als Alex Berger (Admin) an – alles nur simuliert.');
     console.log(`Lokaler Admin: admin / ${DEMO_ADMIN_PASSWORD} (TOTP-Schlüssel ${DEMO_TOTP_SECRET})`);
     console.log('Microsoft-Anmeldung über den Entra-Simulator: als Alex Berger (Admin-Gruppe) bzw. ?as=… für Anna Becker\n');
   }
@@ -234,5 +238,5 @@ export async function startDemo(opts: { port?: number; publicUrl?: string; dataD
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  await startDemo({ port: Number(process.env.PORT ?? 3000), publicUrl: process.env.PUBLIC_URL });
+  await startDemo({ port: Number(process.env.PORT ?? 3000), publicUrl: process.env.PUBLIC_URL, host: process.env.DEMO_HOST });
 }

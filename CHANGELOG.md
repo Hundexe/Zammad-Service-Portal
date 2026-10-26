@@ -1,5 +1,13 @@
 # Änderungen
 
+## 1.2.0 – 26.10.2026
+
+- Installation mit einem Befehl: `curl -fsSL …/setup.sh | sudo bash` – Auswahl Docker, direkt auf Debian/Ubuntu oder Demo
+- Neue Variante ohne Docker (`deploy/native/install.sh`): Node.js 24, Caddy, optional ClamAV, gehärtete systemd-Dienste, Konfiguration in `/etc/zammad-service-portal/portal.env`, Kommandozeile `service-portal-cli`
+- Demo ohne Installation: `npm run demo` auf http://localhost:3000, auf Wunsch im Netz erreichbar
+- Aufruf über die IP-Adresse: Caddy liefert auch ohne SNI das richtige Zertifikat (`default_sni`)
+- Gemeinsame Hilfsfunktionen der Installationsskripte in `deploy/lib.sh`
+
 ## 1.1.0 – 22.10.2026
 
 Oberfläche:

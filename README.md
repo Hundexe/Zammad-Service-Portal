@@ -15,25 +15,41 @@ Self-Service-Portal für IT-Abteilungen mit einem oder mehreren Zammad-Systemen:
 | Tickets | Ticket wird im Namen des Benutzers angelegt (`X-On-Behalf-Of`), bekommt einen Portal-Tag, Gruppe, Priorität, Tags und Attribute aus dem Formular. Mitarbeitende sehen ihre Tickets in konfigurierbaren Übersichten, lesen den Verlauf ohne interne Notizen und können antworten |
 | Verwaltung | Rollen und Rechte global oder pro Ticketsystem (Entra-Gruppen, App-Rollen, Personen), Benutzerverwaltung, Audit-Log mit Hash-Kette, Zustellungsübersicht, Updates per Klick mit automatischem Rollback |
 | Oberfläche | Ruhiges, helles Design mit großer Farbfläche je Ticketsystem, dunkles Design per Schalter, für Handy und Desktop, barrierearm (Tastatur, Screenreader, Kontrastprüfung) |
-| Betrieb | Docker-Compose-Stack, nur intern erreichbar, Caddy mit TLS, ClamAV-Virenscan, verschlüsselte Ablage, keine npm-Laufzeitabhängigkeiten |
+| Betrieb | Docker-Compose-Stack oder direkt auf Debian/Ubuntu (systemd), Installation mit einem Befehl, nur intern erreichbar, Caddy mit TLS, ClamAV-Virenscan, verschlüsselte Ablage, keine npm-Laufzeitabhängigkeiten |
 
-## Schnellstart (Proxmox-VM mit Docker)
+## Installation mit einem Befehl
+
+Auf einem Linux-Server (Debian oder Ubuntu empfohlen):
 
 ```bash
-sudo mkdir -p /opt/zammad-service-portal && sudo chown "$USER" /opt/zammad-service-portal
-git clone https://github.com/Hundexe/Zammad-Service-Portal.git /opt/zammad-service-portal
-cd /opt/zammad-service-portal/deploy
-./install.sh      # fragt Hostname/IP, Ports, Virenscanner, Microsoft-Anmeldung ab, baut, startet
-                  # und legt den ersten Admin (und auf Wunsch einen Testbenutzer) mit generiertem Passwort an
+curl -fsSL https://raw.githubusercontent.com/Hundexe/Zammad-Service-Portal/main/setup.sh | sudo bash
 ```
 
-Die vollständige Anleitung mit Entra-App-Registrierung, Zammad-API-Benutzer und Zertifikaten steht in [docs/INSTALLATION.md](docs/INSTALLATION.md).
+Das Skript fragt, wie das Portal laufen soll, und erledigt den Rest:
+
+| Variante | Für wen | Was passiert |
+| --- | --- | --- |
+| **1) Docker** | Server mit oder ohne Docker | installiert Docker bei Bedarf, baut und startet den Compose-Stack |
+| **2) Direkt auf Debian/Ubuntu** | ohne Docker | installiert Node.js, Caddy und optional ClamAV, richtet systemd-Dienste ein |
+| **3) Nur ausprobieren** | zum Anschauen | startet eine Demo mit Beispieldaten, simuliertem Zammad und simuliertem Microsoft-Login; nichts wird dauerhaft eingerichtet |
+
+Danach fragt es Hostname oder IP, Ports (Vorschlag eines freien Ports, falls 443/80 belegt sind), Virenscanner und optional die Microsoft-Anmeldung ab und legt den ersten Admin mit generiertem Passwort an. Ohne Menü: `… | sudo bash -s -- --docker` (bzw. `--debian`, `--demo`). Erneut ausführen aktualisiert das Portal; Einstellungen und Daten bleiben.
+
+**Nur ansehen, ohne Server:** Mit Node.js ≥ 22.18 auf dem eigenen Rechner reicht
+
+```bash
+git clone https://github.com/Hundexe/Zammad-Service-Portal.git && cd Zammad-Service-Portal && npm run demo
+```
+
+und dann <http://localhost:3000> öffnen („Mit Microsoft anmelden“ meldet ohne Passwort als Demo-Admin an).
+
+Die ausführliche Anleitung mit Entra-App-Registrierung, Zammad-API-Benutzer und Zertifikaten steht in [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
 ## Dokumentation
 
 | Dokument | Inhalt |
 | --- | --- |
-| [Installation](docs/INSTALLATION.md) | Schritt für Schritt von der VM bis zum ersten Ticket |
+| [Installation](docs/INSTALLATION.md) | Ein Befehl oder Schritt für Schritt, mit Docker oder direkt auf Debian |
 | [Bedienung](docs/BEDIENUNG.md) | Portal für Mitarbeitende und Verwaltung, mit Screenshots |
 | [Architektur](docs/ARCHITEKTUR.md) | Aufbau, Datenfluss, Datenmodell, Zammad-Anbindung |
 | [Sicherheit](docs/SICHERHEIT.md) | Schutzmaßnahmen, Bedrohungsmodell, Abgleich mit OWASP |

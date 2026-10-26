@@ -1,6 +1,6 @@
 {
   "name": "zammad-service-portal",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Self-Service-Portal für Zammad: Anfragen über Formulare, Tickets per Zammad-API, Anmeldung über Microsoft Entra ID.",
   "type": "module",
@@ -15,7 +15,7 @@
     "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 'test/**/*.test.ts'",
     "test:security": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 'test/security-*.test.ts'",
     "mock-zammad": "node tools/mock-zammad.ts",
-    "demo": "node --disable-warning=ExperimentalWarning tools/demo.ts",
+    "demo": "node --disable-warning=ExperimentalWarning tools/build-web.ts && node --disable-warning=ExperimentalWarning tools/demo.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {

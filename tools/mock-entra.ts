@@ -19,7 +19,7 @@ export interface MockEntra {
 
 const b64 = (x: Buffer | string) => Buffer.from(x).toString('base64url');
 
-export async function startMockEntra(users: MockEntraUser[], opts: { port?: number; clientId?: string; clientSecret?: string } = {}): Promise<MockEntra> {
+export async function startMockEntra(users: MockEntraUser[], opts: { port?: number; clientId?: string; clientSecret?: string; host?: string; publicHost?: string } = {}): Promise<MockEntra> {
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const kid = randomBytes(8).toString('hex');
   const clientId = opts.clientId ?? '11111111-2222-3333-4444-555555555555';
@@ -103,9 +103,9 @@ export async function startMockEntra(users: MockEntraUser[], opts: { port?: numb
     }
     json(404, { error: 'not_found' });
   });
-  await new Promise<void>((r) => server.listen(opts.port ?? 0, '127.0.0.1', () => r()));
+  await new Promise<void>((r) => server.listen(opts.port ?? 0, opts.host ?? '127.0.0.1', () => r()));
   const addr = server.address();
-  base = `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : opts.port}`;
+  base = `http://${opts.publicHost ?? '127.0.0.1'}:${typeof addr === 'object' && addr ? addr.port : opts.port}`;
   return {
     url: base, server, clientId, clientSecret, tamper,
     loginAs: (oid) => { current = users.find((u) => u.oid === oid) ?? current; },

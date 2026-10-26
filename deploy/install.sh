@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installation des Service-Portals auf einer VM mit Docker.
+# Installation des Service-Portals mit Docker Compose (Variante ohne Docker: deploy/native/install.sh).
 #
 # Aufruf (im Verzeichnis deploy/):
 #   ./install.sh              fragt Hostname/IP, Ports, Virenscanner, Updates, Microsoft-Anmeldung
@@ -25,123 +25,21 @@ for arg in "$@"; do
   esac
 done
 
-say()  { printf '\n\033[1m%s\033[0m\n' "$*"; }
-note() { printf '  %s\n' "$*" >&2; }
-fail() { printf '\n\033[31mFehler: %s\033[0m\n' "$*" >&2; exit 1; }
+ENV_FILE=.env
+# shellcheck source=lib.sh
+. ./lib.sh
 SUDO=""; [ "$(id -u)" = "0" ] || SUDO="sudo"
 
-# Frage mit Vorgabe. Ohne Terminal (oder mit --ja) wird die Vorgabe genommen.
-ask() {
-  local question="$1" def="${2:-}" answer=""
-  if [ "$INTERACTIVE" = 1 ]; then
-    read -r -p "  $question [${def}]: " answer || true
-  fi
-  printf '%s' "${answer:-$def}"
-}
+# Belegt unser eigener Caddy-Container den Port? Dann ist er nicht "belegt".
+port_is_ours() { docker compose port caddy "$1" >/dev/null 2>&1; }
 
-# Ja/Nein-Frage. Vorgabe j oder n. Rückgabe 0 = ja.
-ask_yn() {
-  local question="$1" def="$2" answer="" hint="j/N"
-  [ "$def" = "j" ] && hint="J/n"
-  if [ "$INTERACTIVE" = 1 ]; then
-    read -r -p "  $question [$hint]: " answer || true
-  fi
-  answer="$(printf '%s' "${answer:-$def}" | tr '[:upper:]' '[:lower:]')"
-  case "$answer" in j|ja|y|yes) return 0 ;; *) return 1 ;; esac
-}
-
-# Setzt KEY=VALUE in .env (ersetzt die vorhandene Zeile oder hängt an).
-set_env() {
-  local key="$1" value="$2"
-  case "$value" in *$'\n'*|*'"'*|*"'"*|*'$'*|*'`'*) fail "Ungültiges Zeichen im Wert für $key" ;; esac
-  if grep -q "^${key}=" .env; then
-    K="$key" V="$value" awk 'BEGIN { k = ENVIRON["K"]; v = ENVIRON["V"] } index($0, k "=") == 1 { print k "=" v; next } { print }' .env > .env.tmp
-    cat .env.tmp > .env && rm -f .env.tmp
-  else
-    printf '%s=%s\n' "$key" "$value" >> .env
-  fi
-}
-
-valid_port() { case "$1" in ''|*[!0-9]*) return 1 ;; esac; [ "$1" -ge 1 ] && [ "$1" -le 65535 ]; }
-
-# Ist der Port auf der VM belegt – und zwar nicht von unserem eigenen Caddy?
-port_busy() {
-  if command -v ss >/dev/null; then
-    ss -ltnH "( sport = :$1 )" 2>/dev/null | grep -q . || return 1
-  else
-    # Ohne ss: Verbindungsversuch auf den Port (erkennt alles, was auf 0.0.0.0 oder localhost lauscht)
-    (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null || return 1
-  fi
-  docker compose port caddy "$1" >/dev/null 2>&1 && return 1
-  return 0
-}
-
-ask_port() {
-  local question="$1" def="$2" fallback="$3" other="${4:-}" p
-  if port_busy "$def"; then
-    local busy="$def"
-    def="$fallback"
-    while port_busy "$def" || [ "$def" = "$other" ]; do def=$((def + 1)); done
-    note "Port $busy ist auf dieser VM schon belegt – Vorschlag: $def"
-  fi
-  while true; do
-    p="$(ask "$question" "$def")"
-    if ! valid_port "$p"; then note "Bitte eine Zahl von 1 bis 65535 eingeben."
-    elif [ -n "$other" ] && [ "$p" = "$other" ]; then note "HTTP- und HTTPS-Port müssen verschieden sein."
-    elif port_busy "$p"; then note "Port $p ist belegt (sudo ss -ltnp zeigt, wovon)."
-    else printf '%s' "$p"; return 0
-    fi
-    [ "$INTERACTIVE" = 1 ] || fail "Port $p ist nicht nutzbar. In .env HTTPS_PORT bzw. HTTP_PORT ändern."
-  done
-}
-
-ENTRA_SECRET_NEW=""
 configure() {
-  local ip host https_port http_port mem_mb profiles=""
-  ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
-  echo
-  note "IP-Adresse(n) dieser VM: $(hostname -I 2>/dev/null || echo unbekannt)"
-  note "Ohne DNS-Eintrag einfach die IP nehmen. Mit DNS-Eintrag den Namen, z. B. serviceportal.firma.intern."
-  host="${PORTAL_HOST:-}"
-  if [ -z "$host" ] || [ "$host" = "serviceportal.firma.intern" ]; then host="${ip:-serviceportal.firma.intern}"; fi
-  while true; do
-    host="$(ask "Hostname oder IP, unter der das Portal erreichbar ist" "$host")"
-    case "$host" in ''|*[!A-Za-z0-9.-]*) note "Nur Buchstaben, Ziffern, Punkt und Bindestrich (ohne https:// und ohne Port)." ;; *) break ;; esac
-    [ "$INTERACTIVE" = 1 ] || fail "PORTAL_HOST ungültig: $host"
-  done
-
-  https_port="$(ask_port "HTTPS-Port (Portal)" "${HTTPS_PORT:-443}" 8443)"
-  http_port="$(ask_port "HTTP-Port (leitet nur auf HTTPS weiter)" "${HTTP_PORT:-80}" 8080 "$https_port")"
-
-  mem_mb="$(awk '/MemTotal/ { printf "%d", $2 / 1024 }' /proc/meminfo 2>/dev/null || echo 0)"
-  local clam_def="j"; [ "${mem_mb:-0}" -lt 3500 ] && clam_def="n"
-  [ "$clam_def" = "n" ] && note "Die VM hat ${mem_mb} MB RAM. Der Virenscanner ClamAV braucht etwa 1,5 GB."
-  if ask_yn "Virenscanner (ClamAV) für hochgeladene Dateien verwenden?" "$clam_def"; then
-    profiles="clamav"; set_env CLAMAV_REQUIRED true
-  else
-    set_env CLAMAV_REQUIRED false
-  fi
+  local profiles=""
+  configure_common
+  [ "$WANT_CLAMAV" = 1 ] && profiles="clamav"
   if ask_yn "Updates aus der Verwaltungsoberfläche ermöglichen (Update-Dienst)?" "n"; then
     profiles="${profiles:+$profiles,}updater"
   fi
-
-  local entra_def="n"; [ -n "${ENTRA_CLIENT_ID:-}" ] && entra_def="n"
-  if ask_yn "Microsoft-Anmeldung (Entra ID) jetzt einrichten oder ändern? (geht auch später)" "$entra_def"; then
-    local tenant client allowed
-    tenant="$(ask "Verzeichnis-ID (Tenant-ID)" "${ENTRA_TENANT_ID:-}")"
-    client="$(ask "Anwendungs-ID (Client-ID)" "${ENTRA_CLIENT_ID:-}")"
-    allowed="$(ask "Erlaubte Tenant-IDs, Komma-getrennt" "${ENTRA_ALLOWED_TENANTS:-$tenant}")"
-    read -r -s -p "  Client-Secret (Eingabe unsichtbar, leer = vorhandenes behalten): " ENTRA_SECRET_NEW || true; echo >&2
-    set_env ENTRA_TENANT_ID "$tenant"
-    set_env ENTRA_CLIENT_ID "$client"
-    set_env ENTRA_ALLOWED_TENANTS "$allowed"
-    note "Weiterleitungs-URI für die App-Registrierung: https://${host}$([ "$https_port" = 443 ] || printf ':%s' "$https_port")/api/auth/entra/callback"
-  fi
-
-  set_env PORTAL_HOST "$host"
-  set_env HTTPS_PORT "$https_port"
-  set_env HTTP_PORT "$http_port"
-  if [ "$https_port" = "443" ]; then set_env PUBLIC_URL "https://${host}"; else set_env PUBLIC_URL "https://${host}:${https_port}"; fi
   set_env COMPOSE_PROFILES "$profiles"
   set_env PORTAL_DIR "$(cd .. && pwd)"
 }
@@ -172,16 +70,10 @@ fi
 # shellcheck disable=SC1091
 set -a; . ./.env; set +a
 
-[ -n "${PORTAL_HOST:-}" ] || fail "PORTAL_HOST fehlt in .env"
-case "${PUBLIC_URL:-}" in https://*) ;; *) fail "PUBLIC_URL muss mit https:// beginnen";; esac
+check_urls
 HTTPS_PORT="${HTTPS_PORT:-443}"
-if [ "$HTTPS_PORT" = "443" ]; then
-  [ "${PUBLIC_URL%/}" = "https://${PORTAL_HOST}" ] || fail "PUBLIC_URL muss https://${PORTAL_HOST} sein (passend zu PORTAL_HOST)."
-else
-  [ "${PUBLIC_URL%/}" = "https://${PORTAL_HOST}:${HTTPS_PORT}" ] || fail "Bei HTTPS_PORT=${HTTPS_PORT} muss PUBLIC_URL https://${PORTAL_HOST}:${HTTPS_PORT} sein."
-fi
 for p in "$HTTPS_PORT" "${HTTP_PORT:-80}"; do
-  port_busy "$p" && fail "Port $p ist auf der VM schon belegt. install.sh erneut starten und andere Ports wählen (z. B. 8443 / 8080)."
+  port_busy "$p" && fail "Port $p ist auf diesem Server schon belegt. install.sh erneut starten und andere Ports wählen (z. B. 8443 / 8080)."
 done
 [ "$(cd .. && pwd)" = "${PORTAL_DIR:-}" ] || note "Hinweis: PORTAL_DIR in .env (${PORTAL_DIR:-}) ist nicht dieses Verzeichnis ($(cd .. && pwd)). Für Updates aus der Oberfläche anpassen."
 note "Portal-Adresse: ${PUBLIC_URL}"
@@ -233,30 +125,14 @@ done
 [ "$ready" = 1 ] || fail "Das Portal startet nicht. Ursache steht in: docker compose logs app"
 
 say "6/6 Benutzer"
-[ -n "$ADMIN_USER" ] || ADMIN_USER="$(ask "Benutzername des ersten Admins" "admin")"
 cli() { docker compose exec -T app /nodejs/bin/node src/server/cli.ts "$@"; }
-if cli user:list 2>/dev/null | grep -q "'${ADMIN_USER}'"; then
-  note "Benutzer ${ADMIN_USER} gibt es schon – übersprungen."
-else
-  cli user:create --username "$ADMIN_USER" --name "Portal-Admin" --role Super-Admin
-fi
-if [ "$INTERACTIVE" = 1 ] && ask_yn "Zusätzlich einen normalen Benutzer (ohne Verwaltungsrechte) mit generiertem Passwort anlegen?" "$([ "$NEW_ENV" = 1 ] && echo j || echo n)"; then
-  note "Die E-Mail-Adresse verbindet das Konto mit dem Kunden in Zammad."
-  u="$(ask "Benutzername" "test.user")"
-  n="$(ask "Name" "Test User")"
-  e="$(ask "E-Mail-Adresse" "")"
-  if cli user:list 2>/dev/null | grep -q "'${u}'"; then
-    note "Benutzer ${u} gibt es schon – übersprungen."
-  else
-    cli user:create --username "$u" --name "$n" ${e:+--email "$e"}
-  fi
-fi
+create_users "$ADMIN_USER" "$NEW_ENV"
 
 say "Fertig"
 note "Portal:        ${PUBLIC_URL}"
-note "IP dieser VM:  $(hostname -I 2>/dev/null || echo unbekannt)"
+note "IP-Adresse:    $(hostname -I 2>/dev/null || echo unbekannt)"
 case "$PORTAL_HOST" in
-  *[!0-9.]*) note "Ohne DNS-Eintrag auf dem eigenen PC in die hosts-Datei eintragen: <IP der VM>  ${PORTAL_HOST}" ;;
+  *[!0-9.]*) note "Ohne DNS-Eintrag auf dem eigenen PC in die hosts-Datei eintragen: <IP des Servers>  ${PORTAL_HOST}" ;;
 esac
 note "Die Zertifikatswarnung im Browser verschwindet, sobald das Stammzertifikat verteilt ist (docs/BETRIEB.md)."
 note "Einstellungen später ändern: ./install.sh erneut starten oder deploy/.env bearbeiten und 'docker compose up -d'."

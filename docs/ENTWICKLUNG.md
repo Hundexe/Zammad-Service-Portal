@@ -10,14 +10,13 @@
 ## Demo starten
 
 ```bash
-npm run build                 # Frontend nach dist/web
-npm run demo                  # Portal + 2 Zammad-Simulatoren + Entra-Simulator, Beispieldaten
+npm run demo                  # baut die Oberfläche und startet Portal + 2 Zammad-Simulatoren + Entra-Simulator
 ```
 
 | Adresse | Was |
 | --- | --- |
-| `http://127.0.0.1:3000` | Portal direkt |
-| `https://portal.localhost:8443` | Portal hinter Caddy (`sh tools/demo-restart.sh` startet beides) |
+| `http://localhost:3000` | Portal direkt („Mit Microsoft anmelden“ meldet ohne Passwort als Alex Berger an) |
+| `https://portal.localhost:8443` | Portal hinter Caddy mit TLS (`sh tools/demo-restart.sh` startet beides; für Screenshots und Pentest) |
 | `http://127.0.0.1:3101`, `:3102` | Zammad-Simulatoren „Zentrale IT“ und „IT Nord“ (Token `test-token`) |
 | `http://127.0.0.1:3103` | Entra-Simulator (meldet ohne Rückfrage als Alex Berger an) |
 

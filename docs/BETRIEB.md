@@ -2,6 +2,8 @@
 
 Alle Befehle im Verzeichnis `deploy/` auf der VM.
 
+> Diese Seite beschreibt die Docker-Variante. Ohne Docker gelten dieselben Einstellungen, nur in `/etc/zammad-service-portal/portal.env`; Befehle und Pfade stehen in [Installation → Variante ohne Docker](INSTALLATION.md#variante-ohne-docker).
+
 ## Einstellungen ändern (deploy/.env)
 
 Alle Einstellungen des Portals stehen in **einer** Datei auf dem Server: `deploy/.env`. Jede Einstellung ist dort kommentiert. Die Vorlage mit allen Möglichkeiten ist `deploy/.env.example`. Nach einer Änderung:

@@ -4,6 +4,8 @@
 	# Ports aus deploy/.env (HTTPS_PORT, HTTP_PORT). HTTP leitet nur auf HTTPS weiter.
 	https_port {$HTTPS_PORT:443}
 	http_port {$HTTP_PORT:80}
+	# Clients ohne SNI (Aufruf über die IP, durch Docker-NAT) bekommen trotzdem das richtige Zertifikat
+	default_sni {$PORTAL_HOST}
 	# Stammzertifikat nicht in den Container-Zertifikatsspeicher eintragen (dort nutzlos)
 	skip_install_trust
 	# Interne Installation: Zertifikate kommen aus tls.caddy (interne CA oder Firmenzertifikat),
