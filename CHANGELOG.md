@@ -1,5 +1,9 @@
 # Änderungen
 
+## 1.4.1 – 27.10.2026
+
+- Behoben: Aufklapplisten von Auswahlfeldern waren im dunklen Design unter Windows (Chrome/Edge) unlesbar – helle Schrift auf weißer Liste, vor allem in den Stilen Glas und Material mit durchscheinenden Feldern. Die Optionen haben jetzt in jedem Stil einen deckenden Hintergrund und die Schriftfarbe des Designs
+
 ## 1.4.0 – 27.10.2026
 
 Oberfläche:

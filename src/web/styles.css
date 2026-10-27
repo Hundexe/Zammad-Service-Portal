@@ -27,6 +27,8 @@
   --line-hover: #b8b8bf;
   --fill-3: rgba(0, 0, 0, .1);
   --seg-active: #ffffff;
+  /* Aufklappliste von Auswahlfeldern: immer deckend (Windows zeichnet sie sonst weiß) */
+  --option-bg: #ffffff;
   --nav-bg: rgba(255, 255, 255, .78);
   --menu-bg: rgba(255, 255, 255, .92);
   --sticky-bg: rgba(245, 245, 247, .85);
@@ -77,6 +79,7 @@
   --line-strong: #3a3a3c;
   --line-hover: #545458;
   --seg-active: #48484a;
+  --option-bg: #2c2c2e;
   --nav-bg: rgba(22, 22, 23, .78);
   --menu-bg: rgba(36, 36, 38, .94);
   --sticky-bg: rgba(0, 0, 0, .8);
@@ -273,6 +276,10 @@ select {
   background-repeat: no-repeat; background-position: right .8rem center; background-size: 18px;
 }
 select[multiple] { background-image: none; padding-right: .9rem; }
+/* Optionen deckend und in Schriftfarbe des Designs – auch wenn das Feld selbst durchscheinend ist
+   (Stile Glas, Material). Sonst zeigt Chrome unter Windows helle Schrift auf weißer Liste. */
+select option, select optgroup { background-color: var(--option-bg); color: var(--ink); }
+select option:disabled { color: var(--ink-4); }
 textarea { resize: vertical; line-height: 1.5; }
 textarea.code { font-family: var(--mono); font-size: .875rem; }
 input::placeholder, textarea::placeholder { color: var(--ink-4); }
@@ -619,6 +626,7 @@ details.more > * + * { margin-top: .85rem; }
   --glass-blur: blur(24px) saturate(185%);
   --glass-input: rgba(255, 255, 255, .6);
   --glass-tint: .34;
+  --option-bg: #ffffff;
 }
 [data-theme="dark"][data-style="glas"], [data-theme="dark"] [data-style="glas"] {
   --canvas: #08080d;
@@ -632,6 +640,7 @@ details.more > * + * { margin-top: .85rem; }
   --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 0 14px 40px rgba(0, 0, 0, .5);
   --glass-input: rgba(255, 255, 255, .06);
   --glass-tint: .5;
+  --option-bg: #2a2a33;
 }
 @scope ([data-style="glas"]) to ([data-style]:not([data-style="glas"])) {
   body, :scope.brand-preview, :scope.theme-mini {
@@ -773,6 +782,7 @@ details.more > * + * { margin-top: .85rem; }
   --tonal: color-mix(in srgb, var(--brand) 16%, #ffffff);
   --on-tonal: color-mix(in srgb, var(--brand) 55%, #000000);
   --elev-1: 0 1px 2px rgba(0, 0, 0, .1), 0 1px 3px 1px rgba(0, 0, 0, .06);
+  --option-bg: #fffbfe;
 }
 [data-theme="dark"][data-style="material"], [data-theme="dark"] [data-style="material"] {
   --canvas: color-mix(in srgb, var(--brand) 8%, #141218);
@@ -791,6 +801,7 @@ details.more > * + * { margin-top: .85rem; }
   --tonal: color-mix(in srgb, var(--brand) 32%, #1d1b20);
   --on-tonal: color-mix(in srgb, var(--brand) 25%, #ffffff);
   --elev-1: 0 1px 2px rgba(0, 0, 0, .4), 0 1px 3px 1px rgba(0, 0, 0, .25);
+  --option-bg: #2b2930;
 }
 @scope ([data-style="material"]) to ([data-style]:not([data-style="material"])) {
   h1, .login-claim, .stat-n, .bp-title, .tm-title { font-weight: 500; letter-spacing: -0.01em; }
@@ -823,7 +834,7 @@ details.more > * + * { margin-top: .85rem; }
   --fill: rgba(0, 0, 0, .06); --fill-2: rgba(0, 0, 0, .1); --fill-3: rgba(0, 0, 0, .16);
   --line: #000000; --line-strong: #000000; --line-hover: #000000;
   --seg-active: #000000;
-  --nav-bg: #ffffff; --menu-bg: #ffffff; --sticky-bg: #ffffff;
+  --nav-bg: #ffffff; --menu-bg: #ffffff; --sticky-bg: #ffffff; --option-bg: #ffffff;
   --r-xs: 2px; --r-sm: 2px; --r-md: 4px; --r-lg: 4px; --pill: 4px;
   --focus: #000000;
   --link: var(--brand);
@@ -836,7 +847,7 @@ details.more > * + * { margin-top: .85rem; }
   --fill: rgba(255, 255, 255, .1); --fill-2: rgba(255, 255, 255, .16); --fill-3: rgba(255, 255, 255, .22);
   --line: #ffffff; --line-strong: #ffffff; --line-hover: #ffffff;
   --seg-active: #ffffff;
-  --nav-bg: #000000; --menu-bg: #000000; --sticky-bg: #000000;
+  --nav-bg: #000000; --menu-bg: #000000; --sticky-bg: #000000; --option-bg: #000000;
   --focus: #ffff00;
   --link: #8cc8ff;
   --seg-ink: #000000;
