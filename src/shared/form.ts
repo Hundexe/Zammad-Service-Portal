@@ -8,6 +8,20 @@ export const FIELD_TYPES = [
 ] as const;
 export type FieldType = (typeof FIELD_TYPES)[number];
 
+/**
+ * Zammad-Ticketfelder, die nie aus einem Formular kommen dürfen: Kunde, Bearbeiter, Gruppe, Status,
+ * Organisation usw. setzt das Portal selbst bzw. Zammad. Sonst könnte ein Formular z. B. Tickets
+ * einem fremden Kunden zuordnen oder in eine nicht vorgesehene Gruppe legen.
+ */
+export const PROTECTED_ZAMMAD_FIELDS = [
+  'id', 'number', 'title', 'group', 'group_id', 'owner', 'owner_id', 'customer', 'customer_id', 'organization', 'organization_id',
+  'state', 'state_id', 'priority', 'priority_id', 'pending_time', 'article', 'tags', 'type', 'created_by', 'created_by_id',
+  'updated_by', 'updated_by_id', 'created_at', 'updated_at', 'close_at', 'escalation_at', 'time_unit', 'preferences',
+];
+export function isProtectedZammadField(name: string): boolean {
+  return PROTECTED_ZAMMAD_FIELDS.includes(name) || /_ids?$/.test(name);
+}
+
 export const MAPPING_TARGETS = ['article', 'title', 'zammad_field', 'tag', 'group', 'priority', 'none'] as const;
 export type MappingTarget = (typeof MAPPING_TARGETS)[number];
 
@@ -274,6 +288,7 @@ export function validateDefinition(def: unknown): string[] {
     if (f.mapping) {
       if (!(MAPPING_TARGETS as readonly string[]).includes(f.mapping.target)) problems.push(`${where}: unbekanntes Ziel im Ticket`);
       if (f.mapping.target === 'zammad_field' && !/^[a-z][a-z0-9_]{0,60}$/.test(f.mapping.name ?? '')) problems.push(`${where}: Zammad-Feldname ungültig`);
+      else if (f.mapping.target === 'zammad_field' && isProtectedZammadField(f.mapping.name!)) problems.push(`${where}: Das Zammad-Feld „${f.mapping.name}“ setzt das Portal selbst – es darf nicht aus einem Formular kommen`);
     }
     if (f.visibleIf) {
       if (!d.fields.some((o) => o?.id === f.visibleIf!.field && o !== f)) problems.push(`${where}: Sichtbarkeitsregel verweist auf unbekanntes Feld`);

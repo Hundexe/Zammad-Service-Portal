@@ -81,6 +81,12 @@ try {
   await browser.close();
 }
 
+// Sitzungsbezogene Werte aus der Aufzeichnung entfernen (die Demo braucht kein echtes CSRF-Token)
+for (const r of Object.values(responses)) {
+  const d = r.data as Record<string, unknown> | null;
+  if (d && typeof d === 'object' && 'csrf' in d) d.csrf = 'demo';
+}
+
 // Logos und Favicons als data:-URLs mitliefern
 const assets: Record<string, string> = {};
 const ids = new Set<string>();

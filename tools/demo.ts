@@ -52,13 +52,13 @@ function addAsset(app: App, data: Buffer, kind: 'logo' | 'favicon' = 'logo'): st
   return id;
 }
 
-function addSystem(app: App, o: { slug: string; name: string; url: string; branding: Partial<Branding>; released: unknown; sort: number }): string {
+function addSystem(app: App, o: { slug: string; name: string; url: string; branding: Partial<Branding>; released: unknown; sort: number; groups: string[] }): string {
   const id = uuid();
   const t = Date.now();
   app.db.run(
-    `INSERT INTO ticket_systems (id, slug, name, base_url, api_token, default_group, released_attributes, sort, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'IT-Support', ?, ?, ?, ?)`,
-    id, o.slug, o.name, o.url, app.box.encrypt('system-token', 'test-token'), JSON.stringify(o.released), o.sort, t, t,
+    `INSERT INTO ticket_systems (id, slug, name, base_url, api_token, default_group, released_attributes, allowed_groups, sort, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'IT-Support', ?, ?, ?, ?, ?)`,
+    id, o.slug, o.name, o.url, app.box.encrypt('system-token', 'test-token'), JSON.stringify(o.released), JSON.stringify(o.groups), o.sort, t, t,
   );
   app.db.run("INSERT INTO branding_versions (id, system_id, version, data, status, created_at, published_at) VALUES (?, ?, 1, ?, 'published', ?, ?)",
     uuid(), id, JSON.stringify({ ...DEFAULT_BRANDING, ...o.branding }), t, t);
@@ -94,13 +94,15 @@ export async function seedDemo(app: App, urls: { zentral: string; nord: string }
     { name: 'standort', allowedValues: null },
     { name: 'sec_status', allowedValues: ['Hardware', 'Hardware::Laptop', 'Hardware::Monitor', 'Hardware::Drucker'] },
     { name: 'dringend', allowedValues: null },
+    { name: 'kostenstelle', allowedValues: null },
   ];
+  const groups = ['IT-Support', 'IT-Support::Hardware', 'IT-Support::Netzwerk'];
   const zentral = addSystem(app, {
-    slug: 'zentrale-it', name: 'Zentrale IT', url: urls.zentral, sort: 1, released,
+    slug: 'zentrale-it', name: 'Zentrale IT', url: urls.zentral, sort: 1, released, groups,
     branding: { displayName: 'Zentrale IT', headerColor: '#0e3a5d', headerTextColor: '#ffffff', primaryColor: '#1662a8', accentColor: '#0f8a6a', logoDarkId: addAsset(app, wordmark('Zentrale IT', '#ffffff')), logoLightId: addAsset(app, wordmark('Zentrale IT', '#0e3a5d')), welcomeText: 'Wie können wir helfen?', footerText: 'Zentrale IT – Service-Desk für alle Standorte. Telefon 1234' },
   });
   const nord = addSystem(app, {
-    slug: 'it-nord', name: 'IT Nord', url: urls.nord, sort: 2, released: [{ name: 'standort', allowedValues: ['nord', 'homeoffice'] }],
+    slug: 'it-nord', name: 'IT Nord', url: urls.nord, sort: 2, groups: ['IT-Support'], released: [{ name: 'standort', allowedValues: ['nord', 'homeoffice'] }],
     branding: { displayName: 'IT Nord', headerColor: '#7a1f2b', headerTextColor: '#ffffff', primaryColor: '#9b2335', accentColor: '#b5651d', logoDarkId: addAsset(app, wordmark('Nord', '#ffffff')), logoLightId: addAsset(app, wordmark('Nord', '#7a1f2b')), welcomeText: 'IT-Service Standort Nord' },
   });
 
@@ -216,6 +218,7 @@ export async function startDemo(opts: { port?: number; publicUrl?: string; host?
     trustProxy: ['127.0.0.1/32', '::1/128'], adminAllowedCidrs: [], localLogin: true, localAdminRequireTotp: true,
     entra: { enabled: true, tenantId: TENANT_B, clientId: entra.clientId, clientSecret: entra.clientSecret, allowedTenants: [TENANT_B, TENANT_A], authority: entra.url, graphUrl: entra.url },
     clamav: { host: '127.0.0.1', port: 3104, required: true },
+    allowLoopbackTicketUrls: true, // die simulierten Zammad-Instanzen laufen auf 127.0.0.1
   });
   const app = createApp(cfg);
   const seeded = await seedDemo(app, { zentral: z1.url, nord: z2.url });

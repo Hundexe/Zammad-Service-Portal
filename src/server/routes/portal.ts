@@ -78,7 +78,9 @@ export function registerPortalRoutes(router: Router, app: App): void {
     const def = resolveDefinition(parseJson<FormDefinition>(version.definition, { fields: [], settings: {} as any }), sys, meta, ctx.user!);
     const u = ctx.user!;
     // Standardwerte aus dem Profil
-    const fields = def.fields.map((f) => {
+    const fields = def.fields.map((raw) => {
+      // Anzeige der Dateigröße an die Obergrenze des Servers anpassen
+      const f = raw.type === 'file' ? { ...raw, maxSizeMb: Math.min(raw.maxSizeMb ?? 10, app.cfg.upload.maxFileMb) } : raw;
       if (!f.defaultFrom) return f;
       const v = f.defaultFrom === 'user.name' ? u.displayName : f.defaultFrom === 'user.email' ? u.email : u.department;
       return { ...f, default: v ?? f.default };
@@ -214,7 +216,10 @@ export function registerPortalRoutes(router: Router, app: App): void {
     if (text.length > 10000) throw new HttpError(422, 'Nachricht zu lang (max. 10.000 Zeichen)', 'validation');
     const files = Array.isArray(b.files) ? b.files.slice(0, 6) as IncomingFile[] : [];
     if (Array.isArray(b.files) && b.files.length > 5) throw new HttpError(422, 'Höchstens 5 Dateien', 'validation');
-    const checked = await checkFiles(app, files, undefined, 10 * 1024 * 1024);
+    const checked = await checkFiles(app, files, undefined, app.cfg.upload.maxFileMb * 1024 * 1024);
+    if (checked.reduce((n, c) => n + c.data.length, 0) > app.cfg.upload.maxTotalMb * 1024 * 1024) {
+      throw new HttpError(413, `Alle Dateien zusammen höchstens ${app.cfg.upload.maxTotalMb} MB`, 'too_large');
+    }
     try {
       const customer = ctx.user!.email ? await customerFor(app, sys, ctx.user!.id, ctx.user!.email, ctx.user!.displayName, false) : null;
       if (!customer) throw new HttpError(404, 'Ticket nicht gefunden', 'not_found');

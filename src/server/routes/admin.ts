@@ -8,7 +8,7 @@ import { sha256 } from '../crypto.ts';
 import { audit, diff, verifyAuditChain } from '../services/audit.ts';
 import { can, canAnywhere, systemsWith, type AuthUser, type Permissions } from '../services/rbac.ts';
 import { ADMIN_PERMISSIONS, GLOBAL_PERMISSIONS, PERMISSION_KEYS, PERMISSIONS } from '../../shared/permissions.ts';
-import { connectorFor, getSystem, listSystems, publishedBranding, globalBranding, validateSystemUrl, type SystemRow } from '../services/systems.ts';
+import { connectorFor, getSystem, listSystems, publishedBranding, globalBranding, validateSystemUrl, allowedGroups, type SystemRow } from '../services/systems.ts';
 import { getMetadata, releasedAttributes, releasedWithOptions, validateRelease } from '../services/metadata.ts';
 import {
   emptyDefinition, getForm, latestVersion, publishVersion, publishedVersion, resolveDefinition, saveDraft,
@@ -79,6 +79,7 @@ function systemPublic(s: SystemRow) {
     visibleGroups: parseJson<string[]>(s.visible_groups, []), requireApproval: s.require_approval === 1,
     showOrgTickets: s.show_org_tickets === 1, allowReplies: s.allow_replies === 1,
     closedStates: parseJson<string[]>(s.closed_states, []), portalTag: s.portal_tag, sort: s.sort,
+    allowedGroups: allowedGroups(s), hideAgentNames: s.hide_agent_names === 1,
     releasedAttributes: releasedAttributes(s), createdAt: s.created_at, updatedAt: s.updated_at,
   };
 }
@@ -157,6 +158,9 @@ export function registerAdminRoutes(router: Router, app: App): void {
     if (app.cfg.localLogin && !app.cfg.localAdminRequireTotp && !app.cfg.localUserRequireTotp) warnings.push('Lokale Admin-Konten brauchen keine Zwei-Faktor-Anmeldung (LOCAL_ADMIN_REQUIRE_TOTP=false). Das wird nicht empfohlen.');
     if (!app.cfg.lockout.progressive) warnings.push('Die Kontosperre wird bei wiederholten Angriffen nicht länger (LOGIN_LOCK_PROGRESSIVE=false).');
     if (!app.cfg.adminAllowedCidrs.length) warnings.push('Der Admin-Bereich ist nicht auf Admin-Netze beschränkt (ADMIN_ALLOWED_CIDRS).');
+    for (const sys of listSystems(app)) {
+      if (sys.status !== 'inactive' && !allowedGroups(sys).length) warnings.push(`Ticketsystem „${sys.name}“: keine erlaubten Zammad-Gruppen festgelegt – Formulare können Tickets in jede Gruppe legen, die der API-Benutzer sieht.`);
+    }
     const upd = app.db.get<{ updater_seen_at: number | null; latest_version: string | null; current_version: string | null }>('SELECT updater_seen_at, latest_version, current_version FROM update_state WHERE id = 1');
     return {
       version: app.cfg.version,
@@ -191,11 +195,16 @@ export function registerAdminRoutes(router: Router, app: App): void {
     const token = typeof b.apiToken === 'string' && b.apiToken.trim() !== '' ? str(b, 'apiToken', 500) : null;
     const portalTag = str(b, 'portalTag', 60) || existing?.portal_tag || 'service-portal';
     if (!/^[\p{L}\p{N}_.\- ]{1,60}$/u.test(portalTag)) throw new HttpError(422, 'Tag ungültig', 'validation');
+    const allowed = b.allowedGroups === undefined && existing ? allowedGroups(existing) : stringList(b, 'allowedGroups', 200, 160);
+    const defaultGroup = str(b, 'defaultGroup', 160) || null;
+    if (defaultGroup && allowed.length && !allowed.includes(defaultGroup)) {
+      throw new HttpError(422, 'Die Standardgruppe muss in den erlaubten Gruppen stehen', 'validation', { defaultGroup: 'nicht erlaubt' });
+    }
     return {
       name: str(b, 'name', 80, !existing) || existing!.name,
       base_url: baseUrl,
       api_token: token ? app.box.encrypt('system-token', token) : existing?.api_token ?? null,
-      default_group: str(b, 'defaultGroup', 160) || null,
+      default_group: defaultGroup,
       creation_mode: mode,
       status,
       visible_groups: JSON.stringify(stringList(b, 'visibleGroups')),
@@ -205,6 +214,8 @@ export function registerAdminRoutes(router: Router, app: App): void {
       closed_states: JSON.stringify(b.closedStates === undefined && existing ? parseJson<string[]>(existing.closed_states, []) : stringList(b, 'closedStates', 50, 80).length ? stringList(b, 'closedStates', 50, 80) : ['closed', 'merged', 'removed']),
       portal_tag: portalTag,
       sort: int(b, 'sort', existing?.sort ?? 0),
+      allowed_groups: JSON.stringify(allowed),
+      hide_agent_names: bool(b, 'hideAgentNames', existing ? existing.hide_agent_names === 1 : false) ? 1 : 0,
     };
   }
 
@@ -219,9 +230,9 @@ export function registerAdminRoutes(router: Router, app: App): void {
     const t = Date.now();
     app.db.tx(() => {
       app.db.run(
-        `INSERT INTO ticket_systems (id, slug, name, type, base_url, api_token, default_group, creation_mode, status, visible_groups, require_approval, show_org_tickets, allow_replies, closed_states, portal_tag, sort, created_at, updated_at)
-         VALUES (?, ?, ?, 'zammad', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        id, s, v.name, v.base_url, v.api_token, v.default_group, v.creation_mode, v.status, v.visible_groups, v.require_approval, v.show_org_tickets, v.allow_replies, v.closed_states, v.portal_tag, v.sort, t, t,
+        `INSERT INTO ticket_systems (id, slug, name, type, base_url, api_token, default_group, creation_mode, status, visible_groups, require_approval, show_org_tickets, allow_replies, closed_states, portal_tag, sort, allowed_groups, hide_agent_names, created_at, updated_at)
+         VALUES (?, ?, ?, 'zammad', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, s, v.name, v.base_url, v.api_token, v.default_group, v.creation_mode, v.status, v.visible_groups, v.require_approval, v.show_org_tickets, v.allow_replies, v.closed_states, v.portal_tag, v.sort, v.allowed_groups, v.hide_agent_names, t, t,
       );
       app.db.run("INSERT INTO branding_versions (id, system_id, version, data, status, created_by, created_at, published_at) VALUES (?, ?, 1, ?, 'published', ?, ?, ?)",
         uuid(), id, JSON.stringify({ ...DEFAULT_BRANDING, displayName: v.name }), ctx.user!.id, t, t);
@@ -242,9 +253,9 @@ export function registerAdminRoutes(router: Router, app: App): void {
     const v = await readSystemBody(ctx.body as Body, before);
     app.db.run(
       `UPDATE ticket_systems SET name = ?, base_url = ?, api_token = ?, default_group = ?, creation_mode = ?, status = ?, visible_groups = ?, require_approval = ?,
-        show_org_tickets = ?, allow_replies = ?, closed_states = ?, portal_tag = ?, sort = ?, updated_at = ? WHERE id = ?`,
+        show_org_tickets = ?, allow_replies = ?, closed_states = ?, portal_tag = ?, sort = ?, allowed_groups = ?, hide_agent_names = ?, updated_at = ? WHERE id = ?`,
       v.name, v.base_url, v.api_token, v.default_group, v.creation_mode, v.status, v.visible_groups, v.require_approval,
-      v.show_org_tickets, v.allow_replies, v.closed_states, v.portal_tag, v.sort, Date.now(), before.id,
+      v.show_org_tickets, v.allow_replies, v.closed_states, v.portal_tag, v.sort, v.allowed_groups, v.hide_agent_names, Date.now(), before.id,
     );
     if (v.base_url !== before.base_url || v.api_token !== before.api_token) app.db.run('DELETE FROM zammad_customers WHERE system_id = ?', before.id);
     audit(app.db, actor(ctx), { action: 'system.updated', targetType: 'system', targetId: before.id, systemId: before.id, details: diff(before as any, { ...before, ...v } as any) });
@@ -377,12 +388,36 @@ export function registerAdminRoutes(router: Router, app: App): void {
     return { ok: true };
   });
 
+  /** Gruppen, in die ein Formular Tickets legen kann, müssen in der Allowlist des Systems stehen. */
+  function groupProblems(s: SystemRow, d: FormDefinition): string[] {
+    const allowed = allowedGroups(s);
+    if (!allowed.length) return [];
+    const out: string[] = [];
+    const target = d.settings.group || s.default_group || '';
+    if (target && !allowed.includes(target)) out.push(`Gruppe „${target}“ ist für dieses Ticketsystem nicht erlaubt`);
+    for (const f of d.fields) {
+      if (f.mapping?.target !== 'group') continue;
+      const values = f.options?.length ? f.options.map((o) => o.value) : [];
+      if (!values.length) { out.push(`Feld „${f.label}“: Gruppe aus freier Eingabe ist nicht erlaubt – nur Auswahlfelder`); continue; }
+      for (const v of values) {
+        const g = f.mapping.valueMap?.[v] ?? v;
+        if (!allowed.includes(g)) out.push(`Feld „${f.label}“: Wert „${v}“ führt in die Gruppe „${g}“, die nicht erlaubt ist`);
+      }
+    }
+    return out;
+  }
+
   function checkDefinition(s: SystemRow, def: unknown): FormDefinition {
     const problems = validateDefinition(def);
     const d = def as FormDefinition;
     if (!problems.length) {
       const released = new Set(releasedAttributes(s).map((a) => a.name));
       for (const f of d.fields) if (f.type === 'zammad' && !released.has(f.attribute!)) problems.push(`Feld „${f.label}“: Zammad-Attribut „${f.attribute}“ ist nicht freigegeben`);
+      // Freie Zuordnung in Zammad-Felder nur in freigegebene Attribute
+      for (const f of d.fields) {
+        if (f.mapping?.target === 'zammad_field' && f.mapping.name && !released.has(f.mapping.name)) problems.push(`Feld „${f.label}“: Zammad-Feld „${f.mapping.name}“ ist nicht freigegeben (Ticketsystem → Zammad-Felder)`);
+      }
+      problems.push(...groupProblems(s, d));
       for (const tpl of [d.settings.titleTemplate, d.settings.bodyTemplate]) {
         for (const p of placeholders(tpl)) {
           const root = p.split('.')[0];

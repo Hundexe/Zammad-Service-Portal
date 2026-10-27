@@ -79,7 +79,11 @@ export class EntraClient {
     for (const k of jwks.keys ?? []) {
       if (k.kty !== 'RSA' || typeof k.kid !== 'string') continue;
       if (k.use !== undefined && k.use !== 'sig') continue;
-      try { this.keys.set(k.kid, createPublicKey({ key: { kty: 'RSA', n: k.n, e: k.e } as any, format: 'jwk' })); } catch { /* ungültiger Schlüssel */ }
+      try {
+        const pub = createPublicKey({ key: { kty: 'RSA', n: k.n, e: k.e } as any, format: 'jwk' });
+        // Zu kurze (oder kaputte) Schlüssel nie verwenden
+        if ((pub.asymmetricKeyDetails?.modulusLength ?? 0) >= 2048) this.keys.set(k.kid, pub);
+      } catch { /* ungültiger Schlüssel */ }
     }
     this.keysAt = Date.now();
     const key = this.keys.get(kid);

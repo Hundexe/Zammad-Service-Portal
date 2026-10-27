@@ -17,3 +17,4 @@ pentest/output/
 .DS_Store
 .node/
 .node-sums.txt
+.secret-scan-deny

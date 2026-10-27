@@ -73,7 +73,10 @@ test('Formular absenden → Ticket in Zammad mit Tag, Attributen und Anhang', as
   assert.match(article.body, /Seit heute &lt;b&gt;schwarz&lt;\/b&gt;/, 'Eingaben werden HTML-escaped');
   assert.equal(article.attachments[0].filename, 'fehler.pdf');
   const create = p.zammad.state.requests.find((x) => x.method === 'POST' && x.path === '/api/v1/tickets')!;
-  assert.equal(create.onBehalfOf, 'anna.becker@example.org');
+  // X-On-Behalf-Of trägt die Zammad-ID des Kunden, nicht die E-Mail-Adresse
+  const anna = p.zammad.state.users.find((u) => u.email === 'anna.becker@example.org')!;
+  assert.equal(create.onBehalfOf, String(anna.id));
+  assert.equal(ticket.customer_id, anna.id);
 });
 
 test('Meine Tickets: nur eigene, ohne interne Notizen; Antwort landet in Zammad', async () => {

@@ -5,6 +5,7 @@ import {
   ConnectorError, type ZammadAttribute, type ArticleSummary, type Attachment, type Connector, type CreateTicketInput,
   type CustomerRef, type SystemMetadata, type TicketSummary, type TicketSystemConfig,
 } from './types.ts';
+import { isProtectedZammadField } from '../../shared/form.ts';
 
 const MAX_RESPONSE = 30 * 1024 * 1024;
 
@@ -45,6 +46,26 @@ export function toAttribute(a: Json): ZammadAttribute {
     options = flattenOptions(a.data_option?.options);
   }
   return { name: String(a.name), display: String(a.display ?? a.name), type, options, portalType };
+}
+
+const EMAIL_IN_TEXT = /<?[^\s<>"]+@[^\s<>"]+>?/g;
+
+/**
+ * Absender eines Artikels für die Anzeige im Portal: ohne E-Mail-Adressen, auf Wunsch ohne Agentennamen.
+ * Kunden sehen so keine internen Adressen (Agenten, Verteiler, Weiterleitungen).
+ */
+export function displaySender(from: string, sender: string, systemName: string, hideAgentNames: boolean): string {
+  if (hideAgentNames && sender !== 'Customer') return systemName;
+  const name = from.replace(EMAIL_IN_TEXT, '').replace(/["']/g, '').replace(/\s+/g, ' ').trim();
+  if (name) return name.slice(0, 120);
+  return sender === 'Customer' ? 'Sie' : systemName;
+}
+
+/** Felder aus Formularen, die das Portal selbst setzt, werden nie übernommen. */
+export function safeTicketFields(fields: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(fields ?? {})) if (/^[a-z][a-z0-9_]{0,60}$/.test(k) && !isProtectedZammadField(k)) out[k] = v;
+  return out;
 }
 
 export class ZammadConnector implements Connector {
@@ -154,7 +175,7 @@ export class ZammadConnector implements Connector {
   async createTicket(input: CreateTicketInput): Promise<{ id: number; number: string }> {
     const onBehalf = this.sys.creationMode === 'on_behalf_of';
     const body: Record<string, unknown> = {
-      ...input.fields,
+      ...safeTicketFields(input.fields),
       title: input.title,
       group: input.group,
       customer_id: input.customer.customerId,
@@ -170,9 +191,18 @@ export class ZammadConnector implements Connector {
     };
     if (input.priority) body.priority = input.priority;
     if (input.tags.length) body.tags = input.tags.join(',');
-    const t = await this.call('POST', '/api/v1/tickets', { body, onBehalfOf: onBehalf ? input.customer.email : undefined });
+    const t = await this.call('POST', '/api/v1/tickets', { body, onBehalfOf: onBehalf ? this.behalf(input.customer) : undefined });
     if (!t?.id) throw new ConnectorError('Zammad hat kein Ticket zurückgegeben', true);
     return { id: Number(t.id), number: String(t.number ?? t.id) };
+  }
+
+  /**
+   * Wert für X-On-Behalf-Of: immer die Zammad-ID des Kunden, nie die E-Mail-Adresse.
+   * Die ID ist eindeutig und ändert sich nicht, wenn sich die Adresse ändert oder in anderer Schreibweise vorliegt.
+   */
+  private behalf(customer: CustomerRef): string {
+    if (!Number.isSafeInteger(customer.customerId) || customer.customerId <= 0) throw new ConnectorError('Ungültige Kunden-ID', false);
+    return String(customer.customerId);
   }
 
   private summary(t: Json): TicketSummary {
@@ -199,7 +229,7 @@ export class ZammadConnector implements Connector {
     const out: TicketSummary[] = [];
     if (this.sys.creationMode === 'on_behalf_of') {
       for (let page = 1; page <= 5; page++) {
-        const list = (await this.call('GET', `/api/v1/tickets?expand=true&per_page=100&page=${page}`, { onBehalfOf: customer.email })) as Json[];
+        const list = (await this.call('GET', `/api/v1/tickets?expand=true&per_page=100&page=${page}`, { onBehalfOf: this.behalf(customer) })) as Json[];
         if (!Array.isArray(list) || list.length === 0) break;
         out.push(...list.map((t) => this.summary(t)));
         if (list.length < 100) break;
@@ -213,7 +243,7 @@ export class ZammadConnector implements Connector {
   }
 
   async getTicket(customer: CustomerRef, ticketId: number): Promise<{ ticket: TicketSummary; articles: ArticleSummary[] } | null> {
-    const onBehalfOf = this.sys.creationMode === 'on_behalf_of' ? customer.email : undefined;
+    const onBehalfOf = this.sys.creationMode === 'on_behalf_of' ? this.behalf(customer) : undefined;
     let raw: Json;
     try {
       raw = await this.call('GET', `/api/v1/tickets/${ticketId}?expand=true`, { onBehalfOf });
@@ -230,7 +260,7 @@ export class ZammadConnector implements Connector {
       .filter((a) => a.internal !== true && a.internal !== 'true')
       .map((a) => ({
         id: Number(a.id),
-        from: String(a.from ?? a.created_by ?? ''),
+        from: displaySender(String(a.from ?? ''), String(a.sender ?? ''), this.sys.name, this.sys.hideAgentNames === true),
         sender: String(a.sender ?? ''),
         createdAt: String(a.created_at ?? ''),
         contentType: String(a.content_type ?? 'text/plain'),
@@ -250,16 +280,26 @@ export class ZammadConnector implements Connector {
     const article = detail?.articles.find((a) => a.id === articleId);
     const file = article?.attachments.find((f) => f.id === attachmentId);
     if (!detail || !article || !file) return null;
-    const onBehalfOf = this.sys.creationMode === 'on_behalf_of' ? customer.email : undefined;
+    const onBehalfOf = this.sys.creationMode === 'on_behalf_of' ? this.behalf(customer) : undefined;
     const r = await this.call('GET', `/api/v1/ticket_attachment/${ticketId}/${articleId}/${attachmentId}`, { onBehalfOf, raw: true });
     if (!r) return null;
     return { data: r.buf as Buffer, mime: file.mime, filename: file.filename };
   }
 
+  async findTicketForRequest(customer: CustomerRef, requestId: string, title: string, since: number): Promise<{ id: number; number: string } | null> {
+    const candidates = (await this.listTickets(customer)).filter((t) =>
+      t.customerId === customer.customerId && t.title === title && (!t.createdAt || Date.parse(t.createdAt) >= since - 120_000));
+    for (const t of candidates.slice(0, 10)) {
+      const detail = await this.getTicket(customer, t.id);
+      if (detail?.articles[0]?.body.includes(requestId)) return { id: t.id, number: t.number };
+    }
+    return null;
+  }
+
   async addReply(customer: CustomerRef, ticketId: number, bodyHtml: string, attachments: Attachment[]): Promise<void> {
     const detail = await this.getTicket(customer, ticketId);
     if (!detail) throw new ConnectorError('Ticket nicht gefunden', false, 404);
-    const onBehalfOf = this.sys.creationMode === 'on_behalf_of' ? customer.email : undefined;
+    const onBehalfOf = this.sys.creationMode === 'on_behalf_of' ? this.behalf(customer) : undefined;
     await this.call('POST', '/api/v1/ticket_articles', {
       onBehalfOf,
       body: {

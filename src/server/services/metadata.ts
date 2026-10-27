@@ -4,6 +4,7 @@ import type { App } from '../app.ts';
 import { parseJson } from '../db/db.ts';
 import type { SystemMetadata, ZammadAttribute } from '../connectors/types.ts';
 import { connectorFor, type SystemRow } from './systems.ts';
+import { isProtectedZammadField } from '../../shared/form.ts';
 import { log } from '../log.ts';
 
 const TTL = 15 * 60_000;
@@ -62,6 +63,7 @@ export function validateRelease(input: unknown, meta: SystemMetadata): { release
     const name = String(item?.name ?? '');
     const attr = meta.fields.find((f) => f.name === name);
     if (!attr) { errors.push(`Attribut „${name}“ gibt es in Zammad nicht`); continue; }
+    if (isProtectedZammadField(name)) { errors.push(`Attribut „${name}“ setzt das Portal selbst und kann nicht freigegeben werden`); continue; }
     if (!attr.portalType) { errors.push(`Attribut „${attr.display}“ (${attr.type}) wird im Portal nicht unterstützt`); continue; }
     if (seen.has(name)) continue;
     seen.add(name);

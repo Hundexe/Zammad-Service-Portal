@@ -6,6 +6,10 @@
 //   user:unlock --username NAME
 //   user:list
 //   backup [--out DATEI]
+//   backup:verify DATEI             Sicherung prüfen (Integrität, Schema, passender SECRET_KEY)
+//   restore DATEI --yes             Sicherung wiederherstellen (Portal vorher stoppen!)
+//   status [--json] [--max-queue-minutes N]   Zustand für Überwachung (Exit-Code 2 bei Problemen)
+//   scanner:test                    Virenscanner mit EICAR-Testdatei prüfen
 //   audit:verify
 //   secret:generate
 //   healthcheck
@@ -35,6 +39,17 @@ async function withApp<T>(fn: (app: import('./app.ts').App) => Promise<T> | T): 
   setLogLevel('warn');
   const app = createApp(loadConfig());
   try { return await fn(app); } finally { app.db.close(); }
+}
+
+/** Schlüssel für die Prüfung verschlüsselter Werte, falls SECRET_KEY gesetzt ist. */
+async function optionalBox(): Promise<import('./crypto.ts').SecretBox | undefined> {
+  try {
+    const { loadConfig } = await import('./config.ts');
+    const { SecretBox } = await import('./crypto.ts');
+    return new SecretBox(loadConfig().secretKey);
+  } catch {
+    return undefined;
+  }
 }
 
 async function main(): Promise<void> {
@@ -117,6 +132,67 @@ async function main(): Promise<void> {
         rmSync(out, { force: true });
         app.db.backupTo(out);
         console.log(`Sicherung geschrieben: ${out}`);
+      });
+      return;
+    case 'backup:verify': {
+      const file = rest.find((x) => !x.startsWith('--'));
+      if (!file) throw new Error('Datei fehlt: backup:verify DATEI');
+      const { verifyBackup } = await import('./services/backup.ts');
+      const box = await optionalBox();
+      const r = verifyBackup(file, box);
+      console.log(`Sicherung: ${r.file} (${(r.sizeBytes / 1024 / 1024).toFixed(1)} MB)`);
+      console.log(`Schema:    ${r.schemaVersion} (diese Version: ${r.knownVersion})`);
+      console.log(`Inhalt:    ${Object.entries(r.counts).map(([k, v]) => `${k}=${v}`).join(', ')}`);
+      console.log(`Schlüssel: ${r.keyMatches === null ? 'nicht geprüft' : r.keyMatches ? 'passt' : 'PASST NICHT'}`);
+      console.log(r.ok ? 'Ergebnis:  in Ordnung' : `Ergebnis:  FEHLER\n  - ${r.problems.join('\n  - ')}`);
+      if (!r.ok) process.exitCode = 2;
+      return;
+    }
+    case 'restore': {
+      const file = rest.find((x) => !x.startsWith('--'));
+      if (!file) throw new Error('Datei fehlt: restore DATEI --yes');
+      if (!flag('yes')) {
+        console.log('Stellt die Datenbank aus der Sicherung wieder her. Vorher Portal und Worker stoppen!');
+        console.log('Der aktuelle Stand wird vorher nach backups/vor-wiederherstellung-*.sqlite gesichert.');
+        console.log(`Zum Ausführen: restore ${file} --yes`);
+        process.exitCode = 64;
+        return;
+      }
+      const { loadConfig } = await import('./config.ts');
+      const { SecretBox } = await import('./crypto.ts');
+      const { restoreBackup } = await import('./services/backup.ts');
+      const cfg = loadConfig();
+      const r = restoreBackup(cfg.dataDir, file, new SecretBox(cfg.secretKey));
+      if (r.safetyCopy) console.log(`Bisheriger Stand gesichert: ${r.safetyCopy}`);
+      await withApp(() => undefined); // Migrationen auf den wiederhergestellten Stand anwenden
+      console.log('Wiederhergestellt. Jetzt Portal und Worker wieder starten.');
+      return;
+    }
+    case 'scanner:test':
+      await withApp(async (app) => {
+        const { testScanner } = await import('./services/status.ts');
+        const r = await testScanner(app);
+        console.log(r.message);
+        if (r.status !== 'ok') process.exitCode = 2;
+      });
+      return;
+    case 'status':
+      await withApp(async (app) => {
+        const { collectStatus } = await import('./services/status.ts');
+        const max = Number.parseInt(arg('max-queue-minutes') ?? '30', 10);
+        const r = await collectStatus(app, { maxQueueAgeMinutes: Number.isFinite(max) ? max : 30, maxFailed: 0 });
+        if (flag('json')) console.log(JSON.stringify(r));
+        else {
+          console.log(`Version:     ${r.version}`);
+          console.log(`Zustellung:  ${r.outbox.queued} wartend, ${r.outbox.sending} in Arbeit, ${r.outbox.failed} fehlgeschlagen, ${r.outbox.deliveredLast24h} zugestellt (24 h)`);
+          console.log(`Älteste:     ${r.outbox.oldestQueuedMinutes === null ? '–' : `${r.outbox.oldestQueuedMinutes} min`}`);
+          console.log(`Scanner:     ${r.scanner.message}`);
+          console.log(`Audit-Log:   ${r.audit.ok ? `unverändert (${r.audit.count} Einträge)` : `BESCHÄDIGT ab ${r.audit.brokenAt}`}`);
+          for (const w of r.warnings) console.log(`Hinweis:     ${w}`);
+          for (const p of r.problems) console.log(`PROBLEM:     ${p}`);
+          console.log(r.ok ? 'Gesamt:      OK' : 'Gesamt:      PROBLEME');
+        }
+        if (!r.ok) process.exitCode = 2;
       });
       return;
     case 'audit:verify':

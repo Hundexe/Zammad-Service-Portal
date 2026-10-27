@@ -15,6 +15,8 @@ export interface MockZammad {
   url: string;
   state: { users: User[]; tickets: Ticket[]; articles: Article[]; requests: { method: string; path: string; onBehalfOf?: string; body?: any }[] };
   failNext: (n: number, status?: number) => void;
+  /** Die nächsten n Tickets werden angelegt, die Antwort geht aber verloren (504) – wie bei einer Zeitüberschreitung */
+  loseNextCreateResponse: (n: number) => void;
   close: () => Promise<void>;
 }
 
@@ -67,7 +69,7 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
   const articles: Article[] = [];
   const requests: MockZammad['state']['requests'] = [];
   let nextUser = 10, nextTicket = 100, nextArticle = 1000, nextAtt = 5000, ticketNo = 61001;
-  let failCount = 0, failStatus = 503;
+  let failCount = 0, failStatus = 503, loseCreate = 0;
 
   const addCustomer = (email: string, firstname: string, lastname: string) => {
     const u: User = { id: nextUser++, login: email, email, firstname, lastname, roles: ['Customer'], organization_id: 1 };
@@ -181,6 +183,7 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
           content_type: art.content_type ?? 'text/html', internal: Boolean(art.internal), created_at: iso(new Date()),
           attachments: (art.attachments ?? []).map((x: any) => { const data = Buffer.from(x.data, 'base64'); return { id: nextAtt++, filename: x.filename, size: data.length, data, mime: x['mime-type'] }; }),
         });
+        if (loseCreate > 0) { loseCreate--; return send(res, 504, { error: 'Gateway Timeout (simuliert)' }); }
         return send(res, 201, { ...expandTicket(t), tags: undefined });
       }
       if (req.method === 'GET' && p === '/api/v1/tickets') {
@@ -245,6 +248,7 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
     server, url,
     state: { users, tickets, articles, requests },
     failNext: (n, status = 503) => { failCount = n; failStatus = status; },
+    loseNextCreateResponse: (n) => { loseCreate = n; },
     close: () => new Promise((r) => server.close(() => r())),
   };
 }

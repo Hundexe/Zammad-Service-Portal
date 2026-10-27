@@ -118,6 +118,14 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
   });
 
   // ------------------------------------------------------------- lokal
+  /**
+   * Jede erfolgreiche lokale Anmeldung ist ein Ereignis zum Alarmieren: Im Normalbetrieb melden sich alle
+   * über Microsoft an, lokale Konten sind Notfallzugänge. Log-Feld "alert": true → Regel im Log-System.
+   */
+  function alertLocalLogin(ctx: AppCtx, row: UserRow, mfa: boolean): void {
+    log.warn('Lokale Anmeldung', { alert: true, event: 'local_login', user: row.id, username: row.username, ip: ctx.ip, mfa });
+  }
+
   router.post('/api/auth/local/login', { auth: 'public', bodyLimit: 4096 }, async (ctx: AppCtx) => {
     if (!app.cfg.localLogin) throw new HttpError(404, 'Lokale Anmeldung ist deaktiviert', 'disabled');
     if (!loginLimiter.take(ctx.ip)) throw new HttpError(429, 'Zu viele Anmeldeversuche – bitte kurz warten', 'rate_limited');
@@ -146,7 +154,10 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
     // durch abwechselnde richtige Passwort-Eingaben beliebig oft ein Code raten.
     if (state !== 'mfa_pending') clearFailures(fresh);
     createSession(app, ctx, row.id, { state, mfa: false });
-    if (state === 'active') app.db.run('UPDATE users SET last_login_at = ? WHERE id = ?', Date.now(), row.id);
+    if (state === 'active') {
+      app.db.run('UPDATE users SET last_login_at = ? WHERE id = ?', Date.now(), row.id);
+      alertLocalLogin(ctx, row, false);
+    }
     audit(app.db, actor(ctx, row), { action: 'login.password_ok', targetType: 'user', targetId: row.id, details: { next: state } });
     return { state };
   });
@@ -175,6 +186,7 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
     // Neue Sitzungs-ID nach dem zweiten Faktor (Rechteerhöhung = neues Token)
     createSession(app, ctx, row.id, { state, mfa: true, authTime: Date.now() });
     audit(app.db, actor(ctx, row), { action: 'login.success', targetType: 'user', targetId: row.id, details: { mfa: true } });
+    alertLocalLogin(ctx, row, true);
     return { state };
   });
 
@@ -312,6 +324,13 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
         if (!sess) return fail('stepup_ohne_sitzung');
         const row = getUser(app.db, sess.user_id)!;
         if (row.entra_oid !== claims.oid) return fail('stepup_anderer_benutzer');
+        // Gruppen, Rollen und Profil bei jeder Bestätigung frisch aus Entra übernehmen – wer eine Admin-Gruppe
+        // verloren hat, bekommt die Rechte nicht durch eine Bestätigung zurück.
+        const fresh = upsertEntraUser(app.db, claims, profile);
+        if (fresh.disabled) {
+          app.db.run('DELETE FROM sessions WHERE user_id = ?', fresh.id);
+          return fail('deaktiviert');
+        }
         app.db.run('UPDATE sessions SET auth_time = ?, mfa = 1 WHERE id_hash = ?', Date.now(), tx.sessionHash!);
         audit(app.db, actor(ctx, row), { action: 'stepup.success', targetType: 'user', targetId: row.id, details: { method: 'entra' } });
         return redirect(ctx, tx.returnTo);

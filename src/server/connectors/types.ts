@@ -10,6 +10,8 @@ export interface TicketSystemConfig {
   creationMode: 'on_behalf_of' | 'customer_field';
   showOrgTickets: boolean;
   closedStates: string[];
+  /** Namen von Agenten in Antworten durch den Systemnamen ersetzen */
+  hideAgentNames?: boolean;
 }
 
 export interface Attachment { filename: string; mime: string; data: Buffer }
@@ -88,4 +90,6 @@ export interface Connector {
   getTicket(customer: CustomerRef, ticketId: number): Promise<{ ticket: TicketSummary; articles: ArticleSummary[] } | null>;
   getAttachment(customer: CustomerRef, ticketId: number, articleId: number, attachmentId: number): Promise<{ data: Buffer; mime: string; filename: string } | null>;
   addReply(customer: CustomerRef, ticketId: number, bodyHtml: string, attachments: Attachment[]): Promise<void>;
+  /** Ticket, das zu einer Portal-Anfrage schon angelegt wurde (Schutz vor Duplikaten nach Abbruch). */
+  findTicketForRequest(customer: CustomerRef, requestId: string, title: string, since: number): Promise<{ id: number; number: string } | null>;
 }

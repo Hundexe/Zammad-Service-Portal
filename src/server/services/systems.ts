@@ -8,12 +8,20 @@ import { can } from './rbac.ts';
 import { ZammadConnector } from '../connectors/zammad.ts';
 import type { Connector, TicketSystemConfig } from '../connectors/types.ts';
 import { DEFAULT_BRANDING, type Branding } from '../../shared/branding.ts';
+import { blockedAddress, blockedHostname, guardedFetch } from '../net/guarded-fetch.ts';
 
 export interface SystemRow {
   id: string; slug: string; name: string; type: 'zammad'; base_url: string; api_token: string | null;
   default_group: string | null; creation_mode: 'on_behalf_of' | 'customer_field'; status: 'active' | 'maintenance' | 'inactive';
   visible_groups: string; require_approval: number; show_org_tickets: number; allow_replies: number;
   closed_states: string; portal_tag: string; released_attributes: string; sort: number; created_at: number; updated_at: number;
+  /** JSON-Liste erlaubter Zammad-Gruppen (leer = keine Einschränkung) */
+  allowed_groups: string; hide_agent_names: number;
+}
+
+/** Zammad-Gruppen, in die das Portal Tickets anlegen darf. Leer = keine Einschränkung. */
+export function allowedGroups(sys: SystemRow): string[] {
+  return parseJson<string[]>(sys.allowed_groups, []);
 }
 
 export function getSystem(app: App, id: string): SystemRow | undefined {
@@ -46,6 +54,7 @@ export function connectorConfig(app: App, sys: SystemRow): TicketSystemConfig {
     creationMode: sys.creation_mode,
     showOrgTickets: sys.show_org_tickets === 1,
     closedStates: parseJson<string[]>(sys.closed_states, ['closed', 'merged', 'removed']),
+    hideAgentNames: sys.hide_agent_names === 1,
   };
 }
 
@@ -53,30 +62,19 @@ let fetchOverride: typeof fetch | undefined;
 /** Nur für Tests: eigenen fetch für Connectoren setzen. */
 export function setConnectorFetch(f: typeof fetch | undefined): void { fetchOverride = f; }
 
+/** SSRF-Schutz: Loopback und eigene Dienstnamen nur in Tests oder mit ALLOW_LOOPBACK_TICKET_URLS (Demo). */
+export function guardOptions(app: App) {
+  return { allowPrivate: app.cfg.allowPrivateTicketUrls, allowLoopback: app.cfg.allowLoopbackTicketUrls };
+}
+
 export function connectorFor(app: App, sys: SystemRow): Connector {
   const cfg = connectorConfig(app, sys);
   switch (sys.type) {
     case 'zammad':
-      return new ZammadConnector(cfg, fetchOverride ?? fetch);
+      return new ZammadConnector(cfg, fetchOverride ?? guardedFetch(guardOptions(app)));
     default:
       throw new Error(`Unbekannter Systemtyp ${sys.type}`);
   }
-}
-
-function blockedIp(ip: string, allowPrivate: boolean): boolean {
-  const v4 = ip.startsWith('::ffff:') ? ip.slice(7) : ip;
-  if (isIP(v4) === 4) {
-    const [a, b] = v4.split('.').map(Number);
-    if (a === 169 && b === 254) return true; // Link-Local / Cloud-Metadaten
-    if (a === 0 || a >= 224) return true;
-    if (a === 127) return true;
-    if (!allowPrivate && (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127))) return true;
-    return false;
-  }
-  const l = ip.toLowerCase();
-  if (l === '::' || l === '::1' || l.startsWith('fe80') || l.startsWith('ff')) return true;
-  if (!allowPrivate && (l.startsWith('fc') || l.startsWith('fd'))) return true;
-  return false;
 }
 
 /** Prüft die URL eines Ticketsystems (Schutz vor SSRF auf Metadaten-Dienste u. Ä.). */
@@ -88,13 +86,18 @@ export async function validateSystemUrl(app: App, url: string): Promise<string |
   if (u.search || u.hash) return 'URL ohne Parameter angeben';
   if (app.cfg.env === 'production' && u.protocol !== 'https:' && !process.env.ALLOW_HTTP_TICKET_URLS) return 'In Produktion nur https:// (oder ALLOW_HTTP_TICKET_URLS setzen)';
   const host = u.hostname.replace(/^\[|\]$/g, '');
+  const nameProblem = blockedHostname(host, guardOptions(app));
+  if (nameProblem) return `Adresse nicht erlaubt (${nameProblem})`;
   let addrs: string[];
   try {
     addrs = isIP(host) ? [host] : (await lookup(host, { all: true })).map((a) => a.address);
   } catch {
     return `Hostname ${host} nicht auflösbar`;
   }
-  if (app.cfg.env !== 'test' && addrs.some((a) => blockedIp(a, app.cfg.allowPrivateTicketUrls))) return 'Adresse nicht erlaubt (Loopback, Link-Local oder Metadaten-Dienst)';
+  for (const a of addrs) {
+    const why = blockedAddress(a, guardOptions(app));
+    if (why) return `Adresse nicht erlaubt: ${a} (${why})`;
+  }
   return null;
 }
 

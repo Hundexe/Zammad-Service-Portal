@@ -8,6 +8,7 @@ export interface AdminSystem {
   creationMode: 'on_behalf_of' | 'customer_field'; status: 'active' | 'maintenance' | 'inactive'; visibleGroups: string[];
   requireApproval: boolean; showOrgTickets: boolean; allowReplies: boolean; closedStates: string[]; portalTag: string; sort: number;
   releasedAttributes: { name: string; allowedValues: string[] | null }[];
+  allowedGroups: string[]; hideAgentNames: boolean;
 }
 
 export const admin = {

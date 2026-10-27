@@ -6,11 +6,12 @@ import { uuid } from '../db/db.ts';
 import { HttpError } from '../http/core.ts';
 import { log } from '../log.ts';
 import { sha256 } from '../crypto.ts';
-import { displayValue, isVisible, LIMITS, validateSubmission, type FormDefinition, type FormValues, type FileMeta } from '../../shared/form.ts';
+import { displayValue, isProtectedZammadField, isVisible, LIMITS, validateSubmission, type FormDefinition, type FormValues, type FileMeta } from '../../shared/form.ts';
 import { escapeHtml, renderTemplate, textToHtml, type TemplateVars } from '../../shared/template.ts';
 import type { AuthUser } from './rbac.ts';
 import { checkFiles, loadFile, removeRequestFiles, storeFile, type CheckedFile, type IncomingFile } from './files.ts';
-import { connectorFor, getSystem, type SystemRow } from './systems.ts';
+import { allowedGroups, connectorFor, getSystem, type SystemRow } from './systems.ts';
+import { releasedAttributes } from './metadata.ts';
 import type { FormRow, FormVersionRow } from './forms.ts';
 import { ConnectorError, type CustomerRef } from '../connectors/types.ts';
 
@@ -39,6 +40,9 @@ export function buildTicket(
   const tags = new Set<string>([sys.portal_tag, ...(def.settings.tags ?? [])].map((t) => t.trim()).filter(Boolean));
   let group = def.settings.group || sys.default_group || '';
   let priority = def.settings.priority || undefined;
+  // Zweite Verteidigungslinie: auch wenn eine gespeicherte Definition älter ist als die Prüfung im Editor,
+  // landen nur freigegebene Felder und erlaubte Gruppen im Ticket.
+  const released = new Set(releasedAttributes(sys).map((a) => a.name));
 
   for (const f of def.fields) {
     if (f.type === 'info' || !isVisible(f, values, def.fields)) continue;
@@ -52,7 +56,10 @@ export function buildTicket(
     const mapOne = (x: string) => m.valueMap?.[x] ?? x;
     switch (m.target) {
       case 'zammad_field':
-        if (!m.name) break;
+        if (!m.name || isProtectedZammadField(m.name) || !released.has(m.name)) {
+          log.warn('form.field_not_released', { system: sys.id, form: form.id, field: m.name ?? '' });
+          break;
+        }
         if (Array.isArray(v)) zammadFields[m.name] = v.map(String).map(mapOne);
         else if (m.valueMap && m.valueMap.true === 'true') zammadFields[m.name] = String(v) === 'true';
         else zammadFields[m.name] = typeof v === 'string' ? mapOne(v) : v;
@@ -76,6 +83,11 @@ export function buildTicket(
   const body = renderTemplate(def.settings.bodyTemplate, vars, 'html', { alle_felder: table })
     + `<p><small>Erstellt über das Service-Portal · Anfrage ${escapeHtml(requestId)}</small></p>`;
   if (!group) throw new HttpError(500, 'Für dieses Formular ist keine Zammad-Gruppe festgelegt', 'config_error');
+  const allowed = allowedGroups(sys);
+  if (allowed.length && !allowed.includes(group)) {
+    log.warn('form.group_not_allowed', { system: sys.id, form: form.id, group });
+    throw new HttpError(422, 'Dieses Formular ist falsch eingerichtet (Zielgruppe nicht erlaubt). Bitte die IT informieren.', 'group_not_allowed');
+  }
   if (!user.email) throw new HttpError(422, 'Ihrem Konto ist keine E-Mail-Adresse zugeordnet', 'no_email');
   return {
     title,
@@ -114,14 +126,15 @@ export async function submitRequest(
   for (const f of fileFields) {
     if (result.values[f.id] === undefined) continue;
     const list = input.files[f.id] ?? [];
-    const sizeLimit = Math.min(f.maxSizeMb ?? 10, LIMITS.maxFileSizeMb) * 1024 * 1024;
+    const sizeLimit = Math.min(f.maxSizeMb ?? 10, LIMITS.maxFileSizeMb, app.cfg.upload.maxFileMb) * 1024 * 1024;
     const files = await checkFiles(app, list, f.accept, sizeLimit);
     for (const file of files) {
       total += file.data.length;
       checked.push({ fieldId: f.id, file });
     }
   }
-  if (total > LIMITS.maxTotalUploadMb * 1024 * 1024) throw new HttpError(413, `Alle Dateien zusammen höchstens ${LIMITS.maxTotalUploadMb} MB`, 'too_large');
+  const totalMb = Math.min(LIMITS.maxTotalUploadMb, app.cfg.upload.maxTotalMb);
+  if (total > totalMb * 1024 * 1024) throw new HttpError(413, `Alle Dateien zusammen höchstens ${totalMb} MB`, 'too_large');
 
   const id = uuid();
   // Dateinamen nach der Prüfung (bereinigt) in die Werte übernehmen
@@ -224,7 +237,12 @@ async function deliver(app: App, row: RequestRow): Promise<void> {
     const files = app.db.all<{ id: string; filename: string; mime: string }>('SELECT id, filename, mime FROM request_files WHERE request_id = ? AND stored = 1', row.id);
     const attachments = files.map((f) => ({ filename: f.filename, mime: f.mime, data: loadFile(app, row.id, f.id) }));
     const customer = (await customerFor(app, sys, row.user_id, payload.customer.email, payload.customer.displayName, true))!;
-    const ticket = await connectorFor(app, sys).createTicket({
+    const connector = connectorFor(app, sys);
+    // Wiederholung (Zeitüberschreitung, Absturz während der Zustellung): Zammad hat das Ticket vielleicht
+    // schon angelegt. Dann nicht noch einmal anlegen, sondern das vorhandene übernehmen.
+    const existing = row.attempts > 1 ? await connector.findTicketForRequest(customer, row.id, payload.title, row.created_at) : null;
+    if (existing) log.warn('Anfrage war schon zugestellt – kein zweites Ticket', { request: row.id, ticket: existing.number });
+    const ticket = existing ?? await connector.createTicket({
       customer, title: payload.title, group: payload.group, priority: payload.priority,
       bodyHtml: payload.bodyHtml, attachments, fields: payload.fields, tags: payload.tags,
     });

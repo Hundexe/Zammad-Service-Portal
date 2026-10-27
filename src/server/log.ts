@@ -23,7 +23,19 @@ function redact(value: unknown, depth = 0): unknown {
   return out;
 }
 
+type Listener = (entry: Record<string, unknown>) => void;
+const listeners = new Set<Listener>();
+/** Zusätzlicher Empfänger für Log-Einträge (Tests, Weiterleitung). Gibt eine Abmeldefunktion zurück. */
+export function onLog(fn: Listener): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
 function write(level: Level, msg: string, data?: Record<string, unknown>): void {
+  if (listeners.size) {
+    const entry = { level, msg, ...(redact(data ?? {}) as object) };
+    for (const fn of listeners) { try { fn(entry); } catch { /* Empfängerfehler ignorieren */ } }
+  }
   if (silent || LEVELS[level] < minLevel) return;
   const line = JSON.stringify({ time: new Date().toISOString(), level, msg, ...(redact(data ?? {}) as object) });
   (level === 'error' || level === 'warn' ? process.stderr : process.stdout).write(line + '\n');

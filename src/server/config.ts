@@ -73,10 +73,14 @@ export interface Config {
     graphUrl: string;
   };
   clamav: { host?: string; port: number; required: boolean };
+  /** Obergrenzen für Uploads (MB). Formulare können kleiner, aber nie größer einstellen. */
+  upload: { maxFileMb: number; maxTotalMb: number };
   retentionDays: number;
   /** Ratenbegrenzung: [Burst, Nachschub pro Sekunde] */
   rateLimits: { api: [number, number]; write: [number, number]; login: [number, number] };
   allowPrivateTicketUrls: boolean;
+  /** Ticketsysteme auf 127.0.0.1/localhost erlauben – nur für Demo und Entwicklung */
+  allowLoopbackTicketUrls: boolean;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   version: string;
 }
@@ -138,6 +142,10 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
       port: int('CLAMAV_PORT', 3310),
       required: bool('CLAMAV_REQUIRED', true),
     },
+    upload: {
+      maxFileMb: range('UPLOAD_MAX_FILE_MB', 10, 1, 20, errors),
+      maxTotalMb: range('UPLOAD_MAX_TOTAL_MB', 25, 1, 25, errors),
+    },
     retentionDays: range('RETENTION_DAYS', 30, 1, 3650, errors),
     rateLimits: {
       api: [range('RATE_LIMIT_API_BURST', 240, 20, 100000, errors), 4],
@@ -146,6 +154,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
       login: [range('RATE_LIMIT_LOGIN_BURST', 10, 3, 100000, errors), range('RATE_LIMIT_LOGIN_PER_MINUTE', 10, 1, 100000, errors) / 60],
     },
     allowPrivateTicketUrls: bool('ALLOW_PRIVATE_TICKET_URLS', true),
+    allowLoopbackTicketUrls: (overrides.env ?? env) === 'test' || bool('ALLOW_LOOPBACK_TICKET_URLS', false),
     logLevel: (process.env.LOG_LEVEL as Config['logLevel']) || 'info',
     version: process.env.APP_VERSION ?? readVersion(),
     ...overrides,
