@@ -1,5 +1,11 @@
 # Änderungen
 
+## 1.3.2 – 27.10.2026
+
+- Signaturschlüssel von Microsoft (JWKS): Höchstalter bei dauerhafter Nichterreichbarkeit. Ab 24 h ohne Erneuerung stündlicher Alarm (`"event":"jwks_stale"`), nach `ENTRA_JWKS_MAX_STALE_HOURS` (Standard 72 h, 25–168) wird die Microsoft-Anmeldung gesperrt (`"event":"jwks_expired"`), bis die Schlüssel wieder abrufbar sind; Notfallkonten gehen weiter
+- `cli.ts status` prüft, ob die Schlüssel von Microsoft abrufbar sind
+- Doku: SICHERHEIT.md, BETRIEB.md (Log-Meldungen, Alarmregeln), GO-LIVE.md, REVIEW-2026-10.md (Nachtrag)
+
 ## 1.3.1 – 27.10.2026
 
 Nachbesserungen zum zweiten Review (docs/REVIEW-2026-10.md, Abschnitt „Nachtrag“):

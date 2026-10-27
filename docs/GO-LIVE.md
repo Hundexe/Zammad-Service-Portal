@@ -26,7 +26,7 @@ Empfohlener Weg: eigene VM → 4 Wochen mit 5–10 IT-Benutzern → Pilot mit ei
 | ☐ | **Updater zunächst aus** | `COMPOSE_PROFILES=clamav` (ohne `updater`); Updates nach [UPDATES.md](UPDATES.md#manuell-aktualisieren-ohne-updater) |
 | ☐ | **Egress-Firewall** | Regeln nach [BETRIEB.md](BETRIEB.md#ausgehende-verbindungen-begrenzen-egress-firewall); Test: `docker compose exec app /nodejs/bin/node -e "fetch('https://example.org').then(r=>console.log(r.status))"` schlägt fehl, Zammad-Verbindungstest klappt |
 | ☐ | **Container-Härtung** | `bash tools/check-hardening.sh` → „Härtung: wie erwartet.“ |
-| ☐ | **Zentrales Logging und Monitoring** | Logs kommen im SIEM/Log-System an; `/readyz` und `cli.ts status` im Monitoring |
+| ☐ | **Zentrales Logging und Monitoring** | Logs kommen im SIEM/Log-System an; `/readyz` und `cli.ts status` im Monitoring; Alarmregel für `"alert":true` (lokale Anmeldung, nicht erneuerbare Microsoft-Schlüssel) |
 | ☐ | **Unabhängiger Security-Check** | kurzer Web-Pentest durch eine Person, die nicht am Projekt mitgearbeitet hat; Ergebnis abgelegt. Hilfe: [PENTEST.md](PENTEST.md) |
 
 ## Sehr sinnvoll

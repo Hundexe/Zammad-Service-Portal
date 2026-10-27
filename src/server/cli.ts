@@ -187,6 +187,7 @@ async function main(): Promise<void> {
           console.log(`Zustellung:  ${r.outbox.queued} wartend, ${r.outbox.sending} in Arbeit, ${r.outbox.failed} fehlgeschlagen, ${r.outbox.deliveredLast24h} zugestellt (24 h)`);
           console.log(`Älteste:     ${r.outbox.oldestQueuedMinutes === null ? '–' : `${r.outbox.oldestQueuedMinutes} min`}`);
           console.log(`Scanner:     ${r.scanner.message}`);
+          console.log(`Microsoft:   ${r.entra.message}`);
           console.log(`Audit-Log:   ${r.audit.ok ? `unverändert (${r.audit.count} Einträge)` : `BESCHÄDIGT ab ${r.audit.brokenAt}`}`);
           for (const w of r.warnings) console.log(`Hinweis:     ${w}`);
           for (const p of r.problems) console.log(`PROBLEM:     ${p}`);

@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { createHmac, createSign, generateKeyPairSync, randomBytes, randomUUID, type KeyObject } from 'node:crypto';
 import { loadConfig } from '../src/server/config.ts';
 import { EntraClient } from '../src/server/auth/oidc.ts';
+import { onLog } from '../src/server/log.ts';
 
 const AUTH = 'https://login.test';
 const TENANT = 'aaaaaaaa-0000-0000-0000-000000000001';
@@ -228,3 +229,76 @@ describe('OIDC: unbekannte Schlüssel-IDs und JWKS-Erneuerung (zweites Review)',
     assert.equal(jwksFetches, 2);
   });
 });
+
+describe('OIDC: Höchstalter zwischengespeicherter Schlüssel bei dauerhafter Nichterreichbarkeit', () => {
+  const H = 3600_000;
+  async function stale(hours: number) {
+    keys = [jwk(k1.publicKey, 'k1')];
+    jwksFail = false; jwksDelay = 0;
+    const c = client();
+    await c.verifyIdToken(sign(claims()), tx);
+    jwksFail = true;
+    (c as any).keysOkAt = Date.now() - hours * H;
+    (c as any).keysAt = Date.now() - hours * H;
+    return c;
+  }
+  function capture() {
+    const seen: Record<string, unknown>[] = [];
+    const off = onLog((e) => seen.push(e));
+    return { seen, off };
+  }
+
+  test('ab 24 Stunden ohne Erneuerung: weiter nutzbar, aber Alarm (höchstens stündlich)', async () => {
+    const c = await stale(30);
+    const { seen, off } = capture();
+    try {
+      await c.verifyIdToken(sign(claims()), tx);
+      (c as any).keysAt = 0;
+      await c.verifyIdToken(sign(claims()), tx);
+    } finally { off(); jwksFail = false; }
+    const alerts = seen.filter((e) => e.event === 'jwks_stale');
+    assert.equal(alerts.length, 1, 'nur ein Alarm pro Stunde');
+    assert.equal(alerts[0].alert, true);
+    assert.equal(alerts[0].alterStunden, 30);
+    assert.equal(alerts[0].grenzeStunden, 72);
+  });
+
+  test('nach 72 Stunden (Standard) ohne Erneuerung: Microsoft-Anmeldung gesperrt, Alarm', async () => {
+    const c = await stale(73);
+    const { seen, off } = capture();
+    try {
+      await assert.rejects(c.verifyIdToken(sign(claims()), tx), /seit über 72 Stunden nicht erneuerbar/);
+    } finally { off(); }
+    const alert = seen.find((e) => e.event === 'jwks_expired');
+    assert.ok(alert, JSON.stringify(seen));
+    assert.equal(alert!.alert, true);
+    assert.equal(alert!.level, 'error');
+    // Microsoft wieder erreichbar → nach der Wartezeit funktioniert die Anmeldung wieder
+    jwksFail = false;
+    (c as any).keysAt = Date.now() - 31_000;
+    await c.verifyIdToken(sign(claims()), tx);
+  });
+
+  test('Grenze ist einstellbar (ENTRA_JWKS_MAX_STALE_HOURS)', async () => {
+    const c = await stale(30);
+    (c as any).cfg = { ...(c as any).cfg, entra: { ...(c as any).cfg.entra, jwksMaxStaleHours: 25 } };
+    await assert.rejects(c.verifyIdToken(sign(claims()), tx), /seit über 25 Stunden/);
+    jwksFail = false;
+    const saved = { ...process.env };
+    try {
+      process.env.ENTRA_JWKS_MAX_STALE_HOURS = '500';
+      assert.throws(() => loadConfig({ env: 'test', secretKey: randomBytes(32) }), /ENTRA_JWKS_MAX_STALE_HOURS/);
+      process.env.ENTRA_JWKS_MAX_STALE_HOURS = '12';
+      assert.throws(() => loadConfig({ env: 'test', secretKey: randomBytes(32) }), /ENTRA_JWKS_MAX_STALE_HOURS/);
+    } finally { process.env = saved; }
+  });
+
+  test('checkKeys für die Überwachung: meldet Fehler, verändert den Zwischenspeicher nicht', async () => {
+    const c = await stale(1);
+    await assert.rejects(c.checkKeys(), /JWKS nicht abrufbar/);
+    jwksFail = false;
+    assert.deepEqual(await c.checkKeys(), { keys: 1 });
+    assert.ok((c as any).keysOkAt < Date.now() - 0.9 * H, 'Cache unverändert');
+  });
+});
+

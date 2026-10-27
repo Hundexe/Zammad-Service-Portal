@@ -1,6 +1,7 @@
 // Betriebszustand für Überwachung und CLI (status, scanner:test).
 import type { App } from '../app.ts';
 import { verifyAuditChain } from './audit.ts';
+import { EntraClient } from '../auth/oidc.ts';
 
 /** EICAR-Testdatei – zur Laufzeit zusammengesetzt, damit Virenscanner das Repository nicht anmeckern. */
 export function eicar(): Buffer {
@@ -30,9 +31,15 @@ export interface StatusReport {
   warnings: string[];
   outbox: { queued: number; sending: number; failed: number; deliveredLast24h: number; oldestQueuedMinutes: number | null };
   scanner: ScannerCheck;
+  /** Microsoft-Anmeldung: Metadaten und Signaturschlüssel abrufbar? */
+  entra: { status: 'ok' | 'off' | 'down'; message: string };
   audit: { ok: boolean; count: number; brokenAt: number | null };
   version: string;
 }
+
+let entraFactory: ((cfg: App['cfg']) => { checkKeys(): Promise<{ keys: number }> }) | undefined;
+/** Nur für Tests: eigene Entra-Prüfung einsetzen. */
+export function setEntraCheck(f: typeof entraFactory): void { entraFactory = f; }
 
 export interface StatusLimits { maxQueueAgeMinutes: number; maxFailed: number }
 
@@ -54,7 +61,17 @@ export async function collectStatus(app: App, limits: StatusLimits = { maxQueueA
   if (outbox.failed > limits.maxFailed) problems.push(`${outbox.failed} Anfrage(n) endgültig fehlgeschlagen – Verwaltung → Zustellung`);
   const scanner = await testScanner(app);
   if (scanner.status !== 'ok') (app.cfg.clamav.required ? problems : warnings).push(scanner.message);
+  let entra: StatusReport['entra'] = { status: 'off', message: 'Microsoft-Anmeldung nicht eingerichtet' };
+  if (app.cfg.entra.enabled) {
+    try {
+      const r = await (entraFactory ?? ((c) => new EntraClient(c)))(app.cfg).checkKeys();
+      entra = { status: 'ok', message: `Signaturschlüssel von Microsoft abrufbar (${r.keys})` };
+    } catch (err) {
+      entra = { status: 'down', message: `Signaturschlüssel von Microsoft nicht abrufbar: ${(err as Error).message} – nach ${app.cfg.entra.jwksMaxStaleHours ?? 72} h ohne Erneuerung ist die Microsoft-Anmeldung gesperrt` };
+      problems.push(entra.message);
+    }
+  }
   const chain = verifyAuditChain(app.db);
   if (!chain.ok) problems.push(`Audit-Log beschädigt ab Eintrag ${chain.brokenAt}`);
-  return { ok: problems.length === 0, problems, warnings, outbox, scanner, audit: chain, version: app.cfg.version };
+  return { ok: problems.length === 0, problems, warnings, outbox, scanner, entra, audit: chain, version: app.cfg.version };
 }

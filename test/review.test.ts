@@ -17,7 +17,7 @@ import { connectorFor, getSystem, validateSystemUrl } from '../src/server/servic
 import { displaySender, safeTicketFields } from '../src/server/connectors/zammad.ts';
 import { blockedAddress, blockedHostname, guardedFetch, guardedLookup, BlockedAddressError } from '../src/server/net/guarded-fetch.ts';
 import { verifyBackup, restoreBackup } from '../src/server/services/backup.ts';
-import { collectStatus, testScanner, eicar } from '../src/server/services/status.ts';
+import { collectStatus, testScanner, eicar, setEntraCheck } from '../src/server/services/status.ts';
 import { ClamAv } from '../src/server/services/clamav.ts';
 import { loadConfig } from '../src/server/config.ts';
 import { createApp, type App } from '../src/server/app.ts';
@@ -715,6 +715,18 @@ describe('#13 Überwachung: Alarm bei lokaler Anmeldung, Status-Befehl', () => {
     assert.ok(s.outbox.oldestQueuedMinutes! >= 119);
     assert.ok(s.problems.some((x) => x.includes('wartet seit')));
     p.app.db.run('DELETE FROM requests WHERE id = ?', id);
+  });
+
+  test('status prüft die Signaturschlüssel von Microsoft', async () => {
+    let s = await collectStatus(p.app, { maxQueueAgeMinutes: 100000, maxFailed: 1000 });
+    assert.equal(s.entra.status, 'ok', s.entra.message);
+    setEntraCheck(() => ({ checkKeys: async () => { throw new Error('JWKS nicht abrufbar (503)'); } }));
+    try {
+      s = await collectStatus(p.app, { maxQueueAgeMinutes: 100000, maxFailed: 1000 });
+    } finally { setEntraCheck(undefined); }
+    assert.equal(s.entra.status, 'down');
+    assert.equal(s.ok, false);
+    assert.ok(s.problems.some((x) => x.includes('72 h')), s.problems.join('; '));
   });
 
   test('CLI status: Exit-Code 0 bei OK, 2 bei Problemen, --json maschinenlesbar', () => {

@@ -61,6 +61,8 @@ Wichtige Log-Meldungen:
 | `Microsoft-Anmeldung abgelehnt` | Grund steht dabei (z. B. Tenant nicht erlaubt, Secret abgelaufen) |
 | `Entra liefert zu viele Gruppen im Token` | Gruppenanspruch auf „der Anwendung zugewiesene Gruppen“ umstellen |
 | `Lokale Anmeldung` (mit `"alert":true`) | Jemand hat sich mit einem lokalen Konto angemeldet – im Normalbetrieb nur das Notfallkonto, also **immer prüfen** |
+| `Signaturschlüssel von Microsoft nicht erneuerbar` (`"event":"jwks_stale"`, `"alert":true`) | Das Portal erreicht seit über 24 Stunden die Schlüssel von Microsoft nicht (Egress-Firewall, Proxy, DNS?) und nutzt die zwischengespeicherten weiter. Stündlich, mit Alter und Grenze |
+| `Signaturschlüssel von Microsoft zu alt` (`"event":"jwks_expired"`, Level error) | Die Grenze `ENTRA_JWKS_MAX_STALE_HOURS` (Standard 72 h) ist überschritten: Microsoft-Anmeldung gesperrt, bis die Schlüssel wieder abrufbar sind. Notfallkonto geht weiter |
 | `form.group_not_allowed` / `form.field_not_released` | Ein Formular will in eine nicht erlaubte Gruppe oder ein nicht freigegebenes Feld schreiben – Formular korrigieren |
 | `Anfrage war schon zugestellt – kein zweites Ticket` | Nach einer Zeitüberschreitung wurde das schon vorhandene Ticket übernommen (kein Duplikat) |
 
@@ -153,7 +155,7 @@ docker compose exec -T app /nodejs/bin/node src/server/cli.ts status --json     
 echo $?                                                                          # 0 = OK, 2 = Problem
 ```
 
-`status` prüft: wartende und fehlgeschlagene Anfragen, wie lange die älteste Anfrage schon wartet (Grenze `--max-queue-minutes`, Standard 30), den Virenscanner mit einer EICAR-Testdatei und die Hash-Kette des Audit-Logs. Ist ClamAV Pflicht (`CLAMAV_REQUIRED=true`) und erkennt EICAR nicht, ist das ein Problem; sonst nur ein Hinweis.
+`status` prüft: wartende und fehlgeschlagene Anfragen, wie lange die älteste Anfrage schon wartet (Grenze `--max-queue-minutes`, Standard 30), den Virenscanner mit einer EICAR-Testdatei, ob die Signaturschlüssel von Microsoft abrufbar sind (sonst Problem – so fällt eine gesperrte Verbindung auf, lange bevor die 72-Stunden-Grenze greift) und die Hash-Kette des Audit-Logs. Ist ClamAV Pflicht (`CLAMAV_REQUIRED=true`) und erkennt EICAR nicht, ist das ein Problem; sonst nur ein Hinweis.
 
 Empfohlene Prüfungen:
 
@@ -164,6 +166,7 @@ Empfohlene Prüfungen:
 | `cli.ts scanner:test` | stündlich (in `status` enthalten) | Exit-Code ≠ 0 |
 | Log-Ereignis `"alert":true` | sofort | immer (lokale Anmeldung) |
 | Log-Ereignis `Konto gesperrt` | sofort | mehrfach in kurzer Zeit |
+| Log-Ereignis `"event":"jwks_stale"` / `"jwks_expired"` | sofort | immer (Schlüssel von Microsoft nicht erneuerbar bzw. Microsoft-Anmeldung gesperrt) |
 | Log-Ereignis `Zustellung endgültig fehlgeschlagen` | sofort | immer |
 | Zertifikat (`https://…`) | täglich | läuft in < 14 Tagen ab |
 

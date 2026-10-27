@@ -32,6 +32,8 @@ const KID = /^[A-Za-z0-9._~+\/=-]{1,128}$/;
 const KEYS_MIN_REFRESH = 5 * 60_000;
 const KEYS_RETRY_AFTER_ERROR = 30_000;
 const KEYS_MAX_AGE = 24 * 3600_000;
+/** Warnungen zu veralteten Schlüsseln höchstens einmal pro Stunde */
+const STALE_ALERT_EVERY = 3600_000;
 
 export class EntraClient {
   private meta?: Metadata;
@@ -43,6 +45,7 @@ export class EntraClient {
   private keysOkAt = 0;
   /** laufender Abruf – gleichzeitige Anmeldungen teilen sich einen */
   private keysLoading: Promise<void> | null = null;
+  private staleAlertAt: Record<string, number> = {};
 
   private cfg: Config;
   private fetchImpl: typeof fetch;
@@ -108,10 +111,35 @@ export class EntraClient {
     return this.keysLoading;
   }
 
+  /** Alarm (höchstens stündlich): JWKS lässt sich nicht erneuern bzw. ist zu alt. */
+  private staleAlert(err: Error, expired = false): void {
+    const kind = expired ? 'expired' : 'stale';
+    if (Date.now() - (this.staleAlertAt[kind] ?? 0) < STALE_ALERT_EVERY) return;
+    this.staleAlertAt[kind] = Date.now();
+    const data = {
+      alert: true, event: expired ? 'jwks_expired' : 'jwks_stale',
+      alterStunden: Math.floor((Date.now() - this.keysOkAt) / 3600_000), grenzeStunden: this.cfg.entra.jwksMaxStaleHours ?? 72, error: err.message,
+    };
+    if (expired) log.error('Signaturschlüssel von Microsoft zu alt – Microsoft-Anmeldung gesperrt', data);
+    else log.warn('Signaturschlüssel von Microsoft nicht erneuerbar – bisherige werden weiter genutzt', data);
+  }
+
+  /** Für Überwachung: Metadaten und Schlüssel frisch abrufen, ohne den Cache zu verändern. */
+  async checkKeys(): Promise<{ keys: number }> {
+    const meta = await this.metadata();
+    const r = await this.fetchImpl(meta.jwks_uri, { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) throw new Error(`JWKS nicht abrufbar (${r.status})`);
+    const jwks = (await r.json()) as { keys?: Array<Record<string, unknown>> };
+    const n = (Array.isArray(jwks?.keys) ? jwks.keys : []).filter((k) => k.kty === 'RSA' && (k.use === undefined || k.use === 'sig')).length;
+    if (!n) throw new Error('JWKS enthält keine Signaturschlüssel');
+    return { keys: n };
+  }
+
   /**
    * Signaturschlüssel zu einer Schlüssel-ID.
    * - Bekannte ID: aus dem Speicher. Ist die Liste älter als 24 Stunden, wird sie vorher erneuert
-   *   (entfernte Schlüssel gelten dann nicht mehr); schlägt das fehl, bleibt die alte Liste in Gebrauch.
+   *   (entfernte Schlüssel gelten dann nicht mehr); schlägt das fehl, bleibt die alte Liste in Gebrauch – mit
+   *   stündlichem Alarm und höchstens ENTRA_JWKS_MAX_STALE_HOURS (Standard 72) nach der letzten Erneuerung.
    * - Unbekannte ID (z. B. Schlüsselwechsel bei Microsoft): JWKS neu laden – aber höchstens alle 5 Minuten
    *   (nach einem Fehlschlag alle 30 Sekunden). Erfundene IDs lösen so keine Abruf-Flut aus.
    * - Gleichzeitige Anfragen teilen sich einen Abruf.
@@ -121,7 +149,14 @@ export class EntraClient {
     const now = Date.now();
     if (this.keysLoading) await this.keysLoading.catch(() => undefined);
     if (this.keysOkAt && now - this.keysOkAt > KEYS_MAX_AGE && now - this.keysAt > KEYS_RETRY_AFTER_ERROR) {
-      await this.loadKeys().catch((err) => log.warn('JWKS nicht erneuerbar – bisherige Schlüssel bleiben in Gebrauch', { error: (err as Error).message }));
+      await this.loadKeys().catch((err) => this.staleAlert(err as Error));
+    }
+    // Harte Obergrenze: Schlüssel, die sich zu lange nicht erneuern ließen, werden nicht mehr verwendet.
+    // Sonst bliebe ein bei Microsoft zurückgezogener Schlüssel unbemerkt gültig. Lokale Notfallkonten gehen weiter.
+    const maxStale = (this.cfg.entra.jwksMaxStaleHours ?? 72) * 3600_000;
+    if (this.keysOkAt && Date.now() - this.keysOkAt > maxStale) {
+      this.staleAlert(new Error('Schlüssel abgelaufen'), true);
+      throw new Error(`Signaturschlüssel von Microsoft seit über ${this.cfg.entra.jwksMaxStaleHours ?? 72} Stunden nicht erneuerbar – Anmeldung gesperrt`);
     }
     const cached = this.keys.get(kid);
     if (cached) return cached;

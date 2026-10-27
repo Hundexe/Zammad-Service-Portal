@@ -71,6 +71,8 @@ export interface Config {
     allowedTenants: string[];
     authority: string;
     graphUrl: string;
+    /** Wie lange die Signaturschlüssel von Microsoft höchstens ohne erfolgreiche Erneuerung genutzt werden (Stunden) */
+    jwksMaxStaleHours?: number;
   };
   clamav: { host?: string; port: number; required: boolean };
   /** Obergrenzen für Uploads (MB). Formulare können kleiner, aber nie größer einstellen. */
@@ -136,6 +138,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
       allowedTenants: list('ENTRA_ALLOWED_TENANTS').length ? list('ENTRA_ALLOWED_TENANTS') : tenantId ? [tenantId] : [],
       authority: (process.env.ENTRA_AUTHORITY ?? 'https://login.microsoftonline.com').replace(/\/$/, ''),
       graphUrl: (process.env.ENTRA_GRAPH_URL ?? 'https://graph.microsoft.com').replace(/\/$/, ''),
+      jwksMaxStaleHours: range('ENTRA_JWKS_MAX_STALE_HOURS', 72, 25, 168, errors),
     },
     clamav: {
       host: process.env.CLAMAV_HOST || undefined,
