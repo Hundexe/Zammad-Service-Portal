@@ -19,12 +19,18 @@ const jwk = (key: KeyObject, kid: string, extra: Record<string, unknown> = {}) =
 
 let keys: unknown[] = [jwk(k1.publicKey, 'k1')];
 let jwksFetches = 0;
+let jwksFail = false;
+let jwksDelay = 0;
 const fetchImpl = (async (input: string | URL) => {
   const url = String(input);
   if (url.endsWith('/.well-known/openid-configuration')) {
     return Response.json({ issuer: `${AUTH}/${TENANT}/v2.0`, authorization_endpoint: `${AUTH}/authorize`, token_endpoint: `${AUTH}/token`, jwks_uri: `${AUTH}/keys` });
   }
-  if (url === `${AUTH}/keys`) { jwksFetches++; return Response.json({ keys }); }
+  if (url === `${AUTH}/keys`) {
+    jwksFetches++;
+    if (jwksDelay) await new Promise((r) => setTimeout(r, jwksDelay));
+    return jwksFail ? new Response('kaputt', { status: 500 }) : Response.json({ keys });
+  }
   return new Response('not found', { status: 404 });
 }) as typeof fetch;
 
@@ -140,5 +146,85 @@ describe('OIDC: ID-Token-Prüfung (#2)', () => {
     const c = client([TENANT, OTHER_TENANT]);
     await c.verifyIdToken(sign(claims({ tid: OTHER_TENANT, iss: `${AUTH}/${OTHER_TENANT}/v2.0` })), tx);
     await assert.rejects(c.verifyIdToken(sign(claims({ tid: OTHER_TENANT, iss: `${AUTH}/${TENANT}/v2.0` })), tx), /Aussteller/);
+  });
+});
+
+describe('OIDC: unbekannte Schlüssel-IDs und JWKS-Erneuerung (zweites Review)', () => {
+  const fresh = async () => {
+    keys = [jwk(k1.publicKey, 'k1')];
+    jwksFail = false; jwksDelay = 0;
+    const c = client();
+    await c.verifyIdToken(sign(claims()), tx);
+    jwksFetches = 0;
+    return c;
+  };
+
+  test('viele erfundene kid-Werte lösen keinen einzigen zusätzlichen Abruf aus', async () => {
+    const c = await fresh();
+    for (let i = 0; i < 25; i++) {
+      await assert.rejects(c.verifyIdToken(sign(claims(), { kid: `erfunden-${i}` }), tx), /Unbekannter Signaturschlüssel/);
+    }
+    assert.equal(jwksFetches, 0);
+  });
+
+  test('ungültige kid-Werte (zu lang, Steuerzeichen) werden ohne Abruf abgelehnt', async () => {
+    const c = await fresh();
+    (c as any).keysAt = 0;
+    for (const kid of ['x'.repeat(129), 'a\nb', 'a b', 'schlüssel', '']) {
+      await assert.rejects(c.verifyIdToken(sign(claims(), { kid }), tx), /Schlüssel-ID ungültig|Algorithmus/, JSON.stringify(kid));
+    }
+    assert.equal(jwksFetches, 0);
+  });
+
+  test('gleichzeitige Anmeldungen mit neuem kid teilen sich einen Abruf', async () => {
+    const c = await fresh();
+    keys = [jwk(k1.publicKey, 'k1'), jwk(k2.publicKey, 'k2')];
+    (c as any).keysAt = Date.now() - 6 * 60_000;
+    jwksDelay = 50;
+    await Promise.all(Array.from({ length: 10 }, () => c.verifyIdToken(sign(claims(), { key: k2.privateKey, kid: 'k2' }), tx)));
+    assert.equal(jwksFetches, 1);
+    jwksDelay = 0;
+  });
+
+  test('nach 24 Stunden wird die Liste erneuert: zurückgezogene Schlüssel gelten nicht mehr', async () => {
+    const c = await fresh();
+    keys = [jwk(k2.publicKey, 'k2')]; // k1 zurückgezogen
+    (c as any).keysOkAt = Date.now() - 25 * 3600_000;
+    (c as any).keysAt = Date.now() - 25 * 3600_000;
+    await assert.rejects(c.verifyIdToken(sign(claims()), tx), /Unbekannter Signaturschlüssel/);
+    assert.equal(jwksFetches, 1);
+    await c.verifyIdToken(sign(claims(), { key: k2.privateKey, kid: 'k2' }), tx);
+  });
+
+  test('ist das JWKS beim Erneuern nicht erreichbar, bleibt die bisherige Liste in Gebrauch', async () => {
+    const c = await fresh();
+    jwksFail = true;
+    (c as any).keysOkAt = Date.now() - 25 * 3600_000;
+    (c as any).keysAt = Date.now() - 25 * 3600_000;
+    await c.verifyIdToken(sign(claims()), tx);
+    assert.equal(jwksFetches, 1);
+    jwksFail = false;
+  });
+
+  test('leere oder kaputte Schlüsselliste ersetzt die gültige nicht', async () => {
+    const c = await fresh();
+    keys = [];
+    (c as any).keysAt = 0;
+    await assert.rejects(c.verifyIdToken(sign(claims(), { kid: 'neu' }), tx), /Unbekannter Signaturschlüssel/);
+    assert.equal(jwksFetches, 1);
+    await c.verifyIdToken(sign(claims()), tx); // k1 gilt weiter
+  });
+
+  test('erster Abruf scheitert: nächster Versuch frühestens nach 30 Sekunden', async () => {
+    keys = [jwk(k1.publicKey, 'k1')];
+    jwksFail = true; jwksFetches = 0;
+    const c = client();
+    await assert.rejects(c.verifyIdToken(sign(claims()), tx), /JWKS nicht abrufbar/);
+    await assert.rejects(c.verifyIdToken(sign(claims()), tx), /Unbekannter Signaturschlüssel/);
+    assert.equal(jwksFetches, 1);
+    jwksFail = false;
+    (c as any).keysAt = Date.now() - 31_000;
+    await c.verifyIdToken(sign(claims()), tx);
+    assert.equal(jwksFetches, 2);
   });
 });

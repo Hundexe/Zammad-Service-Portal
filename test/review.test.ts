@@ -3,9 +3,10 @@
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer as createHttpServer, type Server } from 'node:http';
+import { createServer as createHttpsServer } from 'node:https';
 import { createServer as createTcpServer } from 'node:net';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -359,6 +360,72 @@ describe('#7 SSRF: Prüfung der aufgelösten Adresse bei jeder Verbindung', () =
       await assert.rejects(open('file:///etc/passwd'), /http/);
     } finally {
       server.close();
+    }
+  });
+
+  test('IPv6 und eingebettete IPv4 in jeder Schreibweise (zweites Review)', async () => {
+    const blocked = [
+      '::ffff:127.0.0.1', '::ffff:7f00:1', '[::ffff:7f00:1]', '0:0:0:0:0:ffff:7f00:1', '::127.0.0.1', '::7f00:1', '::ffff:0:127.0.0.1',
+      '::ffff:169.254.169.254', '::ffff:a9fe:a9fe', '64:ff9b::169.254.169.254', '64:ff9b::a9fe:a9fe', '2002:a9fe:a9fe::1', '2002:7f00:1::',
+      '64:ff9b:1::1', '2001:0:4136:e378:8000:63bf:3fff:fdd2', '2001:db8::1', 'fe80::1%eth0', 'febf::1', 'ff02::1', '0::1', '::',
+      '::ffff:10.0.0.1', '::ffff:a00:1', '64:ff9b::10.0.0.1', 'fec0::1',
+    ];
+    for (const ip of blocked) assert.ok(blockedAddress(ip, strict), ip);
+    for (const ip of ['2a00:1450:4001:82a::200e', '::ffff:8.8.8.8', '2606:4700::6810:84e5']) assert.equal(blockedAddress(ip, strict), null, ip);
+    assert.equal(blockedAddress('::ffff:10.0.0.1', { allowPrivate: true, allowLoopback: false }), null, 'privat erlaubt → auch eingebettet erlaubt');
+    // So normalisiert der URL-Parser verschiedene Schreibweisen – alle müssen gesperrt bleiben
+    for (const u of ['http://[::ffff:127.0.0.1]/', 'http://[::127.0.0.1]/', 'http://0x7f.1/', 'http://2130706433/', 'http://017700000001/', 'http://127.1/', 'http://[64:ff9b::169.254.169.254]/']) {
+      const host = new URL(u).hostname;
+      assert.ok(blockedAddress(host, strict), `${u} → ${host}`);
+      const fake = { cfg: { env: 'development', allowPrivateTicketUrls: false, allowLoopbackTicketUrls: false } } as unknown as App;
+      assert.ok(await validateSystemUrl(fake, u), u);
+      await assert.rejects(guardedFetch(strict)(u), BlockedAddressError, u);
+    }
+  });
+
+  test('TLS: Zertifikat und Hostname werden auch nach der IP-Prüfung geprüft, SNI geht mit', async (t) => {
+    const dir = mkdtempSync(join(tmpdir(), 'zsp-tls-'));
+    const ssl = (args: string[]) => execFileSync('openssl', args, { cwd: dir, stdio: 'pipe' });
+    try {
+      ssl(['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:P-256', '-nodes', '-keyout', 'ca.key', '-out', 'ca.pem', '-days', '2', '-subj', '/CN=Test-CA']);
+    } catch {
+      t.skip('openssl nicht vorhanden');
+      return;
+    }
+    const leaf = (name: string, san: string) => {
+      ssl(['req', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:P-256', '-nodes', '-keyout', `${name}.key`, '-out', `${name}.csr`, '-subj', `/CN=${name}`]);
+      writeFileSync(join(dir, `${name}.ext`), `subjectAltName=${san}\n`);
+      ssl(['x509', '-req', '-in', `${name}.csr`, '-CA', 'ca.pem', '-CAkey', 'ca.key', '-CAcreateserial', '-out', `${name}.pem`, '-days', '2', '-extfile', `${name}.ext`]);
+      return { key: readFileSync(join(dir, `${name}.key`)), cert: readFileSync(join(dir, `${name}.pem`)) };
+    };
+    const ca = readFileSync(join(dir, 'ca.pem'));
+    const serve = async (cert: { key: Buffer; cert: Buffer }) => {
+      const seen: (string | false | undefined)[] = [];
+      const srv = createHttpsServer({ ...cert }, (_req, res) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"ok":true}'); });
+      srv.on('secureConnection', (s: any) => seen.push(s.servername));
+      await new Promise<void>((r) => srv.listen(0, '127.0.0.1', () => r()));
+      return { port: (srv.address() as AddressInfo).port, seen, close: () => new Promise<void>((r) => { srv.closeAllConnections(); srv.close(() => r()); }) };
+    };
+    const open = guardedFetch({ allowPrivate: true, allowLoopback: true, ca });
+    try {
+      const good = await serve(leaf('localhost', 'DNS:localhost'));
+      try {
+        assert.deepEqual(await (await open(`https://localhost:${good.port}/`)).json(), { ok: true });
+        assert.equal(good.seen.at(-1), 'localhost', 'SNI = Hostname, obwohl zur geprüften IP verbunden wird');
+        await assert.rejects(open(`https://127.0.0.1:${good.port}/`), /IP|altname|match/i, 'IP in der URL, aber nicht im Zertifikat');
+        await assert.rejects(guardedFetch({ allowPrivate: true, allowLoopback: true })(`https://localhost:${good.port}/`), /self-signed|certificate|issuer/i, 'fremde CA');
+      } finally { await good.close(); }
+      const other = await serve(leaf('zammad', 'DNS:zammad.example.org'));
+      try {
+        await assert.rejects(open(`https://localhost:${other.port}/`), /altname|match|Hostname/i, 'Zertifikat für einen anderen Namen');
+      } finally { await other.close(); }
+      const ipCert = await serve(leaf('ip', 'IP:127.0.0.1'));
+      try {
+        assert.deepEqual(await (await open(`https://127.0.0.1:${ipCert.port}/`)).json(), { ok: true }, 'IP-SAN passt');
+        assert.ok(!ipCert.seen.at(-1), 'kein SNI bei IP-Adresse');
+      } finally { await ipCert.close(); }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 

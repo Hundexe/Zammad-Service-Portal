@@ -1,5 +1,17 @@
 # Änderungen
 
+## 1.3.1 – 27.10.2026
+
+Nachbesserungen zum zweiten Review (docs/REVIEW-2026-10.md, Abschnitt „Nachtrag“):
+
+- **SSRF, behoben:** IPv4-mapped IPv6-Adressen in Hex-Schreibweise (`[::ffff:127.0.0.1]` wird vom URL-Parser zu `::ffff:7f00:1`) wurden nicht als Loopback erkannt. IPv6 wird jetzt vollständig ausgewertet, inklusive IPv4-kompatibel, NAT64, 6to4; Teredo, Dokumentations- und Site-Local-Adressen gesperrt
+- TLS: SNI und Hostname-Prüfung ausdrücklich gesetzt und getestet (Name in der URL: SNI + Namensprüfung trotz Verbindung zur geprüften IP; IP in der URL: kein SNI, IP-SAN nötig)
+- OIDC/JWKS: unbekannte und ungültige `kid`-Werte lösen keine Abruf-Flut aus, gleichzeitige Anfragen teilen sich einen Abruf, Schlüsselliste wird nach 24 h erneuert (zurückgezogene Schlüssel gelten nicht mehr), leere/kaputte Listen ersetzen die gültige nicht, nach Fehlschlag Wiederholung frühestens nach 30 s
+- Offizieller Release-Signaturschlüssel in `deploy/release_signers`, von `install.sh` übernommen
+- README auf aktuellem Stand
+
+Tests: 9 neue, insgesamt 196.
+
 ## 1.3.0 – 27.10.2026
 
 Umsetzung des externen Reviews (docs/REVIEW-2026-10.md, Issues #1–#14).

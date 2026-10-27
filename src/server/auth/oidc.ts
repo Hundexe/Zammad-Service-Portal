@@ -27,11 +27,22 @@ export interface IdClaims {
 
 const b64url = (b: Buffer | string) => Buffer.from(b).toString('base64url');
 
+/** Erlaubte Schlüssel-IDs (Entra: Base64url-artig, kurz) */
+const KID = /^[A-Za-z0-9._~+\/=-]{1,128}$/;
+const KEYS_MIN_REFRESH = 5 * 60_000;
+const KEYS_RETRY_AFTER_ERROR = 30_000;
+const KEYS_MAX_AGE = 24 * 3600_000;
+
 export class EntraClient {
   private meta?: Metadata;
   private metaAt = 0;
   private keys = new Map<string, KeyObject>();
+  /** letzter Abrufversuch des JWKS (Grundlage der Ratenbegrenzung) */
   private keysAt = 0;
+  /** letzter erfolgreicher Abruf */
+  private keysOkAt = 0;
+  /** laufender Abruf – gleichzeitige Anmeldungen teilen sich einen */
+  private keysLoading: Promise<void> | null = null;
 
   private cfg: Config;
   private fetchImpl: typeof fetch;
@@ -66,26 +77,57 @@ export class EntraClient {
     return m;
   }
 
+  /** JWKS laden. Nur gültige RSA-Signaturschlüssel ≥ 2048 Bit; eine leere oder kaputte Liste ersetzt die bisherige nicht. */
+  private loadKeys(): Promise<void> {
+    if (this.keysLoading) return this.keysLoading;
+    this.keysAt = Date.now();
+    this.keysLoading = (async () => {
+      const meta = await this.metadata();
+      const r = await this.fetchImpl(meta.jwks_uri, { signal: AbortSignal.timeout(10000) });
+      if (!r.ok) throw new Error(`JWKS nicht abrufbar (${r.status})`);
+      const jwks = (await r.json()) as { keys?: Array<Record<string, unknown>> };
+      const next = new Map<string, KeyObject>();
+      for (const k of Array.isArray(jwks?.keys) ? jwks.keys : []) {
+        if (k.kty !== 'RSA' || typeof k.kid !== 'string' || !KID.test(k.kid)) continue;
+        if (k.use !== undefined && k.use !== 'sig') continue;
+        if (k.alg !== undefined && k.alg !== 'RS256') continue;
+        try {
+          const pub = createPublicKey({ key: { kty: 'RSA', n: k.n, e: k.e } as any, format: 'jwk' });
+          // Zu kurze (oder kaputte) Schlüssel nie verwenden
+          if ((pub.asymmetricKeyDetails?.modulusLength ?? 0) >= 2048) next.set(k.kid, pub);
+        } catch { /* ungültiger Schlüssel */ }
+        if (next.size >= 50) break;
+      }
+      if (!next.size) {
+        log.warn('JWKS ohne verwendbare Schlüssel – bisherige Schlüssel bleiben', { vorher: this.keys.size });
+        return;
+      }
+      this.keys = next;
+      this.keysOkAt = Date.now();
+    })().finally(() => { this.keysLoading = null; });
+    return this.keysLoading;
+  }
+
+  /**
+   * Signaturschlüssel zu einer Schlüssel-ID.
+   * - Bekannte ID: aus dem Speicher. Ist die Liste älter als 24 Stunden, wird sie vorher erneuert
+   *   (entfernte Schlüssel gelten dann nicht mehr); schlägt das fehl, bleibt die alte Liste in Gebrauch.
+   * - Unbekannte ID (z. B. Schlüsselwechsel bei Microsoft): JWKS neu laden – aber höchstens alle 5 Minuten
+   *   (nach einem Fehlschlag alle 30 Sekunden). Erfundene IDs lösen so keine Abruf-Flut aus.
+   * - Gleichzeitige Anfragen teilen sich einen Abruf.
+   */
   private async key(kid: string): Promise<KeyObject> {
+    if (!KID.test(kid)) throw new Error('ID-Token: Schlüssel-ID ungültig');
+    const now = Date.now();
+    if (this.keysLoading) await this.keysLoading.catch(() => undefined);
+    if (this.keysOkAt && now - this.keysOkAt > KEYS_MAX_AGE && now - this.keysAt > KEYS_RETRY_AFTER_ERROR) {
+      await this.loadKeys().catch((err) => log.warn('JWKS nicht erneuerbar – bisherige Schlüssel bleiben in Gebrauch', { error: (err as Error).message }));
+    }
     const cached = this.keys.get(kid);
     if (cached) return cached;
-    // Unbekannte Schlüssel-ID: JWKS neu laden (höchstens alle 5 Minuten).
-    if (Date.now() - this.keysAt < 5 * 60_000 && this.keys.size > 0) throw new Error('Unbekannter Signaturschlüssel');
-    const meta = await this.metadata();
-    const r = await this.fetchImpl(meta.jwks_uri, { signal: AbortSignal.timeout(10000) });
-    if (!r.ok) throw new Error(`JWKS nicht abrufbar (${r.status})`);
-    const jwks = (await r.json()) as { keys: Array<Record<string, unknown>> };
-    this.keys.clear();
-    for (const k of jwks.keys ?? []) {
-      if (k.kty !== 'RSA' || typeof k.kid !== 'string') continue;
-      if (k.use !== undefined && k.use !== 'sig') continue;
-      try {
-        const pub = createPublicKey({ key: { kty: 'RSA', n: k.n, e: k.e } as any, format: 'jwk' });
-        // Zu kurze (oder kaputte) Schlüssel nie verwenden
-        if ((pub.asymmetricKeyDetails?.modulusLength ?? 0) >= 2048) this.keys.set(k.kid, pub);
-      } catch { /* ungültiger Schlüssel */ }
-    }
-    this.keysAt = Date.now();
+    const wait = this.keysOkAt ? KEYS_MIN_REFRESH : KEYS_RETRY_AFTER_ERROR;
+    if (Date.now() - this.keysAt < wait) throw new Error('Unbekannter Signaturschlüssel');
+    await this.loadKeys();
     const key = this.keys.get(kid);
     if (!key) throw new Error('Unbekannter Signaturschlüssel');
     return key;

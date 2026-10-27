@@ -21,29 +21,88 @@ export interface GuardOptions {
   allowLoopback: boolean;
   /** Größte Antwort in Byte */
   maxBytes?: number;
+  /** Zusätzliche vertrauenswürdige Stammzertifikate (PEM), z. B. interne CA – sonst die des Systems bzw. NODE_EXTRA_CA_CERTS */
+  ca?: string | Buffer;
 }
 
-/** Grund, warum eine Adresse gesperrt ist – oder null, wenn sie erlaubt ist. */
-export function blockedAddress(ip: string, opts: Pick<GuardOptions, 'allowPrivate' | 'allowLoopback'>): string | null {
-  const raw = ip.replace(/^\[|\]$/g, '').toLowerCase();
-  const v4 = raw.startsWith('::ffff:') && isIP(raw.slice(7)) === 4 ? raw.slice(7) : raw;
-  if (isIP(v4) === 4) {
-    const [a, b] = v4.split('.').map(Number);
-    if (a === 127) return opts.allowLoopback ? null : 'Loopback';
-    if (a === 169 && b === 254) return 'Link-Local / Metadaten-Dienst';
-    if (a === 0) return 'ungültige Adresse';
-    if (a >= 224) return 'Multicast / reserviert';
-    const priv = a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
-    if (priv && !opts.allowPrivate) return 'privates Netz';
-    return null;
+type AddrOpts = Pick<GuardOptions, 'allowPrivate' | 'allowLoopback'>;
+
+/** IPv6-Adresse als 16 Bytes (auch mit eingebetteter IPv4 am Ende, z. B. ::ffff:127.0.0.1); null, wenn ungültig. */
+export function ipv6Bytes(ip: string): Uint8Array | null {
+  let s = ip.replace(/^\[|\]$/g, '').toLowerCase();
+  const zone = s.indexOf('%');
+  if (zone >= 0) s = s.slice(0, zone);
+  if (isIP(s) !== 6) return null;
+  const tail: number[] = [];
+  const dotted = /(\d+\.\d+\.\d+\.\d+)$/.exec(s);
+  if (dotted) {
+    const [a, b, c, d] = dotted[1].split('.').map(Number);
+    tail.push((a << 8) | b, (c << 8) | d);
+    s = s.slice(0, -dotted[1].length);
+    if (!s.endsWith('::')) s = s.slice(0, -1); // abschließenden Doppelpunkt vor der IPv4 entfernen
   }
-  if (isIP(v4) !== 6) return 'keine IP-Adresse';
-  if (v4 === '::1') return opts.allowLoopback ? null : 'Loopback';
-  if (v4 === '::') return 'ungültige Adresse';
-  if (/^fe[89ab]/.test(v4)) return 'Link-Local';
-  if (v4.startsWith('ff')) return 'Multicast';
-  if (v4 === 'fd00:ec2::254') return 'Metadaten-Dienst';
-  if (/^f[cd]/.test(v4) && !opts.allowPrivate) return 'privates Netz';
+  const [headS, restS] = s.includes('::') ? s.split('::') : [s, null];
+  const parse = (x: string) => (x ? x.split(':').filter((p) => p !== '').map((h) => Number.parseInt(h, 16)) : []);
+  const head = parse(headS);
+  const rest = restS === null ? [] : parse(restS);
+  const fill = 8 - tail.length - head.length - rest.length;
+  if (restS === null && fill !== 0) return null;
+  if (fill < 0) return null;
+  const words = [...head, ...Array(restS === null ? 0 : fill).fill(0), ...rest, ...tail];
+  if (words.length !== 8 || words.some((w) => !(w >= 0 && w <= 0xffff))) return null;
+  const out = new Uint8Array(16);
+  words.forEach((w, i) => { out[2 * i] = w >> 8; out[2 * i + 1] = w & 0xff; });
+  return out;
+}
+
+function v4Reason(a: number, b: number, opts: AddrOpts): string | null {
+  if (a === 127) return opts.allowLoopback ? null : 'Loopback';
+  if (a === 169 && b === 254) return 'Link-Local / Metadaten-Dienst';
+  if (a === 0) return 'ungültige Adresse';
+  if (a >= 224) return 'Multicast / reserviert';
+  if (a === 198 && (b === 18 || b === 19)) return 'reserviert (Benchmark-Netz)';
+  const priv = a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || (a === 192 && b === 0);
+  if (priv && !opts.allowPrivate) return 'privates Netz';
+  return null;
+}
+
+/**
+ * Grund, warum eine Adresse gesperrt ist – oder null, wenn sie erlaubt ist.
+ * IPv6 wird vollständig ausgewertet: Adressen, die eine IPv4-Adresse einbetten (IPv4-mapped ::ffff:0:0/96,
+ * IPv4-kompatibel ::/96, IPv4-translated ::ffff:0:0:0/96, NAT64 64:ff9b::/96 und 64:ff9b:1::/48, 6to4 2002::/16),
+ * werden nach der eingebetteten IPv4-Adresse beurteilt – in jeder Schreibweise (::ffff:7f00:1 = 127.0.0.1).
+ * Teredo (2001::/32) und Dokumentationsadressen werden gesperrt, weil ihr Ziel nicht prüfbar bzw. nicht echt ist.
+ */
+export function blockedAddress(ip: string, opts: AddrOpts): string | null {
+  const raw = ip.replace(/^\[|\]$/g, '').toLowerCase();
+  if (isIP(raw) === 4) {
+    const [a, b] = raw.split('.').map(Number);
+    return v4Reason(a, b, opts);
+  }
+  const x = ipv6Bytes(raw);
+  if (!x) return 'keine IP-Adresse';
+  const zero = (from: number, to: number) => x.slice(from, to).every((v) => v === 0);
+  const embedded = (at: number): string | null => {
+    const why = v4Reason(x[at], x[at + 1], opts);
+    return why ? `${why} (eingebettete IPv4 ${x[at]}.${x[at + 1]}.${x[at + 2]}.${x[at + 3]})` : null;
+  };
+  if (zero(0, 16)) return 'ungültige Adresse';
+  if (zero(0, 15) && x[15] === 1) return opts.allowLoopback ? null : 'Loopback';
+  if (zero(0, 10) && x[10] === 0xff && x[11] === 0xff) return embedded(12);          // ::ffff:a.b.c.d
+  if (zero(0, 8) && x[8] === 0xff && x[9] === 0xff && zero(10, 12)) return embedded(12); // ::ffff:0:a.b.c.d
+  if (zero(0, 12)) return embedded(12);                                              // ::a.b.c.d
+  if (x[0] === 0x00 && x[1] === 0x64 && x[2] === 0xff && x[3] === 0x9b) {             // NAT64
+    if (zero(4, 12)) return embedded(12);
+    if (x[4] === 0 && x[5] === 1) return 'NAT64 (lokales Präfix)';
+  }
+  if (x[0] === 0x20 && x[1] === 0x02) return embedded(2);                            // 6to4
+  if (x[0] === 0x20 && x[1] === 0x01 && x[2] === 0 && x[3] === 0) return 'Teredo';
+  if (x[0] === 0x20 && x[1] === 0x01 && x[2] === 0x0d && x[3] === 0xb8) return 'Dokumentationsadresse';
+  if (x[0] === 0xfe && (x[1] & 0xc0) === 0x80) return 'Link-Local';
+  if (x[0] === 0xff) return 'Multicast';
+  if (x[0] === 0xfd && x[1] === 0x00 && x[2] === 0x0e && x[3] === 0xc2 && zero(4, 14) && x[14] === 0x02 && x[15] === 0x54) return 'Metadaten-Dienst';
+  if (x[0] === 0xfe && (x[1] & 0xc0) === 0xc0 && !opts.allowPrivate) return 'privates Netz (site-local)';
+  if ((x[0] & 0xfe) === 0xfc && !opts.allowPrivate) return 'privates Netz';
   return null;
 }
 
@@ -96,7 +155,13 @@ export function guardedFetch(opts: GuardOptions): typeof fetch {
     const mod = url.protocol === 'https:' ? https : http;
 
     return await new Promise<Response>((resolve, reject) => {
-      const req = mod.request(url, { method, headers, lookup: lookup as any, signal: init.signal ?? undefined, agent: false }, (res) => {
+      // TLS: Zertifikat und Hostname werden immer geprüft (rejectUnauthorized bleibt an). Bei einem Namen geht er
+      // als SNI mit und muss im Zertifikat stehen – auch wenn die Verbindung zur vorher geprüften IP geht.
+      // Bei einer IP-Adresse in der URL wird kein SNI gesendet und die IP muss als IP-SAN im Zertifikat stehen.
+      const tlsOpts = url.protocol === 'https:'
+        ? { rejectUnauthorized: true, ...(isIP(host) ? {} : { servername: host }), ...(opts.ca ? { ca: opts.ca } : {}) }
+        : {};
+      const req = mod.request(url, { method, headers, lookup: lookup as any, signal: init.signal ?? undefined, agent: false, ...tlsOpts }, (res) => {
         const status = res.statusCode ?? 0;
         if (status >= 300 && status < 400) {
           res.resume();

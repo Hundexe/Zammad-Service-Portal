@@ -4,7 +4,7 @@ Self-Service-Portal für IT-Abteilungen mit einem oder mehreren Zammad-Systemen:
 
 **[▶ Demo im Browser ansehen](https://hundexe.github.io/Zammad-Service-Portal/)** – ohne Installation, mit Beispieldaten (Portal und Verwaltung zum Durchklicken).
 
-**Aktuelle Version: 1.3.0** – mit allen Punkten aus einem externen Architektur- und Sicherheits-Review ([was geändert wurde](docs/REVIEW-2026-10.md), [Änderungen](CHANGELOG.md)).
+**Aktuelle Version: 1.3.1** – mit allen Punkten aus einem externen Architektur- und Sicherheits-Review ([was geändert wurde](docs/REVIEW-2026-10.md), [Änderungen](CHANGELOG.md)).
 
 ![Startseite des Portals](docs/screenshots/02-portal-start.png)
 
@@ -92,7 +92,7 @@ TypeScript auf Node.js 24 ohne externe Laufzeitpakete (HTTP, Krypto, SQLite und 
 ## Tests
 
 ```bash
-npm test                        # 187 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
+npm test                        # 196 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
 npm run typecheck
 node tools/loadtest.ts          # Lasttest: 50 Logins, 50 Ticketansichten, 20 Anfragen mit Anhang
 bash tools/secret-scan.sh       # vor jeder Veröffentlichung: keine Geheimnisse im Repository
@@ -103,8 +103,8 @@ bash tools/secret-scan.sh       # vor jeder Veröffentlichung: keine Geheimnisse
 | Sicherheit: Anmeldung, Sitzungen, CSRF, Rechte, OIDC | 34 |
 | Sicherheit: IDOR, Injection, Uploads, SSRF, Datenablage, Audit-Log | 30 |
 | Sicherheit: lokale Anmeldung, Sperre, 2FA | 20 |
-| Review: Token-Prüfung im Detail | 22 |
-| Review: Zugriffe, Zammad-Felder und -Gruppen, Kundenzuordnung, SSRF-Schutz, Uploads, Backup/Restore, Zustellung, Step-up, Monitoring | 37 |
+| Review: Token-Prüfung im Detail, Schlüsselwechsel und JWKS-Erneuerung | 29 |
+| Review: Zugriffe, Zammad-Felder und -Gruppen, Kundenzuordnung, SSRF-Schutz (inkl. IPv6 und TLS), Uploads, Backup/Restore, Zustellung, Step-up, Monitoring | 39 |
 | Grundfunktionen, Ende-zu-Ende, Verwaltung, Updater | 44 |
 
 Die Tests starten Portal, Zammad- und Microsoft-Simulator im selben Prozess – es wird nichts weiter benötigt. Lasttest-Ergebnisse: [docs/LASTTEST.md](docs/LASTTEST.md).
