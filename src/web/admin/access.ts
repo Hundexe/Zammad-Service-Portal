@@ -2,7 +2,7 @@
 import { h, mount, fmtDate } from '../lib/dom.ts';
 import { get, post, put, del } from '../lib/api.ts';
 import { badge, button, checkbox, confirmDialog, copyButton, dialog, errorText, fieldWrap, input, notice, pageHead, select, table, toast } from '../lib/ui.ts';
-import { navigate, state } from '../lib/app.ts';
+import { navigate, state, curPath, curSearch } from '../lib/app.ts';
 import { admin, loadAdminSystems } from './common.ts';
 
 interface Role { id: string; name: string; description: string; permissions: string[]; builtin: boolean }
@@ -31,7 +31,7 @@ export async function rolesPage() {
     (close) => [button('Abbrechen', () => close(), { kind: 'ghost' }), button('Speichern', async () => {
       try {
         if (role) await put(`/api/admin/roles/${role.id}`, v); else await post('/api/admin/roles', v);
-        close(); toast('Gespeichert'); navigate(location.pathname, true);
+        close(); toast('Gespeichert'); navigate(curPath(), true);
       } catch (err) { mount(msg, notice('error', errorText(err))); }
     }, { kind: 'primary' })], { wide: true });
   };
@@ -49,7 +49,7 @@ export async function rolesPage() {
       h('div', { class: 'field' }, h('label', { attrs: { for: 'assign-value' } }, 'Gruppe oder Person'), (() => { valueInput.id = 'assign-value'; return valueInput; })(), valueHelp),
       fieldWrap(select(v.systemId, admin.systems.map((s) => ({ value: s.id, label: s.name })), (x) => { v.systemId = x; }, { empty: 'Alle Ticketsysteme' }), { label: 'Gilt für' })),
     (close) => [button('Abbrechen', () => close(), { kind: 'ghost' }), button('Zuordnen', async () => {
-      try { await post('/api/admin/role-assignments', { ...v, systemId: v.systemId || null }); close(); toast('Zugeordnet'); navigate(location.pathname, true); } catch (err) { mount(msg, notice('error', errorText(err))); }
+      try { await post('/api/admin/role-assignments', { ...v, systemId: v.systemId || null }); close(); toast('Zugeordnet'); navigate(curPath(), true); } catch (err) { mount(msg, notice('error', errorText(err))); }
     }, { kind: 'primary' })]);
   };
 
@@ -62,14 +62,14 @@ export async function rolesPage() {
       { label: 'Gilt für', render: (a) => a.systemName },
       { label: '', render: (a) => button('Entfernen', async () => {
         if (!await confirmDialog('Zuordnung entfernen?', `${a.subjectLabel} verliert die Rolle „${roleName(a.roleId)}“ (${a.systemName}).`, 'Entfernen', true)) return;
-        try { await del(`/api/admin/role-assignments/${a.id}`); toast('Entfernt'); navigate(location.pathname, true); } catch (err) { toast(errorText(err), 'error'); }
+        try { await del(`/api/admin/role-assignments/${a.id}`); toast('Entfernt'); navigate(curPath(), true); } catch (err) { toast(errorText(err), 'error'); }
       }, { kind: 'ghost', icon: 'trash' }) },
     ])),
     h('section', { class: 'panel' }, h('h2', null, 'Rollen'), table(r.roles, [
       { label: 'Rolle', render: (x) => h('span', null, h('strong', null, x.name), x.builtin ? h('span', { class: 'muted small' }, ' eingebaut') : null) },
       { label: 'Rechte', class: 'grow', render: (x) => x.permissions.map(permLabel).join(', ') },
       { label: '', render: (x) => x.builtin ? null : h('span', { class: 'row' }, button('Bearbeiten', () => editRole(x), { kind: 'ghost' }), button('Löschen', async () => {
-        if (await confirmDialog('Rolle löschen?', `„${x.name}“ und alle Zuordnungen werden gelöscht.`, 'Löschen', true)) { await del(`/api/admin/roles/${x.id}`); toast('Gelöscht'); navigate(location.pathname, true); }
+        if (await confirmDialog('Rolle löschen?', `„${x.name}“ und alle Zuordnungen werden gelöscht.`, 'Löschen', true)) { await del(`/api/admin/roles/${x.id}`); toast('Gelöscht'); navigate(curPath(), true); }
       }, { kind: 'ghost', icon: 'trash' })) },
     ])),
   );
@@ -103,7 +103,7 @@ export async function usersPage(_p: Record<string, string>, q: URLSearchParams) 
         const res = await post<{ username: string; password: string }>('/api/admin/users', v);
         close();
         await passwordDialog('Benutzer angelegt', res.username, res.password);
-        navigate(location.pathname, true);
+        navigate(curPath(), true);
       } catch (err) { mount(msg, notice('error', errorText(err))); }
     }, { kind: 'primary' })]);
   };
@@ -129,11 +129,11 @@ export async function usersPage(_p: Record<string, string>, q: URLSearchParams) 
           const ok = await dialog('Neues Passwort erzeugen?', h('div', { class: 'stack' }, h('p', null, `Für ${u.displayName} wird ein neues Passwort erzeugt. Alle Sitzungen werden beendet.`), checkbox(false, 'Auch die Authenticator-App zurücksetzen (z. B. neues Handy)', (x) => { resetTotp = x; })),
             (close) => [button('Abbrechen', () => close(false), { kind: 'ghost' }), button('Erzeugen', () => close(true), { kind: 'primary' })]);
           if (!ok) return;
-          try { const res = await post<{ username: string; password: string }>(`/api/admin/users/${u.id}/reset-password`, { resetTotp }); await passwordDialog('Neues Passwort', res.username, res.password); navigate(location.pathname + location.search, true); } catch (err) { toast(errorText(err), 'error'); }
+          try { const res = await post<{ username: string; password: string }>(`/api/admin/users/${u.id}/reset-password`, { resetTotp }); await passwordDialog('Neues Passwort', res.username, res.password); navigate(curPath() + curSearch(), true); } catch (err) { toast(errorText(err), 'error'); }
         }, { kind: 'ghost' }) : null,
-        u.locked ? button('Entsperren', async () => { await post(`/api/admin/users/${u.id}/unlock`); toast('Entsperrt'); navigate(location.pathname + location.search, true); }, { kind: 'ghost' }) : null,
+        u.locked ? button('Entsperren', async () => { await post(`/api/admin/users/${u.id}/unlock`); toast('Entsperrt'); navigate(curPath() + curSearch(), true); }, { kind: 'ghost' }) : null,
         u.id !== state.me?.user.id ? button(u.disabled ? 'Aktivieren' : 'Deaktivieren', async () => {
-          try { await put(`/api/admin/users/${u.id}`, { disabled: !u.disabled }); toast('Gespeichert'); navigate(location.pathname + location.search, true); } catch (err) { toast(errorText(err), 'error'); }
+          try { await put(`/api/admin/users/${u.id}`, { disabled: !u.disabled }); toast('Gespeichert'); navigate(curPath() + curSearch(), true); } catch (err) { toast(errorText(err), 'error'); }
         }, { kind: 'ghost' }) : null) },
     ], { empty: 'Keine Benutzer gefunden.' }));
 }

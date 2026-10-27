@@ -12,6 +12,8 @@ export class ApiError extends Error {
   }
 }
 
+import { demoBackend } from './env.ts';
+
 let csrf = '';
 export function setCsrf(token: string): void { csrf = token; }
 
@@ -26,21 +28,31 @@ export async function api<T = any>(method: string, path: string, body?: unknown,
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (method !== 'GET' && csrf) headers['X-CSRF-Token'] = csrf;
-  let res: Response;
-  try {
-    res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), credentials: 'same-origin', cache: 'no-store' });
-  } catch {
-    throw new ApiError(0, 'Keine Verbindung zum Server', 'network');
-  }
-  const text = await res.text();
+  let status: number;
   let data: any = null;
-  try { data = text ? JSON.parse(text) : null; } catch { /* kein JSON */ }
-  if (res.ok) return data as T;
-  const err = new ApiError(res.status, data?.error ?? `Fehler ${res.status}`, data?.code ?? 'error', data?.details);
-  if (res.status === 401 && (err.code === 'unauthenticated' || err.code === 'locked')) unauthorizedHandler?.();
+  const demo = demoBackend();
+  if (demo) {
+    // Statische Demo: der Simulator im Browser antwortet (Kopie, damit Seiten die Daten ändern dürfen)
+    const r = await demo.request(method, path, body === undefined ? undefined : JSON.parse(JSON.stringify(body)));
+    status = r.status;
+    data = r.data === undefined ? null : JSON.parse(JSON.stringify(r.data));
+  } else {
+    let res: Response;
+    try {
+      res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), credentials: 'same-origin', cache: 'no-store' });
+    } catch {
+      throw new ApiError(0, 'Keine Verbindung zum Server', 'network');
+    }
+    status = res.status;
+    const text = await res.text();
+    try { data = text ? JSON.parse(text) : null; } catch { /* kein JSON */ }
+  }
+  if (status >= 200 && status < 300) return data as T;
+  const err = new ApiError(status, data?.error ?? `Fehler ${status}`, data?.code ?? 'error', data?.details);
+  if (status === 401 && (err.code === 'unauthenticated' || err.code === 'locked')) unauthorizedHandler?.();
   // Sitzung braucht erst einen weiteren Schritt (z. B. 2FA einrichten, weil das Konto Admin-Rechte bekommen hat)
-  if (res.status === 403 && ['mfa_pending', 'password_change', 'totp_setup'].includes(err.code)) unauthorizedHandler?.();
-  if (res.status === 403 && err.code === 'stepup_required' && !retried && stepupHandler) {
+  if (status === 403 && ['mfa_pending', 'password_change', 'totp_setup'].includes(err.code)) unauthorizedHandler?.();
+  if (status === 403 && err.code === 'stepup_required' && !retried && stepupHandler) {
     if (await stepupHandler()) return api<T>(method, path, body, true);
   }
   throw err;

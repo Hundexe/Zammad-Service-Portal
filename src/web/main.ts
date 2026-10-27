@@ -3,6 +3,7 @@ import { h, mount, type Child } from './lib/dom.ts';
 import { get } from './lib/api.ts';
 import { applyBranding, currentSystem, link, loadMe, loadSystems, navBrand, themeToggle, render, route, selectSystem, setLayouts, setPrepare, state, userMenu, navigate } from './lib/app.ts';
 import { notice } from './lib/ui.ts';
+import { DEMO, setDemoBackend } from './lib/env.ts';
 import { loginPage } from './pages/login.ts';
 import { accountPage, formPage, homePage, requestsPage, ticketDetailPage, ticketsPage } from './pages/portal.ts';
 import { sidebar, loadAdminSystems, admin } from './admin/common.ts';
@@ -115,6 +116,14 @@ adminRoute('/admin/einstellungen', loginSettingsPage);
 
 async function boot() {
   try {
+    if (DEMO) {
+      // Statische Demo: Simulator laden, Hinweis einblenden
+      const { createDemoBackend } = await import('./demo/backend.ts');
+      setDemoBackend(await createDemoBackend());
+      document.body.appendChild(h('aside', { class: 'demo-banner', attrs: { role: 'note' } },
+        h('strong', null, 'Demo'), ' mit Beispieldaten – Änderungen bleiben nur in diesem Tab. ',
+        h('a', { attrs: { href: 'https://github.com/Hundexe/Zammad-Service-Portal', target: '_blank', rel: 'noopener noreferrer' } }, 'Projekt auf GitHub')));
+    }
     state.config = await get('/api/public/config');
     applyBranding(state.config!.branding);
     const me = await loadMe();

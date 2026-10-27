@@ -2,7 +2,7 @@
 import { h, mount, fmtDate, relTime } from '../lib/dom.ts';
 import { get, post } from '../lib/api.ts';
 import { badge, button, confirmDialog, emptyState, errorText, notice, pageHead, select, statusBadge, table, toast } from '../lib/ui.ts';
-import { can, link, navigate } from '../lib/app.ts';
+import { can, link, navigate, curPath, curSearch } from '../lib/app.ts';
 import { admin, loadAdminSystems } from './common.ts';
 
 export async function dashboardPage() {
@@ -48,7 +48,7 @@ export async function deliveryPage(_p: Record<string, string>, q: URLSearchParam
       { label: 'Ticket', class: 'num', render: (x) => x.ticketNumber ? `#${x.ticketNumber}` : '' },
       { label: 'Letzter Fehler', render: (x) => x.lastError ? h('span', { class: 'small' }, x.lastError) : '' },
       { label: '', render: (x) => x.status === 'failed' && can('system.manage', x.systemId) ? button('Erneut senden', async () => {
-        try { await post(`/api/admin/requests/${x.id}/retry`); toast('Wird erneut gesendet'); navigate(location.pathname + location.search, true); } catch (err) { toast(errorText(err), 'error'); }
+        try { await post(`/api/admin/requests/${x.id}/retry`); toast('Wird erneut gesendet'); navigate(curPath() + curSearch(), true); } catch (err) { toast(errorText(err), 'error'); }
       }, { kind: 'ghost', icon: 'refresh' }) : null },
     ], { empty: 'Keine Anfragen in dieser Ansicht.' }));
 }
@@ -121,7 +121,7 @@ export async function updatesPage() {
         { label: '', render: (x) => x.v === d.latestVersion ? badge('neueste', 'info') : '' },
         { label: '', render: (x) => can('update.install') ? button(`Auf ${x.v} aktualisieren`, async () => {
           if (!await confirmDialog(`Auf Version ${x.v} aktualisieren?`, 'Der Updater sichert zuerst die Datenbank, prüft die Signatur des Images und startet das Portal neu. Schlägt der Start fehl, wird automatisch auf die alte Version zurückgesetzt. Das Portal ist dabei ca. 1 Minute nicht erreichbar.', 'Update starten')) return;
-          try { await post('/api/admin/updates/install', { version: x.v }); toast('Update angefordert'); navigate(location.pathname, true); } catch (err) { toast(errorText(err), 'error'); }
+          try { await post('/api/admin/updates/install', { version: x.v }); toast('Update angefordert'); navigate(curPath(), true); } catch (err) { toast(errorText(err), 'error'); }
         }, { kind: 'primary' }) : null },
       ]) : h('p', null, 'Das Portal ist aktuell.'),
       d.changelog ? h('details', null, h('summary', null, 'Änderungen'), h('pre', { class: 'changelog' }, d.changelog)) : null),

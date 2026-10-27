@@ -7,6 +7,7 @@
 - Demo ohne Installation: `npm run demo` auf http://localhost:3000, auf Wunsch im Netz erreichbar
 - Aufruf über die IP-Adresse: Caddy liefert auch ohne SNI das richtige Zertifikat (`default_sni`)
 - Gemeinsame Hilfsfunktionen der Installationsskripte in `deploy/lib.sh`
+- Online-Demo auf GitHub Pages (statisch, kostenlos): Oberfläche mit Simulator im Browser, gebaut mit `tools/build-pages.ts`, veröffentlicht mit `tools/publish-pages.sh`
 
 ## 1.1.0 – 22.10.2026
 

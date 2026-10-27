@@ -1,8 +1,28 @@
 // Zustand, Router und Rahmen der Anwendung.
 import { h, icon, mount, type Child } from './dom.ts';
 import { ApiError, get, onStepupRequired, onUnauthorized, post, setCsrf } from './api.ts';
-import { button, dialog, errorText, fieldWrap, input, loading, notice } from './ui.ts';
+import { button, dialog, errorText, fieldWrap, input, loading, notice, toast } from './ui.ts';
 import type { Branding } from '../../shared/branding.ts';
+import { DEMO, demoBackend } from './env.ts';
+
+// ---------------------------------------------------------------- Adresse
+// Normal: echte Pfade (/s/…). In der statischen Demo: alles hinter dem # (#/s/…).
+function hashParts(): [string, string] {
+  const raw = location.hash.slice(1) || '/';
+  const i = raw.indexOf('?');
+  return i >= 0 ? [raw.slice(0, i), raw.slice(i)] : [raw, ''];
+}
+export function curPath(): string { return DEMO ? hashParts()[0] : location.pathname; }
+export function curSearch(): string { return DEMO ? hashParts()[1] : location.search; }
+/** Ändert die Adresse ohne neu zu zeichnen. */
+export function setUrl(path: string, replace = false): void {
+  const url = DEMO ? `#${path}` : path;
+  if (replace) history.replaceState(null, '', url); else history.pushState(null, '', url);
+}
+/** Adresse eines hochgeladenen Bildes (Logo, Favicon). */
+export function assetUrl(id: string): string {
+  return DEMO ? demoBackend()?.asset(id) ?? '' : `/api/assets/${id}`;
+}
 
 export interface Me {
   user: { id: string; kind: 'entra' | 'local'; username: string | null; displayName: string; email: string | null; department: string | null; totpEnabled: boolean };
@@ -45,13 +65,13 @@ export function applyBranding(b: Branding | undefined | null): void {
   root.style.setProperty('--band-text', br.headerTextColor);
   let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
   if (!link) { link = h('link', { attrs: { rel: 'icon' } }); document.head.appendChild(link); }
-  link.href = br.faviconId ? `/api/assets/${br.faviconId}` : '/favicon.svg';
+  link.href = br.faviconId ? assetUrl(br.faviconId) : DEMO ? 'favicon.svg' : '/favicon.svg';
 }
 
 export function logo(b: Branding, dark = false): HTMLElement {
   const id = (dark && b.logoDarkId) || b.logoLightId;
   return id
-    ? h('img', { class: 'brand-logo', attrs: { src: `/api/assets/${id}`, alt: b.displayName } })
+    ? h('img', { class: 'brand-logo', attrs: { src: assetUrl(id), alt: b.displayName } })
     : h('span', { class: 'brand-mark', attrs: { 'aria-hidden': 'true' } }, b.displayName.slice(0, 1));
 }
 
@@ -59,7 +79,7 @@ export function logo(b: Branding, dark = false): HTMLElement {
  *  (meist hell/weiß). Fehlt das passende Logo, erscheinen Farbkachel und Name. */
 export function navBrand(b: Branding): Child[] {
   const fallback = (): Child[] => [h('span', { class: 'brand-mark', attrs: { 'aria-hidden': 'true' } }, b.displayName.slice(0, 1)), h('span', { class: 'brand-name' }, b.displayName)];
-  const img = (id: string) => h('img', { class: 'brand-logo', attrs: { src: `/api/assets/${id}`, alt: b.displayName } });
+  const img = (id: string) => h('img', { class: 'brand-logo', attrs: { src: assetUrl(id), alt: b.displayName } });
   if (!b.logoLightId && !b.logoDarkId) return fallback();
   return [
     h('span', { class: 'theme-light-only' }, ...(b.logoLightId ? [img(b.logoLightId)] : fallback())),
@@ -144,10 +164,10 @@ let renderToken = 0;
 export async function render(): Promise<void> {
   const token = ++renderToken;
   const appEl = document.getElementById('app')!;
-  const path = location.pathname;
+  const path = curPath();
   const r = routes.find((x) => x.re.test(path));
   if (!r) { mount(appEl, layouts.bare(h('div', { class: 'center-page' }, h('h1', null, 'Seite nicht gefunden'), h('p', null, h('a', { href: '/', attrs: { 'data-link': '' } }, 'Zur Startseite'))), path)); return; }
-  if (r.auth && (!state.me || state.me.state !== 'active')) { navigate(`/login?ziel=${encodeURIComponent(path + location.search)}`, true); return; }
+  if (r.auth && (!state.me || state.me.state !== 'active')) { navigate(`/login?ziel=${encodeURIComponent(path + curSearch())}`, true); return; }
   const m = r.re.exec(path)!;
   const params: Record<string, string> = {};
   r.keys.forEach((k, i) => { params[k] = decodeURIComponent(m[i + 1]); });
@@ -157,7 +177,7 @@ export async function render(): Promise<void> {
   if (token !== renderToken) return;
   mount(appEl, layouts[r.layout](holder, path));
   try {
-    const content = await r.render(params, new URLSearchParams(location.search));
+    const content = await r.render(params, new URLSearchParams(curSearch()));
     if (token !== renderToken) return;
     mount(holder, content);
     // Fokus für Screenreader auf die Überschrift
@@ -171,7 +191,7 @@ export async function render(): Promise<void> {
 }
 
 export function navigate(path: string, replace = false): void {
-  if (replace) history.replaceState(null, '', path); else history.pushState(null, '', path);
+  setUrl(path, replace);
   void render();
   window.scrollTo({ top: 0 });
 }
@@ -184,9 +204,17 @@ document.addEventListener('click', (e) => {
   const a = (e.target as HTMLElement).closest?.('a[data-link]') as HTMLAnchorElement | null;
   if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
   e.preventDefault();
-  navigate(a.getAttribute('href')!);
+  navigate(a.getAttribute('href')!.replace(/^#/, ''));
 });
 window.addEventListener('popstate', () => void render());
+if (DEMO) {
+  window.addEventListener('hashchange', () => void render());
+  // Downloads und Exporte gibt es in der statischen Demo nicht
+  document.addEventListener('click', (e) => {
+    const a = (e.target as HTMLElement).closest?.('a[href^="/api/"]');
+    if (a) { e.preventDefault(); toast('In der Demo nicht verfügbar', 'info'); }
+  });
+}
 
 // ---------------------------------------------------------------- Sitzung
 export async function loadMe(): Promise<Me | null> {
@@ -216,15 +244,16 @@ export async function logout(): Promise<void> {
   try {
     const r = await post<{ redirect: string | null }>('/api/auth/logout');
     state.me = null;
-    if (r.redirect) { location.href = r.redirect; return; }
+    if (r.redirect && !DEMO) { location.href = r.redirect; return; }
   } catch { /* trotzdem abmelden */ }
+  if (DEMO) { state.me = null; navigate('/login', true); return; }
   location.href = '/login';
 }
 
 onUnauthorized(() => {
-  if (location.pathname !== '/login') {
+  if (curPath() !== '/login') {
     state.me = null;
-    navigate(`/login?ziel=${encodeURIComponent(location.pathname)}`, true);
+    navigate(`/login?ziel=${encodeURIComponent(curPath())}`, true);
   }
 });
 
@@ -236,7 +265,7 @@ onStepupRequired(async () => {
     const ok = await dialog('Bitte erneut anmelden',
       h('p', null, 'Für diese Aktion ist eine frische Anmeldung bei Microsoft nötig. Danach kommen Sie hierher zurück und können die Aktion wiederholen.'),
       (close) => [button('Abbrechen', () => close(false), { kind: 'ghost' }), button('Bei Microsoft anmelden', () => close(true), { kind: 'primary' })]);
-    if (ok) location.href = `/api/auth/entra/login?stepup=1&returnTo=${encodeURIComponent(location.pathname)}`;
+    if (ok) location.href = `/api/auth/entra/login?stepup=1&returnTo=${encodeURIComponent(curPath())}`;
     return false;
   }
   let pw = '', code = '';

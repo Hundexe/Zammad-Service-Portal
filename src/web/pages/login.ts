@@ -2,7 +2,8 @@
 import { h, mount, svg } from '../lib/dom.ts';
 import { ApiError, get, post } from '../lib/api.ts';
 import { button, errorText, fieldWrap, input, notice, copyButton } from '../lib/ui.ts';
-import { applyBranding, loadMe, logo, navigate, state, themeToggle } from '../lib/app.ts';
+import { applyBranding, loadMe, loadSystems, logo, logout, navigate, state, themeToggle } from '../lib/app.ts';
+import { DEMO } from '../lib/env.ts';
 
 function target(q: URLSearchParams): string {
   const z = q.get('ziel') ?? '/';
@@ -62,7 +63,12 @@ export async function loginPage(_p: Record<string, string>, q: URLSearchParams) 
     h('h1', null, 'Anmelden'),
     h('p', { class: 'sub' }, 'Melden Sie sich an, um eine Anfrage an die IT zu stellen oder Ihre Tickets zu sehen.'),
     msg,
-    cfg.entra ? h('a', { class: ['btn', 'btn-primary', 'btn-block', 'btn-ms'], attrs: { href: `/api/auth/entra/login?returnTo=${encodeURIComponent(goal)}` } },
+    cfg.entra ? h('a', {
+      class: ['btn', 'btn-primary', 'btn-block', 'btn-ms'],
+      attrs: { href: DEMO ? '#' : `/api/auth/entra/login?returnTo=${encodeURIComponent(goal)}` },
+      // Demo: simulierte Microsoft-Anmeldung direkt im Browser
+      on: DEMO ? { click: async (e) => { e.preventDefault(); await post('/api/demo/login', {}); await loadMe(); await loadSystems(); navigate(goal, true); } } : {},
+    },
       svg('svg', { viewBox: '0 0 21 21', width: 18, height: 18, 'aria-hidden': 'true' },
         svg('rect', { x: 1, y: 1, width: 9, height: 9, fill: '#f25022' }), svg('rect', { x: 11, y: 1, width: 9, height: 9, fill: '#7fba00' }),
         svg('rect', { x: 1, y: 11, width: 9, height: 9, fill: '#00a4ef' }), svg('rect', { x: 11, y: 11, width: 9, height: 9, fill: '#ffb900' })),
@@ -160,6 +166,6 @@ async function totpSetupStep(goal: string) {
     h('h1', null, 'Zwei-Faktor-Anmeldung einrichten'),
     h('p', { class: 'sub' }, 'Ihr Konto hat Verwaltungsrechte. Dafür ist ein zweiter Faktor Pflicht.'),
     await totpSetupBlock(async () => { await loadMe(); navigate(goal, true); }),
-    button('Abmelden', async () => { await post('/api/auth/logout'); location.href = '/login'; }, { kind: 'ghost' }),
+    button('Abmelden', () => logout(), { kind: 'ghost' }),
   );
 }

@@ -2,7 +2,7 @@
 import { h, icon, mount, fmtDate, relTime, type Child } from '../lib/dom.ts';
 import { ApiError, fileToBase64, get, post } from '../lib/api.ts';
 import { button, emptyState, errorText, notice, pageHead, statusBadge, tabs, textarea, ticketState, toast, table, fieldWrap } from '../lib/ui.ts';
-import { currentSystem, link, loadMe, loadSystems, navigate, selectSystem, state, systemSwitch } from '../lib/app.ts';
+import { currentSystem, link, loadMe, loadSystems, navigate, selectSystem, state, systemSwitch, assetUrl, curPath, setUrl } from '../lib/app.ts';
 import { renderForm } from '../lib/formrender.ts';
 import type { FormDefinition } from '../../shared/form.ts';
 import { passwordForm, totpSetupBlock } from './login.ts';
@@ -78,7 +78,7 @@ export async function homePage(p: Record<string, string>) {
   const open = tickets?.tickets ?? [];
   return h('div', { class: 'home' },
     h('section', { class: 'hero', attrs: { 'aria-labelledby': 'h-forms' } },
-      b.logoDarkId ? h('img', { class: 'hero-logo', attrs: { src: `/api/assets/${b.logoDarkId}`, alt: b.displayName } }) : null,
+      b.logoDarkId ? h('img', { class: 'hero-logo', attrs: { src: assetUrl(b.logoDarkId), alt: b.displayName } }) : null,
       h('h1', { id: 'h-forms' }, b.welcomeText || 'Wie können wir helfen?'),
       h('p', { class: 'hero-sub' }, `Wählen Sie ein Formular. Ihre Anfrage geht an ${sys.name}.`),
       switcher ? h('p', { class: 'switch-label', id: 'switch-label' }, 'Anfrage geht an') : null,
@@ -163,7 +163,7 @@ export async function ticketsPage(p: Record<string, string>, q: URLSearchParams)
     const cols = data.overview.columns.length ? data.overview.columns : ['number', 'title', 'state', 'updated_at'];
     mount(host,
       pageHead('Meine Tickets', `Ihre Tickets bei ${sys.name}`, [systemSwitch((id) => `/s/${id}/tickets`, true), button('Aktualisieren', () => load(data.overview.id, true), { icon: 'refresh', kind: 'ghost' })].filter((x): x is HTMLElement => x !== null)),
-      tabs(data.overviews.map((o) => ({ id: o.id, label: o.name })), data.overview.id, (id) => { history.replaceState(null, '', `?ansicht=${id}`); void load(id); }),
+      tabs(data.overviews.map((o) => ({ id: o.id, label: o.name })), data.overview.id, (id) => { setUrl(`${curPath()}?ansicht=${id}`, true); void load(id); }),
       data.unavailable ? notice('warn', `${sys.name} ist gerade nicht erreichbar. Bitte später erneut versuchen.`) : null,
       data.pending.length ? h('div', { class: 'pending' }, h('h2', null, 'Noch nicht übermittelt'), table(data.pending, [
         { label: 'Betreff', render: (r) => r.title },

@@ -1,6 +1,8 @@
 // Kleiner DOM-Baukasten. Texte werden immer als Textknoten eingefügt –
 // innerHTML wird im gesamten Frontend nicht verwendet (Schutz vor XSS).
 
+import { DEMO } from './env.ts';
+
 export type Child = Node | string | number | null | undefined | false | Child[];
 
 export interface Props {
@@ -25,7 +27,7 @@ function append(el: Node, child: Child): void {
 function setAttr(el: Element, k: string, v: unknown): void {
   if (v === null || v === undefined || v === false) return;
   if (/^on/i.test(k)) throw new Error('Event-Handler nur über "on" setzen');
-  if ((k === 'href' || k === 'src' || k === 'action') && typeof v === 'string' && /^\s*(javascript|data|vbscript):/i.test(v) && !(k === 'src' && /^data:image\/(png|svg\+xml);/i.test(v))) {
+  if ((k === 'href' || k === 'src' || k === 'action') && typeof v === 'string' && /^\s*(javascript|data|vbscript):/i.test(v) && !(k === 'src' && /^data:image\/(png|svg\+xml|jpeg|webp);/i.test(v))) {
     throw new Error('Unsichere URL');
   }
   el.setAttribute(k, v === true ? '' : String(v));
@@ -37,7 +39,10 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, props?: Props |
     if (props.class) el.className = Array.isArray(props.class) ? props.class.filter(Boolean).join(' ') : props.class;
     if (props.id) el.id = props.id;
     if (props.text !== undefined) el.textContent = props.text;
-    for (const [k, v] of Object.entries(props.attrs ?? {})) setAttr(el, k, v);
+    const attrs = { ...(props.attrs ?? {}) };
+    // Demo mit Hash-Routing: interne Links zeigen auf #/pfad
+    if (DEMO && typeof attrs.href === 'string' && attrs.href.startsWith('/') && attrs['data-link'] !== undefined) attrs.href = `#${attrs.href}`;
+    for (const [k, v] of Object.entries(attrs)) setAttr(el, k, v);
     for (const [k, v] of Object.entries(props)) if (!RESERVED.has(k)) setAttr(el, k, v);
     for (const [k, fn] of Object.entries(props.on ?? {})) el.addEventListener(k, fn as EventListener);
     for (const [k, v] of Object.entries(props.style ?? {})) el.style.setProperty(k, v);

@@ -2,7 +2,7 @@
 import { h, icon, mount, fmtDate } from '../lib/dom.ts';
 import { fileToBase64, get, post, put, del } from '../lib/api.ts';
 import { badge, button, checkbox, confirmDialog, dialog, errorText, fieldWrap, input, notice, pageHead, select, statusBadge, table, textarea, toast } from '../lib/ui.ts';
-import { can, navigate, state } from '../lib/app.ts';
+import { can, navigate, state, curPath, assetUrl } from '../lib/app.ts';
 import { adminSystem, loadAdminSystems } from './common.ts';
 import { contrastWarnings, type Branding } from '../../shared/branding.ts';
 
@@ -24,7 +24,7 @@ export async function templatesPage(p: Record<string, string>) {
       button('Speichern', async () => {
         try {
           if (t) await put(`/api/admin/systems/${s.id}/templates/${t.id}`, v); else await post(`/api/admin/systems/${s.id}/templates`, v);
-          close(); toast('Gespeichert'); navigate(location.pathname, true);
+          close(); toast('Gespeichert'); navigate(curPath(), true);
         } catch (err) { mount(msg, notice('error', errorText(err))); }
       }, { kind: 'primary' }),
     ], { wide: true });
@@ -37,7 +37,7 @@ export async function templatesPage(p: Record<string, string>) {
       { label: 'Geändert', render: (t) => fmtDate(t.updatedAt) },
       { label: '', render: (t) => button('Löschen', async () => {
         if (await confirmDialog('Vorlage löschen?', `„${t.name}“ wird gelöscht. Formulare, die sie übernommen haben, bleiben unverändert.`, 'Löschen', true)) {
-          await del(`/api/admin/systems/${s.id}/templates/${t.id}`); toast('Gelöscht'); navigate(location.pathname, true);
+          await del(`/api/admin/systems/${s.id}/templates/${t.id}`); toast('Gelöscht'); navigate(curPath(), true);
         }
       }, { kind: 'ghost', icon: 'trash' }) },
     ], { onRow: (t) => edit(t), empty: 'Noch keine Vorlagen.' }));
@@ -69,7 +69,7 @@ export async function overviewsPage(p: Record<string, string>) {
         const body = { ...v, columns: order.filter((c) => v.columns.includes(c)) };
         try {
           if (o) await put(`/api/admin/systems/${s.id}/overviews/${o.id}`, body); else await post(`/api/admin/systems/${s.id}/overviews`, body);
-          close(); toast('Gespeichert'); navigate(location.pathname, true);
+          close(); toast('Gespeichert'); navigate(curPath(), true);
         } catch (err) { mount(msg, notice('error', errorText(err))); }
       }, { kind: 'primary' }),
     ]);
@@ -81,7 +81,7 @@ export async function overviewsPage(p: Record<string, string>) {
       { label: 'Zeigt', render: (o) => FILTER[o.stateFilter] },
       { label: 'Spalten', render: (o) => o.columns.map((c) => COLS[c] ?? c).join(', ') },
       { label: '', render: (o) => button('Löschen', async () => {
-        if (await confirmDialog('Übersicht löschen?', `„${o.name}“ wird gelöscht.`, 'Löschen', true)) { await del(`/api/admin/systems/${s.id}/overviews/${o.id}`); toast('Gelöscht'); navigate(location.pathname, true); }
+        if (await confirmDialog('Übersicht löschen?', `„${o.name}“ wird gelöscht.`, 'Löschen', true)) { await del(`/api/admin/systems/${s.id}/overviews/${o.id}`); toast('Gelöscht'); navigate(curPath(), true); }
       }, { kind: 'ghost', icon: 'trash' }) },
     ], { onRow: (o) => edit(o), empty: 'Keine Übersichten – das Portal zeigt dann „Offene Tickets“ und „Erledigt“.' }));
 }
@@ -100,7 +100,7 @@ function colorField(label: string, value: string, onChange: (v: string) => void,
 
 function logoField(label: string, id: string | null | undefined, kind: 'logo' | 'favicon', uploadUrl: string, onChange: (id: string | null) => void, onBand = false): HTMLElement {
   const preview = h('div', { class: ['logo-preview', onBand && 'on-band'] });
-  const draw = (cur: string | null | undefined) => mount(preview, cur ? h('img', { attrs: { src: `/api/assets/${cur}`, alt: '' } }) : h('span', { class: 'muted small' }, 'kein Bild'));
+  const draw = (cur: string | null | undefined) => mount(preview, cur ? h('img', { attrs: { src: assetUrl(cur), alt: '' } }) : h('span', { class: 'muted small' }, 'kein Bild'));
   draw(id);
   const fileInput = h('input', { attrs: { type: 'file', accept: kind === 'logo' ? '.png,.jpg,.jpeg,.webp,.svg' : '.png,.ico,.svg', class: 'visually-hidden' } });
   const fid = `up-${label.replace(/\W/g, '')}`;
@@ -133,9 +133,9 @@ export function brandingEditor(initial: Branding, uploadUrl: string, extra: { on
     preview.style.setProperty('--band-text', b.headerTextColor);
     preview.style.setProperty('--brand-accent', b.accentColor);
     mount(preview,
-      h('div', { class: 'bp-nav' }, b.logoLightId ? h('img', { attrs: { src: `/api/assets/${b.logoLightId}`, alt: '' } }) : h('span', { class: 'brand-mark' }, (b.displayName || '?').slice(0, 1)), b.logoLightId ? null : h('span', null, b.displayName || 'Name')),
+      h('div', { class: 'bp-nav' }, b.logoLightId ? h('img', { attrs: { src: assetUrl(b.logoLightId), alt: '' } }) : h('span', { class: 'brand-mark' }, (b.displayName || '?').slice(0, 1)), b.logoLightId ? null : h('span', null, b.displayName || 'Name')),
       h('div', { class: 'bp-hero' },
-        b.logoDarkId ? h('img', { attrs: { src: `/api/assets/${b.logoDarkId}`, alt: '' } }) : null,
+        b.logoDarkId ? h('img', { attrs: { src: assetUrl(b.logoDarkId), alt: '' } }) : null,
         h('p', { class: 'bp-title' }, b.welcomeText || 'Wie können wir helfen?')),
       h('div', { class: 'bp-body' },
         h('div', { class: 'bp-row' }, h('span', { class: 'form-icon' }, icon('bolt', 18)), h('span', null, 'Störung melden'), icon('next', 16)),
@@ -183,8 +183,8 @@ export async function brandingPage(p: Record<string, string>) {
     msg,
     pending ? notice('warn', h('span', null, `Version ${pending.version} wartet auf Freigabe.`,
       mayApprove ? h('span', { class: 'row inline' },
-        button('Freigeben', async () => { await post(`/api/admin/systems/${s.id}/branding/versions/${pending.id}/approve`); toast('Freigegeben'); navigate(location.pathname, true); }, { kind: 'primary' }),
-        button('Ablehnen', async () => { await post(`/api/admin/systems/${s.id}/branding/versions/${pending.id}/reject`); toast('Abgelehnt'); navigate(location.pathname, true); }, { kind: 'ghost' })) : null)) : null,
+        button('Freigeben', async () => { await post(`/api/admin/systems/${s.id}/branding/versions/${pending.id}/approve`); toast('Freigegeben'); navigate(curPath(), true); }, { kind: 'primary' }),
+        button('Ablehnen', async () => { await post(`/api/admin/systems/${s.id}/branding/versions/${pending.id}/reject`); toast('Abgelehnt'); navigate(curPath(), true); }, { kind: 'ghost' })) : null)) : null,
     h('section', { class: 'panel' }, editor.el),
     can('branding.edit', s.id) && !pending ? h('div', { class: 'form-actions sticky' },
       button('Entwurf speichern', async () => {
@@ -195,7 +195,7 @@ export async function brandingPage(p: Record<string, string>) {
           await put(`/api/admin/systems/${s.id}/branding/draft`, { branding: editor.value });
           const r = await post<{ status: string }>(`/api/admin/systems/${s.id}/branding/publish`);
           toast(r.status === 'pending' ? 'Zur Freigabe gesendet' : 'Veröffentlicht');
-          navigate(location.pathname, true);
+          navigate(curPath(), true);
         } catch (err) { mount(msg, notice('error', errorText(err))); }
       }, { kind: 'primary' })) : null,
     h('details', { class: 'panel' }, h('summary', null, 'Versionen'), table(d.versions, [

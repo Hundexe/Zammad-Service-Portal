@@ -188,3 +188,11 @@ describe('Sonstiges', () => {
     assert.equal(t.clientIp(req('::ffff:172.20.0.5', '1.2.3.4')), '1.2.3.4');
   });
 });
+
+describe('Statische Demo', () => {
+  test('Antworten werden über Methode, Pfad und sortierte Parameter gefunden', async () => {
+    const { requestKey } = await import('../src/web/demo/backend.ts');
+    assert.equal(requestKey('get', '/api/portal/systems/a/tickets?'), 'GET /api/portal/systems/a/tickets');
+    assert.equal(requestKey('GET', '/api/x?b=2&a=1&refresh=1'), 'GET /api/x?a=1&b=2');
+  });
+});

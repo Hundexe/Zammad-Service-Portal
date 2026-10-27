@@ -24,6 +24,17 @@ Lokaler Admin der Demo: `admin` / `Demo-Admin-Passwort-2026!`, TOTP-Schlüssel `
 
 `DEMO_ENV=production` startet die Demo mit allen Produktionsprüfungen (Host-Header, Virenscan-Pflicht). Die Demo nutzt einen simulierten Virenscanner, der den EICAR-Testvirus erkennt.
 
+## Online-Demo (GitHub Pages)
+
+Die Demo unter https://hundexe.github.io/Zammad-Service-Portal/ ist eine statische Seite ohne Server:
+
+```bash
+node tools/build-pages.ts      # nach dist/pages: Oberfläche + aufgezeichnete API-Antworten
+sh tools/publish-pages.sh      # baut und veröffentlicht im Branch gh-pages
+```
+
+`build-pages.ts` startet die lokale Demo, klickt mit Playwright alle Seiten von Portal und Verwaltung durch und zeichnet jede API-Antwort auf (`demo-data.json`). In der Pages-Version erkennt die Oberfläche das `<meta name="zsp-demo">`, nutzt Hash-Adressen (`#/s/…`) und fragt statt des Servers den Simulator `src/web/demo/backend.ts`. Ändernde Aktionen wirken nur im geöffneten Tab. Einmalig auf GitHub aktivieren: **Settings → Pages → Deploy from a branch → `gh-pages` / `(root)`**. Für öffentliche Repositories ist das kostenlos.
+
 ## Tests
 
 ```bash

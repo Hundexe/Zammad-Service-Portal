@@ -5,7 +5,7 @@ import {
   badge, button, checkbox, confirmDialog, dialog, errorText, fieldWrap, input, listInput, notice, pageHead, select,
   statusBadge, table, tabs, textarea, toast,
 } from '../lib/ui.ts';
-import { can, link, navigate, state } from '../lib/app.ts';
+import { can, link, navigate, state, curPath } from '../lib/app.ts';
 import { renderForm } from '../lib/formrender.ts';
 import { admin, adminSystem, loadAdminSystems } from './common.ts';
 import { FILE_KINDS, type FormDefinition, type FormField, type FieldType } from '../../shared/form.ts';
@@ -158,7 +158,7 @@ export async function formEditorPage(p: Record<string, string>) {
             const r = await post<{ status: string }>(`${base}/publish`);
             dirty = false;
             toast(r.status === 'pending' ? 'Zur Freigabe gesendet' : 'Veröffentlicht');
-            navigate(location.pathname, true);
+            navigate(curPath(), true);
           } catch (err) { mount(msg, notice('error', errorText(err))); }
         }, { kind: 'primary' }) : null));
   }
@@ -396,13 +396,13 @@ export async function formEditorPage(p: Record<string, string>) {
         { label: 'Freigabe', render: (v) => v.status === 'pending' ? `eingereicht von ${v.submittedByName ?? '?'}` : v.approvedByName ? `freigegeben von ${v.approvedByName}` : v.note },
         { label: '', render: (v) => h('span', { class: 'row' },
           v.status === 'pending' && can('form.approve', s.id) && v.submittedBy !== state.me?.user.id && v.createdBy !== state.me?.user.id ? button('Freigeben', async () => {
-            try { await post(`${base}/versions/${v.id}/approve`); toast('Freigegeben und veröffentlicht'); navigate(location.pathname, true); } catch (err) { toast(errorText(err), 'error'); }
+            try { await post(`${base}/versions/${v.id}/approve`); toast('Freigegeben und veröffentlicht'); navigate(curPath(), true); } catch (err) { toast(errorText(err), 'error'); }
           }, { kind: 'primary' }) : null,
           v.status === 'pending' && can('form.approve', s.id) ? button('Ablehnen', async () => {
-            await post(`${base}/versions/${v.id}/reject`, { reason: '' }); toast('Zurück an den Entwurf'); navigate(location.pathname, true);
+            await post(`${base}/versions/${v.id}/reject`, { reason: '' }); toast('Zurück an den Entwurf'); navigate(curPath(), true);
           }, { kind: 'ghost' }) : null,
           editable && v.id !== latest?.id ? button('Als Entwurf wiederherstellen', async () => {
-            try { await post(`${base}/versions/${v.id}/restore`); toast('Als neuer Entwurf wiederhergestellt'); navigate(location.pathname, true); } catch (err) { toast(errorText(err), 'error'); }
+            try { await post(`${base}/versions/${v.id}/restore`); toast('Als neuer Entwurf wiederhergestellt'); navigate(curPath(), true); } catch (err) { toast(errorText(err), 'error'); }
           }, { kind: 'ghost' }) : null) },
       ]));
   }
