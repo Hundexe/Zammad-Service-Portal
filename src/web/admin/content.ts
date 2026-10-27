@@ -2,9 +2,9 @@
 import { h, icon, mount, fmtDate } from '../lib/dom.ts';
 import { fileToBase64, get, post, put, del } from '../lib/api.ts';
 import { badge, button, checkbox, confirmDialog, dialog, errorText, fieldWrap, input, notice, pageHead, select, statusBadge, table, textarea, toast } from '../lib/ui.ts';
-import { can, navigate, state, curPath, assetUrl } from '../lib/app.ts';
+import { can, navigate, state, curPath, assetUrl, bandLogoId } from '../lib/app.ts';
 import { adminSystem, loadAdminSystems } from './common.ts';
-import { contrastWarnings, type Branding } from '../../shared/branding.ts';
+import { contrastWarnings, effectiveColors, PALETTES, THEMES, THEME_INFO, themeOf, type Branding, type Palette, type ThemeId } from '../../shared/branding.ts';
 
 const KIND: Record<string, string> = { title: 'Ticket-Titel', body: 'Tickettext', success: 'Text nach dem Absenden' };
 
@@ -119,41 +119,98 @@ function logoField(label: string, id: string | null | undefined, kind: 'logo' | 
       button('Entfernen', () => { draw(null); onChange(null); }, { kind: 'ghost' })));
 }
 
+function setColors(el: HTMLElement, c: Palette): void {
+  el.style.setProperty('--brand', c.primaryColor);
+  el.style.setProperty('--band', c.headerColor);
+  el.style.setProperty('--band-text', c.headerTextColor);
+  el.style.setProperty('--brand-accent', c.accentColor);
+}
+
+/** Kleine Vorschau eines Stils (Farbfläche, Zeile, Schaltfläche) – wird mit dem Stil selbst gezeichnet. */
+function themeMini(id: ThemeId, title: string): HTMLElement {
+  return h('div', { class: 'theme-mini', attrs: { 'data-style': id, 'aria-hidden': 'true' } },
+    h('div', { class: 'tm-hero' }, h('span', { class: 'tm-title' }, title)),
+    h('div', { class: 'tm-card' }, h('span', { class: 'tm-dot' }), h('span', { class: 'tm-line' })),
+    h('div', { class: 'tm-card' }, h('span', { class: 'tm-dot' }), h('span', { class: 'tm-line' })),
+    h('span', { class: 'tm-btn' }));
+}
+
 export function brandingEditor(initial: Branding, uploadUrl: string, extra: { onChange?: () => void } = {}): { el: HTMLElement; value: Branding } {
-  const b: Branding = { ...initial };
+  const b: Branding = { theme: 'standard', colorMode: 'custom', ...initial };
   const warn = h('div', { attrs: { 'aria-live': 'polite' } });
   const preview = h('div', { class: 'brand-preview', attrs: { 'aria-label': 'Vorschau' } });
+  const minis = new Map<ThemeId, HTMLElement>();
+  const colorsHost = h('div', { class: 'stack' });
   let gridEl: HTMLElement | null = null;
   const draw = () => {
     const ws = contrastWarnings(b);
     mount(warn, ws.length ? notice('warn', h('ul', null, ...ws.map((w) => h('li', null, w)))) : notice('ok', 'Kontraste erfüllen WCAG AA.'));
-    gridEl?.style.setProperty('--band-preview', b.headerColor);
-    preview.style.setProperty('--brand', b.primaryColor);
-    preview.style.setProperty('--band', b.headerColor);
-    preview.style.setProperty('--band-text', b.headerTextColor);
-    preview.style.setProperty('--brand-accent', b.accentColor);
+    const c = effectiveColors(b);
+    gridEl?.style.setProperty('--band-preview', c.headerColor);
+    preview.setAttribute('data-style', themeOf(b));
+    setColors(preview, c);
+    for (const [id, mini] of minis) setColors(mini, b.colorMode === 'theme' ? THEME_INFO[id].palette : c);
     mount(preview,
       h('div', { class: 'bp-nav' }, b.logoLightId ? h('img', { attrs: { src: assetUrl(b.logoLightId), alt: '' } }) : h('span', { class: 'brand-mark' }, (b.displayName || '?').slice(0, 1)), b.logoLightId ? null : h('span', null, b.displayName || 'Name')),
       h('div', { class: 'bp-hero' },
-        b.logoDarkId ? h('img', { attrs: { src: assetUrl(b.logoDarkId), alt: '' } }) : null,
+        bandLogoId(b) ? h('img', { attrs: { src: assetUrl(bandLogoId(b)!), alt: '' } }) : null,
         h('p', { class: 'bp-title' }, b.welcomeText || 'Wie können wir helfen?')),
       h('div', { class: 'bp-body' },
         h('div', { class: 'bp-row' }, h('span', { class: 'form-icon' }, icon('bolt', 18)), h('span', null, 'Störung melden'), icon('next', 16)),
-        h('p', { class: 'bp-actions' }, h('span', { class: ['btn', 'btn-primary'] }, 'Anfrage senden'), h('span', { class: 'bp-link' }, 'Ein Link'), badge('Akzent', 'info'))),
+        h('div', { class: 'bp-row' }, h('span', { class: 'form-icon' }, icon('laptop', 18)), h('span', null, 'Hardware anfordern'), icon('next', 16)),
+        h('p', { class: 'bp-actions' }, h('span', { class: ['btn', 'btn-primary'] }, 'Anfrage senden'), h('span', { class: ['btn', 'btn-secondary'] }, 'Abbrechen'), h('span', { class: 'bp-link' }, 'Ein Link'), badge('Akzent', 'info'))),
       b.footerText ? h('div', { class: 'bp-foot' }, b.footerText) : null);
     extra.onChange?.();
   };
   const set = <K extends keyof Branding>(k: K) => (v: Branding[K]) => { b[k] = v; draw(); };
-  draw();
+
+  // Stil
+  const radioName = `theme-${Math.random().toString(36).slice(2, 8)}`;
+  const picker = h('fieldset', { class: 'theme-picker' },
+    h('legend', { class: 'visually-hidden' }, 'Gestaltungsstil'),
+    ...THEMES.map((id) => {
+      const info = THEME_INFO[id];
+      const radio = h('input', { attrs: { type: 'radio', name: radioName, value: id } }) as HTMLInputElement;
+      radio.checked = themeOf(b) === id;
+      radio.addEventListener('change', () => { if (radio.checked) { b.theme = id; drawColors(); draw(); } });
+      const mini = themeMini(id, info.name);
+      minis.set(id, mini);
+      return h('label', { class: 'theme-option' }, radio, mini, h('span', { class: 'theme-option-name' }, info.name), h('span', { class: 'theme-option-desc' }, info.description));
+    }));
+
+  // Farben: die des Stils oder eigene (mit fertigen Kombinationen)
+  const swatch = (p: Palette) => h('span', { class: 'palette-swatch', attrs: { 'aria-hidden': 'true' } },
+    h('span', { style: { background: p.headerColor } }), h('span', { style: { background: p.primaryColor } }), h('span', { style: { background: p.accentColor } }));
+  const applyPalette = (p: Palette) => { Object.assign(b, p); drawColors(); draw(); };
+  function drawColors(): void {
+    const mode = b.colorMode === 'theme' ? 'theme' : 'custom';
+    const themePalette = THEME_INFO[themeOf(b)].palette;
+    mount(colorsHost,
+      h('div', { class: 'color-mode' },
+        select(mode, [
+          { value: 'theme', label: `Farben des Stils „${THEME_INFO[themeOf(b)].name}“ verwenden` },
+          { value: 'custom', label: 'Eigene Farben' },
+        ], (v) => { b.colorMode = v as 'theme' | 'custom'; drawColors(); draw(); })),
+      mode === 'custom' ? h('div', { class: 'stack' },
+        h('div', null,
+          h('p', { class: 'label' }, 'Fertige Farbkombinationen'),
+          h('div', { class: 'palette-row' },
+            h('button', { class: 'palette-chip', attrs: { type: 'button' }, on: { click: () => applyPalette(themePalette) } }, swatch(themePalette), `Wie „${THEME_INFO[themeOf(b)].name}“`),
+            ...PALETTES.map((p) => h('button', { class: 'palette-chip', attrs: { type: 'button' }, on: { click: () => applyPalette(p.palette) } }, swatch(p.palette), p.name)))),
+        h('div', { class: 'grid-2' },
+          colorField('Farbfläche', b.headerColor, set('headerColor'), 'Große Fläche auf Start- und Anmeldeseite'),
+          colorField('Schrift auf der Farbfläche', b.headerTextColor, set('headerTextColor')),
+          colorField('Primärfarbe', b.primaryColor, set('primaryColor'), 'Schaltflächen, Links, Symbole'),
+          colorField('Akzentfarbe', b.accentColor, set('accentColor'), 'Markierungen'),
+        )) : h('p', { class: 'help' }, 'Der Stil bringt eigene, aufeinander abgestimmte Farben mit. Für eigene Farben „Eigene Farben“ wählen – die bisherigen bleiben gespeichert.'));
+  }
+  drawColors();
+
   const el = h('div', { class: 'branding-grid' },
     h('div', { class: 'stack' },
       fieldWrap(input(b.displayName, set('displayName')), { label: 'Anzeigename', help: 'Steht in der Navigationsleiste, wenn kein helles Logo hinterlegt ist, und im Browser-Tab.' }),
-      h('div', { class: 'grid-2' },
-        colorField('Farbfläche', b.headerColor, set('headerColor'), 'Große Fläche auf Start- und Anmeldeseite'),
-        colorField('Schrift auf der Farbfläche', b.headerTextColor, set('headerTextColor')),
-        colorField('Primärfarbe', b.primaryColor, set('primaryColor'), 'Schaltflächen, Links, Symbole'),
-        colorField('Akzentfarbe', b.accentColor, set('accentColor'), 'Markierungen'),
-      ),
+      h('div', null, h('p', { class: 'label' }, 'Stil'), h('p', { class: 'help', style: { marginTop: '0', marginBottom: '.6rem' } }, 'Gilt im Portal, solange dieses Ticketsystem gewählt ist (die Anmeldeseite hat ihre eigene Einstellung). Helles und dunkles Design werden automatisch unterstützt.'), picker),
+      h('div', null, h('p', { class: 'label' }, 'Farben'), colorsHost),
       logoField('Logo auf der Farbfläche', b.logoDarkId, 'logo', uploadUrl, set('logoDarkId'), true),
       logoField('Logo für die Navigationsleiste (helle Fläche, optional)', b.logoLightId, 'logo', uploadUrl, set('logoLightId')),
       logoField('Favicon', b.faviconId, 'favicon', uploadUrl, set('faviconId')),
@@ -179,7 +236,7 @@ export async function brandingPage(p: Record<string, string>) {
   const msg = h('div');
   const mayApprove = pending && can('form.approve', s.id) && pending.submittedBy !== state.me?.user.id && pending.createdBy !== state.me?.user.id;
   return h('div', null,
-    pageHead('Farben und Logo', `Erscheinungsbild von ${s.name} – so erkennen die Mitarbeitenden, wohin ihre Anfrage geht`),
+    pageHead('Stil, Farben und Logo', `Erscheinungsbild von ${s.name} – so erkennen die Mitarbeitenden, wohin ihre Anfrage geht`),
     msg,
     pending ? notice('warn', h('span', null, `Version ${pending.version} wartet auf Freigabe.`,
       mayApprove ? h('span', { class: 'row inline' },

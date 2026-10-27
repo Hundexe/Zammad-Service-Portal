@@ -2,7 +2,7 @@
 import { h, icon, mount, fmtDate, relTime, type Child } from '../lib/dom.ts';
 import { ApiError, fileToBase64, get, post } from '../lib/api.ts';
 import { button, emptyState, errorText, notice, pageHead, statusBadge, tabs, textarea, ticketState, toast, table, fieldWrap } from '../lib/ui.ts';
-import { currentSystem, link, loadMe, loadSystems, navigate, selectSystem, state, systemSwitch, assetUrl, curPath, setUrl } from '../lib/app.ts';
+import { currentSystem, link, loadMe, loadSystems, navigate, selectSystem, state, systemSwitch, assetUrl, bandLogoId, curPath, setUrl } from '../lib/app.ts';
 import { renderForm } from '../lib/formrender.ts';
 import type { FormDefinition } from '../../shared/form.ts';
 import { passwordForm, totpSetupBlock } from './login.ts';
@@ -78,7 +78,7 @@ export async function homePage(p: Record<string, string>) {
   const open = tickets?.tickets ?? [];
   return h('div', { class: 'home' },
     h('section', { class: 'hero', attrs: { 'aria-labelledby': 'h-forms' } },
-      b.logoDarkId ? h('img', { class: 'hero-logo', attrs: { src: assetUrl(b.logoDarkId), alt: b.displayName } }) : null,
+      bandLogoId(b) ? h('img', { class: 'hero-logo', attrs: { src: assetUrl(bandLogoId(b)!), alt: b.displayName } }) : null,
       h('h1', { id: 'h-forms' }, b.welcomeText || 'Wie können wir helfen?'),
       h('p', { class: 'hero-sub' }, `Wählen Sie ein Formular. Ihre Anfrage geht an ${sys.name}.`),
       switcher ? h('p', { class: 'switch-label', id: 'switch-label' }, 'Anfrage geht an') : null,

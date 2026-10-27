@@ -2,7 +2,7 @@
 import { h, icon, mount, type Child } from './dom.ts';
 import { ApiError, get, onStepupRequired, onUnauthorized, post, setCsrf } from './api.ts';
 import { button, dialog, errorText, fieldWrap, input, loading, notice, toast } from './ui.ts';
-import type { Branding } from '../../shared/branding.ts';
+import { effectiveColors, luminance, themeOf, type Branding } from '../../shared/branding.ts';
 import { DEMO, demoBackend } from './env.ts';
 
 // ---------------------------------------------------------------- Adresse
@@ -59,13 +59,27 @@ export function applyBranding(b: Branding | undefined | null): void {
   const root = document.documentElement;
   const br = b ?? state.config?.branding;
   if (!br) return;
-  root.style.setProperty('--brand', br.primaryColor);
-  root.style.setProperty('--brand-accent', br.accentColor);
-  root.style.setProperty('--band', br.headerColor);
-  root.style.setProperty('--band-text', br.headerTextColor);
+  const c = effectiveColors(br);
+  root.style.setProperty('--brand', c.primaryColor);
+  root.style.setProperty('--brand-accent', c.accentColor);
+  root.style.setProperty('--band', c.headerColor);
+  root.style.setProperty('--band-text', c.headerTextColor);
+  // Gestaltungsstil des Ticketsystems; für den nächsten Seitenaufruf merken (kein Aufblitzen)
+  const style = themeOf(br);
+  if (root.getAttribute('data-style') !== style) {
+    root.setAttribute('data-style', style);
+    try { localStorage.setItem('zsp.style', style); } catch { /* privater Modus */ }
+  }
   let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
   if (!link) { link = h('link', { attrs: { rel: 'icon' } }); document.head.appendChild(link); }
   link.href = br.faviconId ? assetUrl(br.faviconId) : DEMO ? 'favicon.svg' : '/favicon.svg';
+}
+
+/** Logo für die Farbfläche: auf dunkler Fläche das helle Logo („Logo auf der Farbfläche“),
+ *  auf heller Fläche (z. B. Material-Farben) das Logo für helle Flächen. */
+export function bandLogoId(b: Branding): string | null {
+  const light = luminance(effectiveColors(b).headerColor) > 0.4;
+  return (light ? b.logoLightId : b.logoDarkId) ?? null;
 }
 
 export function logo(b: Branding, dark = false): HTMLElement {
@@ -131,7 +145,7 @@ export function systemSwitch(hrefFor: (id: string) => string, light = false): HT
       class: ['switch-item', s.id === cur?.id && 'active'],
       attrs: { href: hrefFor(s.id), 'data-link': '', 'aria-current': s.id === cur?.id ? 'true' : undefined },
       on: { click: () => selectSystem(s.id) },
-    }, h('span', { class: 'switch-dot', style: { background: s.branding.headerColor } }), s.name)));
+    }, h('span', { class: 'switch-dot', style: { background: effectiveColors(s.branding).headerColor } }), s.name)));
 }
 
 export function currentSystem(): PortalSystem | undefined {

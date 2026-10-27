@@ -1,5 +1,19 @@
 # Änderungen
 
+## 1.4.0 – 27.10.2026
+
+Oberfläche:
+
+- **Stile pro Ticketsystem:** Standard, Glas (durchscheinend mit Unschärfe, im Stil von Apple), Fluent (im Stil von Microsoft), Material (im Stil von Google) und Kontrast (besonders gut lesbar) – jeweils hell und dunkel
+- **Farben:** entweder die abgestimmten Farben des Stils (nichts einzustellen) oder eigene – mit acht fertigen Kombinationen oder frei gewählt; eigene Farben bleiben beim Wechsel erhalten
+- Stil-Auswahl in der Verwaltung mit Live-Vorschau jedes Stils; auch für die Anmeldeseite
+- Auf heller Farbfläche erscheint automatisch das Logo für helle Flächen
+- Moderner Feinschliff für alle Stile: sanfte Seitenübergänge, Lichtreflex auf der Farbfläche, ruhige Hover-Effekte
+- Kein Aufblitzen beim Laden: der zuletzt gesehene Stil wird vor dem ersten Zeichnen gesetzt
+- Bauteile der Stile sind per CSS `@scope` gekapselt; Browser ohne `@scope` zeigen die Farben und Formen des Stils mit Standard-Bauteilen
+
+Tests: Stil- und Farbauswahl (Validierung, Kontraste aller Stil-Farben und Kombinationen, alte Daten ohne Stil, Veröffentlichung), insgesamt 202.
+
 ## 1.3.2 – 27.10.2026
 
 - Signaturschlüssel von Microsoft (JWKS): Höchstalter bei dauerhafter Nichterreichbarkeit. Ab 24 h ohne Erneuerung stündlicher Alarm (`"event":"jwks_stale"`), nach `ENTRA_JWKS_MAX_STALE_HOURS` (Standard 72 h, 25–168) wird die Microsoft-Anmeldung gesperrt (`"event":"jwks_expired"`), bis die Schlüssel wieder abrufbar sind; Notfallkonten gehen weiter

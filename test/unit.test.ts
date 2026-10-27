@@ -6,7 +6,7 @@ import { SecretBox, generatePassword, hashPassword, verifyPassword, passwordProb
 import { base32Encode, totpCode, verifyTotp } from '../src/server/auth/totp.ts';
 import { renderTemplate, placeholders } from '../src/shared/template.ts';
 import { validateSubmission, validateDefinition, isVisible, type FormDefinition } from '../src/shared/form.ts';
-import { contrastRatio, contrastWarnings, validateBranding, DEFAULT_BRANDING } from '../src/shared/branding.ts';
+import { contrastRatio, contrastWarnings, validateBranding, DEFAULT_BRANDING, effectiveColors, PALETTES, THEMES, THEME_INFO, themeOf } from '../src/shared/branding.ts';
 import { sniff, safeFilename, checkLogo } from '../src/server/services/files.ts';
 import { flattenOptions, toAttribute } from '../src/server/connectors/zammad.ts';
 import { htmlToText } from '../src/server/routes/portal.ts';
@@ -133,6 +133,29 @@ describe('Branding', () => {
     assert.ok(validateBranding({ ...DEFAULT_BRANDING, primaryColor: 'red' }).errors.length);
     assert.ok(validateBranding({ ...DEFAULT_BRANDING, imprintUrl: 'javascript:alert(1)' }).errors.length);
     assert.equal(validateBranding(DEFAULT_BRANDING).errors.length, 0);
+  });
+  test('Stile: Auswahl, eigene oder Stil-Farben, alte Daten ohne Stil', () => {
+    for (const t of THEMES) {
+      const r = validateBranding({ ...DEFAULT_BRANDING, theme: t, colorMode: 'theme' });
+      assert.deepEqual(r.errors, [], t);
+      assert.equal(r.branding!.theme, t);
+      // Farben des Stils erfüllen WCAG AA
+      assert.deepEqual(contrastWarnings(r.branding!), [], t);
+      assert.deepEqual(effectiveColors(r.branding!), THEME_INFO[t].palette);
+    }
+    assert.ok(validateBranding({ ...DEFAULT_BRANDING, theme: 'winamp' }).errors.length, 'unbekannter Stil');
+    assert.ok(validateBranding({ ...DEFAULT_BRANDING, colorMode: 'bunt' }).errors.length);
+    // Gespeichertes Branding aus älteren Versionen: Standard-Stil mit den eigenen Farben
+    const old = { ...DEFAULT_BRANDING, theme: undefined, colorMode: undefined, headerColor: '#7a1f2b' };
+    const r = validateBranding(old);
+    assert.equal(r.branding!.theme, 'standard');
+    assert.equal(r.branding!.colorMode, 'custom');
+    assert.equal(effectiveColors(r.branding!).headerColor, '#7a1f2b');
+    assert.equal(themeOf({ theme: '<script>' as any }), 'standard');
+    // Eigene Farben bleiben gespeichert, auch wenn die Stil-Farben gelten
+    assert.equal(validateBranding({ ...old, theme: 'glas', colorMode: 'theme' }).branding!.headerColor, '#7a1f2b');
+    // Fertige Farbkombinationen haben ausreichenden Kontrast
+    for (const p of PALETTES) assert.deepEqual(contrastWarnings({ ...DEFAULT_BRANDING, ...p.palette }), [], p.name);
   });
 });
 

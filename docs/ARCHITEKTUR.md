@@ -76,6 +76,20 @@ Mit `X-On-Behalf-Of` handelt Zammad als der Kunde selbst. Zammad entscheidet als
 
 **Zammad-Objekte:** Ticket-Attribute aus dem Objekt-Manager werden über `object_manager_attributes` gelesen. Unterstützt werden `input`, `textarea`, `select`, `multiselect`, `tree_select`, `multi_tree_select`, `boolean`, `integer` und `date`. Baumwerte haben in Zammad die Form `Eltern::Kind` und werden im Portal als „Eltern › Kind“ angezeigt.
 
+## Gestaltung und Stile
+
+Die Oberfläche hängt an CSS-Variablen in `src/web/styles.css` (Farben, Flächen, Rundungen, Schriften). Das Branding des gewählten Ticketsystems setzt zwei Dinge:
+
+- die vier Farben als Variablen am `<html>` (`--brand`, `--brand-accent`, `--band`, `--band-text`);
+- den Stil als Attribut `data-style` (`standard`, `glas`, `fluent`, `material`, `kontrast`).
+
+Jeder Stil besteht aus zwei Teilen:
+
+1. **Variablen** für hell und dunkel, unter `[data-style="…"]`. Sie erben wie gewohnt.
+2. **Bauteil-Regeln** in einem `@scope ([data-style="…"]) to ([data-style]:not([data-style="…"]))`. Dadurch kann die Stil-Auswahl in der Verwaltung jede Vorschau in ihrem eigenen Stil zeigen, mitten in einer Seite mit anderem Stil.
+
+Browser ohne `@scope` zeigen Farben, Rundungen und Schriften des Stils mit Standard-Bauteilen. Alles bleibt CSP-konform: keine Inline-Stile im HTML, Werte nur per CSSOM.
+
 ## Code-Aufbau
 
 ```
@@ -83,7 +97,7 @@ src/
   shared/          läuft in Browser und Server
     form.ts        Formular-Schema, Validierung, Sichtbarkeitsregeln
     template.ts    Platzhalter-Vorlagen ohne Code
-    branding.ts    Farben, Kontrastprüfung (WCAG)
+    branding.ts    Stile, Farben, fertige Farbkombinationen, Kontrastprüfung (WCAG)
     permissions.ts Rechte
   server/
     main.ts, worker.ts, cli.ts   Einstiegspunkte
@@ -111,7 +125,7 @@ deploy/            Docker Compose, Caddy, Installationsskript
 | `system_metadata` | Zwischenspeicher der Zammad-Stammdaten (15 Min.) |
 | `forms`, `form_versions` | Formulare und ihre Versionen (Entwurf, Freigabe, veröffentlicht, archiviert) |
 | `templates`, `overviews` | Textbausteine und Ticket-Übersichten je System |
-| `branding_versions`, `assets` | Farben/Texte versioniert, Logos |
+| `branding_versions`, `assets` | Stil, Farben und Texte versioniert, Logos |
 | `roles`, `role_assignments` | Rollen und deren Zuordnung zu Benutzern, Gruppen oder allen |
 | `requests`, `request_files` | Outbox (Inhalt verschlüsselt, Dateien verschlüsselt auf der Platte) |
 | `zammad_customers` | Zuordnung Benutzer → Kunden-ID je System |

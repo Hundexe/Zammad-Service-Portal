@@ -14,7 +14,7 @@ export async function dashboardPage() {
   }>('/api/admin/overview');
   const sysName = (id: string) => d.systems.find((s) => s.id === id)?.name ?? '';
   const approvals = [...d.pendingApprovals.forms.map((f) => ({ label: `Formular „${f.name}“, Version ${f.version}`, sys: f.system_id, href: `/admin/systeme/${f.system_id}/formulare/${f.form_id}` })),
-    ...d.pendingApprovals.branding.map((b) => ({ label: `Farben und Logo, Version ${b.version}`, sys: b.system_id, href: `/admin/systeme/${b.system_id}/branding` }))];
+    ...d.pendingApprovals.branding.map((b) => ({ label: `Stil, Farben, Logo – Version ${b.version}`, sys: b.system_id, href: `/admin/systeme/${b.system_id}/branding` }))];
   const delivered = d.requests7d.delivered ?? 0;
   const waiting = (d.requests7d.queued ?? 0) + (d.requests7d.sending ?? 0);
   return h('div', null,

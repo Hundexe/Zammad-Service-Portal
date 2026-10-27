@@ -60,7 +60,7 @@ export function sidebar(path: string): HTMLElement {
       item(`/admin/systeme/${sid}/formulare`, 'Formulare', can('form.edit', sid) || can('form.publish', sid) || can('form.approve', sid)),
       item(`/admin/systeme/${sid}/vorlagen`, 'Vorlagen', can('template.edit', sid)),
       item(`/admin/systeme/${sid}/uebersichten`, 'Übersichten', can('overview.edit', sid)),
-      item(`/admin/systeme/${sid}/branding`, 'Farben und Logo', can('branding.edit', sid) || can('form.approve', sid)),
+      item(`/admin/systeme/${sid}/branding`, 'Stil, Farben, Logo', can('branding.edit', sid) || can('form.approve', sid)),
     ) : null,
     canAnywhere('system.manage') ? h('ul', { class: 'nav-sub' }, item('/admin/systeme', 'Alle Ticketsysteme')) : null,
     h('p', { class: 'nav-title' }, 'Portal'),

@@ -130,6 +130,16 @@ test('Branding: Entwurf, Veröffentlichung, Logo', async () => {
   const sys = (await u.get('/api/portal/systems')).json.systems.find((s: any) => s.id === systemId);
   assert.equal(sys.branding.headerColor, '#7a1f2b');
   assert.equal(sys.branding.logoDarkId, logo.json.id);
+  assert.equal(sys.branding.theme, 'standard', 'ohne Auswahl: Standard-Stil');
+
+  // Stil wählen: im Portal sichtbar; unbekannte Stile werden abgelehnt
+  assert.equal((await admin.put(`/api/admin/systems/${systemId}/branding/draft`, { branding: { ...b, theme: 'irgendwas' } })).status, 422);
+  assert.equal((await admin.put(`/api/admin/systems/${systemId}/branding/draft`, { branding: { ...b, theme: 'fluent', colorMode: 'theme' } })).status, 200);
+  assert.equal((await admin.post(`/api/admin/systems/${systemId}/branding/publish`)).json.status, 'published');
+  const sys2 = (await u.get('/api/portal/systems')).json.systems.find((s: any) => s.id === systemId);
+  assert.equal(sys2.branding.theme, 'fluent');
+  assert.equal(sys2.branding.colorMode, 'theme');
+  assert.equal(sys2.branding.headerColor, '#7a1f2b', 'eigene Farben bleiben gespeichert');
 });
 
 test('Lokalen Benutzer mit generiertem Passwort anlegen und zurücksetzen', async () => {

@@ -2,7 +2,7 @@
 import { h, mount, svg } from '../lib/dom.ts';
 import { ApiError, get, post } from '../lib/api.ts';
 import { button, errorText, fieldWrap, input, notice, copyButton } from '../lib/ui.ts';
-import { applyBranding, loadMe, loadSystems, logo, logout, navigate, state, themeToggle } from '../lib/app.ts';
+import { applyBranding, assetUrl, bandLogoId, loadMe, loadSystems, logo, logout, navigate, state, themeToggle } from '../lib/app.ts';
 import { DEMO } from '../lib/env.ts';
 
 function target(q: URLSearchParams): string {
@@ -16,7 +16,7 @@ function shell(...content: (Node | null)[]): HTMLElement {
   document.body.dataset.layout = 'login';
   return h('div', { class: 'login' },
     h('aside', { class: 'login-band' },
-      h('div', { class: 'login-brand' }, logo(b, true), b.logoDarkId || b.logoLightId ? null : h('span', null, b.displayName)),
+      h('div', { class: 'login-brand' }, bandLogoId(b) ? h('img', { class: 'brand-logo', attrs: { src: assetUrl(bandLogoId(b)!), alt: b.displayName } }) : logo({ ...b, logoLightId: null, logoDarkId: null }), bandLogoId(b) ? null : h('span', null, b.displayName)),
       h('div', null,
         h('p', { class: 'login-claim' }, 'Anfragen stellen. Tickets im Blick behalten.'),
         b.footerText ? h('p', { class: 'login-note' }, b.footerText) : null)),

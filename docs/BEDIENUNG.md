@@ -144,13 +144,39 @@ Ablauf: **Entwurf speichern** → **Veröffentlichen** (bzw. **Zur Freigabe send
 
 **Übersichten** sind die Reiter unter „Meine Tickets“: Name, welche Tickets (offen, erledigt, alle), Spalten und Sortierung.
 
-### Farben und Logo
+### Stil, Farben und Logo
 
-Pro Ticketsystem: Anzeigename, Farbe der großen Farbfläche (Startseite) und der Schrift darauf, Primärfarbe (Schaltflächen, Links, Symbole) und Akzentfarbe, Logo auf der Farbfläche (wird im dunklen Design auch in der Navigationsleiste verwendet), Logo für die helle Navigationsleiste, Favicon, Begrüßung, Fußzeile, Links zu Impressum und Datenschutz. Die Vorschau rechts zeigt das Ergebnis, die Kontrastprüfung warnt bei schlecht lesbaren Kombinationen (WCAG AA). Logos: PNG, JPEG, WebP oder SVG bis 1 MB; SVGs mit Skripten oder externen Verweisen werden abgelehnt.
+**Stil.** Jedes Ticketsystem kann sein eigenes Erscheinungsbild haben. Wer zwischen zwei Systemen wechselt, sieht sofort, wohin die Anfrage geht. Zur Wahl stehen:
+
+| Stil | Wirkung |
+| --- | --- |
+| **Standard** | ruhig und hell, große Farbfläche, runde Formen |
+| **Glas** | durchscheinende Flächen mit Unschärfe über einem weichen Farbverlauf aus den Farben des Systems – im Stil von Apple |
+| **Fluent** | sachlich, kleine Rundungen, Akzentlinien unter Reitern und in der Seitenleiste, Segoe-Schrift unter Windows – im Stil von Microsoft |
+| **Material** | getönte Flächen, kräftige Rundungen, runde Symbole, getönte Schaltflächen – im Stil von Google |
+| **Kontrast** | schwarze Linien, hoher Kontrast, unterstrichene Links, deutliche Fokus-Rahmen – besonders gut lesbar |
+
+Jeder Stil funktioniert im hellen und im dunklen Design. Die Vorschau im Auswahlfeld zeigt jeden Stil mit den aktuellen Farben.
+
+**Farben.** Unter *Farben* gibt es zwei Möglichkeiten:
+
+- **Farben des Stils:** Jeder Stil bringt eigene, aufeinander abgestimmte Farben mit, die die Kontrastregeln erfüllen. Man muss also nichts einstellen.
+- **Eigene Farben:**
+  - Ein Klick auf eine fertige Kombination übernimmt deren Farben, zur Wahl stehen Ozean, Wald, Abendrot, Beere, Graphit, Sonne, Minze und Lavendel.
+  - Die vier Farben lassen sich auch einzeln wählen.
+  - Beim Wechsel auf die Farben des Stils bleiben die eigenen gespeichert.
+
+<img src="screenshots/30-stil-auswahl.png" width="900" alt="Auswahl des Stils mit Vorschau">
+
+<img src="screenshots/31-stil-glas.png" width="440" alt="Stil Glas"> <img src="screenshots/32-stil-glas-dunkel.png" width="440" alt="Stil Glas, dunkel">
+<img src="screenshots/33-stil-fluent.png" width="440" alt="Stil Fluent"> <img src="screenshots/34-stil-material.png" width="440" alt="Stil Material">
+<img src="screenshots/35-stil-kontrast.png" width="440" alt="Stil Kontrast"> <img src="screenshots/02-portal-start.png" width="440" alt="Stil Standard">
+
+**Weitere Angaben** pro Ticketsystem: Anzeigename, Farbe der großen Farbfläche (Startseite) und der Schrift darauf, Primärfarbe (Schaltflächen, Links, Symbole) und Akzentfarbe, Logo auf der Farbfläche (wird im dunklen Design auch in der Navigationsleiste verwendet; ist die Farbfläche hell, zum Beispiel bei Material, erscheint dort das Logo für helle Flächen), Logo für die helle Navigationsleiste, Favicon, Begrüßung, Fußzeile, Links zu Impressum und Datenschutz. Die Vorschau rechts zeigt das Ergebnis, die Kontrastprüfung warnt bei schlecht lesbaren Kombinationen (WCAG AA). Logos: PNG, JPEG, WebP oder SVG bis 1 MB; SVGs mit Skripten oder externen Verweisen werden abgelehnt.
 
 ![Farben und Logo](screenshots/16-admin-branding.png)
 
-Die Anmeldeseite (vor der Wahl eines Ticketsystems) hat ein eigenes Erscheinungsbild unter **Anmeldeseite**.
+Die Anmeldeseite (vor der Wahl eines Ticketsystems) hat ein eigenes Erscheinungsbild unter **Anmeldeseite**, mit derselben Stil- und Farbauswahl. Die Verwaltung selbst bleibt im Standard-Stil, weil sie alle Ticketsysteme gemeinsam betreut.
 
 ### Rollen und Rechte
 

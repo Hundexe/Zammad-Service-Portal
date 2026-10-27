@@ -4,9 +4,11 @@ Self-Service-Portal für IT-Abteilungen mit einem oder mehreren Zammad-Systemen:
 
 **[▶ Demo im Browser ansehen](https://hundexe.github.io/Zammad-Service-Portal/)** – ohne Installation, mit Beispieldaten (Portal und Verwaltung zum Durchklicken).
 
-**Aktuelle Version: 1.3.2** – mit allen Punkten aus einem externen Architektur- und Sicherheits-Review ([was geändert wurde](docs/REVIEW-2026-10.md), [Änderungen](CHANGELOG.md)).
+**Aktuelle Version: 1.4.0** – mit allen Punkten aus einem externen Architektur- und Sicherheits-Review ([was geändert wurde](docs/REVIEW-2026-10.md), [Änderungen](CHANGELOG.md)).
 
-![Startseite des Portals](docs/screenshots/02-portal-start.png)
+![Startseite des Portals im Stil „Glas“](docs/screenshots/31-stil-glas.png)
+
+<img src="docs/screenshots/33-stil-fluent.png" width="32%" alt="Stil Fluent"> <img src="docs/screenshots/34-stil-material.png" width="32%" alt="Stil Material"> <img src="docs/screenshots/35-stil-kontrast.png" width="32%" alt="Stil Kontrast">
 
 ## Was das Portal kann
 
@@ -18,7 +20,7 @@ Self-Service-Portal für IT-Abteilungen mit einem oder mehreren Zammad-Systemen:
 | Zammad-Objekte | Ticket-Attribute aus dem Zammad-Objekt-Manager (z. B. `sec_status` als tree_select) werden gezielt freigegeben – inklusive Auswahl der erlaubten Werte – und erscheinen als Auswahlfelder |
 | Tickets | Ticket wird im Namen des Benutzers angelegt (`X-On-Behalf-Of` mit der Zammad-Kunden-ID), bekommt einen Portal-Tag, Gruppe, Priorität, Tags und freigegebene Attribute aus dem Formular – nur in **erlaubte Zammad-Gruppen**, Kernfelder wie Besitzer oder Status setzt nie ein Formular. Mitarbeitende sehen ihre Tickets in konfigurierbaren Übersichten, lesen den Verlauf ohne interne Notizen und ohne E-Mail-Adressen der Bearbeiter (auf Wunsch ganz ohne Namen) und können antworten |
 | Verwaltung | Rollen und Rechte global oder pro Ticketsystem (Entra-Gruppen, App-Rollen, Personen), Benutzerverwaltung, Audit-Log mit Hash-Kette, Zustellungsübersicht, Updates per Klick mit automatischem Rollback |
-| Oberfläche | Ruhiges, helles Design mit großer Farbfläche je Ticketsystem, dunkles Design per Schalter, für Handy und Desktop, barrierearm (Tastatur, Screenreader, Kontrastprüfung) |
+| Oberfläche | Pro Ticketsystem wählbarer **Stil** – Standard, Glas (Apple), Fluent (Microsoft), Material (Google), Kontrast – mit passenden Farben oder eigenen Farben (fertige Kombinationen oder frei wählbar); dunkles Design per Schalter, für Handy und Desktop, barrierearm (Tastatur, Screenreader, Kontrastprüfung) |
 | Ausfallsicherheit | Anfragen landen verschlüsselt in einer Warteschlange und werden zugestellt, sobald Zammad erreichbar ist – auch nach Neustart oder Absturz, ohne doppelte Tickets |
 | Betrieb | Docker-Compose-Stack oder direkt auf Debian/Ubuntu (systemd), Installation mit einem Befehl, nur intern erreichbar, Caddy mit TLS, ClamAV-Virenscan, verschlüsselte Ablage, keine npm-Laufzeitabhängigkeiten. Befehle für Status/Monitoring, Virenscanner-Test, Sicherung prüfen und wiederherstellen; Alarm bei jeder lokalen Anmeldung |
 
@@ -92,7 +94,7 @@ TypeScript auf Node.js 24 ohne externe Laufzeitpakete (HTTP, Krypto, SQLite und 
 ## Tests
 
 ```bash
-npm test                        # 201 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
+npm test                        # 202 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
 npm run typecheck
 node tools/loadtest.ts          # Lasttest: 50 Logins, 50 Ticketansichten, 20 Anfragen mit Anhang
 bash tools/secret-scan.sh       # vor jeder Veröffentlichung: keine Geheimnisse im Repository
@@ -105,7 +107,7 @@ bash tools/secret-scan.sh       # vor jeder Veröffentlichung: keine Geheimnisse
 | Sicherheit: lokale Anmeldung, Sperre, 2FA | 20 |
 | Review: Token-Prüfung im Detail, Schlüsselwechsel, JWKS-Erneuerung und Höchstalter | 33 |
 | Review: Zugriffe, Zammad-Felder und -Gruppen, Kundenzuordnung, SSRF-Schutz (inkl. IPv6 und TLS), Uploads, Backup/Restore, Zustellung, Step-up, Monitoring | 40 |
-| Grundfunktionen, Ende-zu-Ende, Verwaltung, Updater | 44 |
+| Grundfunktionen, Ende-zu-Ende, Verwaltung, Stile, Updater | 45 |
 
 Die Tests starten Portal, Zammad- und Microsoft-Simulator im selben Prozess – es wird nichts weiter benötigt. Lasttest-Ergebnisse: [docs/LASTTEST.md](docs/LASTTEST.md).
 
