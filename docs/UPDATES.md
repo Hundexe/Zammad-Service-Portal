@@ -1,6 +1,6 @@
 # Updates
 
-Neue Versionen werden als **signierte Git-Tags** (`v1.1.0`) veröffentlicht. Der Update-Dienst auf der VM holt sie, prüft die Signatur, baut die Images **auf der VM** und startet das Portal neu. Dafür braucht es weder GitHub Actions noch eine Container-Registry.
+Neue Versionen werden als **signierte Git-Tags** (`vX.Y.Z`, siehe **Releases**) veröffentlicht. Der Update-Dienst auf der VM holt sie, prüft die Signatur, baut die Images **auf der VM** und startet das Portal neu. Dafür braucht es weder GitHub Actions noch eine Container-Registry.
 
 
 > **Installation ohne Docker** (`deploy/native/install.sh`): Updates einfach mit demselben Befehl wie bei der Installation einspielen (`curl -fsSL https://raw.githubusercontent.com/Hundexe/Zammad-Service-Portal/main/setup.sh | sudo bash`). Die Update-Schaltfläche in der Verwaltung und der Update-Dienst gibt es nur in der Docker-Variante.
@@ -63,41 +63,55 @@ Die E-Mail muss zur Git-Konfiguration (`user.email`) passen, mit der der Tag ers
 ## Eine neue Version veröffentlichen (auf dem Build-PC)
 
 ```bash
-npm test                                 # alles grün?
-# CHANGELOG.md ergänzen (## 1.1.0 – Datum), Version in package.json erhöhen
-git commit -am "Version 1.1.0"
-git tag -s v1.1.0 -m "Version 1.1.0"     # -s = signiert
-git push && git push origin v1.1.0
+# CHANGELOG.md ergänzen (## 1.3.0 – Datum), Version in package.json erhöhen, committen
+bash tools/release.sh 1.3.0
 ```
 
+`tools/release.sh` prüft Arbeitsstand, Version und Changelog, lässt Typprüfung, alle Tests und den Secret-Scan laufen, erstellt den **signierten** Tag, prüft die Signatur gegen `deploy/allowed_signers` und lädt Commit und Tag hoch. Ist die GitHub-CLI angemeldet, legt es auch das GitHub-Release mit dem Text aus dem Changelog an; sonst auf der Webseite unter **Releases → Draft a new release** den Tag auswählen.
+
 Danach erscheint die Version spätestens nach 6 Stunden in der Oberfläche, sofort nach **Jetzt nach Updates suchen**.
+
+> Welche Versionen es gibt, steht unter **Releases** bzw. `git tag -l 'v*'`. In dieser Anleitung steht `vX.Y.Z` für die gewünschte Version.
+
+## Empfehlung für den Start: manuell aktualisieren
+
+Der Updater kann Images bauen und Container starten – wer ihn übernimmt, hat weitgehende Rechte auf der VM. Für die ersten Monate empfiehlt sich deshalb: Profil `updater` **weglassen** (`COMPOSE_PROFILES=clamav` in `.env`), Updates von Hand nach dem folgenden Ablauf, vorher **VM-Snapshot**. Wer ein eigenes Fork pflegt, prüft die Änderungen dort (`git log`, `git diff vALT..vNEU`) und installiert nur eigene, signierte Tags – nie direkt `main`.
 
 ## Manuell aktualisieren (ohne Updater)
 
 ```bash
 cd /opt/zammad-service-portal
 git fetch --tags
-git -c gpg.ssh.allowedSignersFile=deploy/allowed_signers verify-tag v1.1.0
+git tag -l 'v*' | sort -V | tail -3                                   # verfügbare Versionen
+git -c gpg.ssh.allowedSignersFile=deploy/allowed_signers verify-tag vX.Y.Z   # muss "Good signature" melden
 cd deploy
-docker compose exec app /nodejs/bin/node src/server/cli.ts backup
-git checkout v1.1.0
-sed -i 's/^APP_VERSION=.*/APP_VERSION=1.1.0/' .env
+docker compose exec app /nodejs/bin/node src/server/cli.ts backup --out /data/backups/vor-update.sqlite
+docker compose exec app /nodejs/bin/node src/server/cli.ts backup:verify /data/backups/vor-update.sqlite
+git checkout vX.Y.Z
+sed -i 's/^APP_VERSION=.*/APP_VERSION=X.Y.Z/' .env
 docker compose build && docker compose up -d
-docker compose ps        # app muss "healthy" sein
+docker compose ps                                                      # app muss "healthy" sein
+docker compose exec app /nodejs/bin/node src/server/cli.ts status      # Exit-Code 0 = alles in Ordnung
+bash ../tools/check-hardening.sh                                       # Härtung unverändert?
 ```
+
+Ohne Docker: `git -C /opt/zammad-service-portal fetch --tags && git -C /opt/zammad-service-portal checkout vX.Y.Z`, Signatur wie oben prüfen, `service-portal-cli backup`, dann `/opt/zammad-service-portal/deploy/native/install.sh`.
 
 ## Manuell zurückrollen
 
 ```bash
 cd /opt/zammad-service-portal/deploy
 docker compose stop app worker
-git checkout v1.0.0
-sed -i 's/^APP_VERSION=.*/APP_VERSION=1.0.0/' .env
-# Datenbank aus dem Backup vor dem Update zurückholen (Dateiname aus dem Update-Protokoll):
-docker run --rm -v service-portal_portal-data:/data alpine:3.20 sh -c \
-  'cp /data/backups/vor-update-1.0.0-auf-1.1.0-*.sqlite /data/portal.sqlite && rm -f /data/portal.sqlite-wal /data/portal.sqlite-shm && chown 65532:65532 /data/portal.sqlite'
-docker compose build && docker compose up -d
+git checkout vALT                                                      # vorher installierte Version
+sed -i 's/^APP_VERSION=.*/APP_VERSION=ALT/' .env
+docker compose build
+# Datenbank vom Stand vor dem Update zurückholen (prüft die Datei, sichert den aktuellen Stand vorher):
+docker compose run --rm --no-deps app restore /data/backups/vor-update.sqlite --yes
+docker compose up -d
+docker compose exec app /nodejs/bin/node src/server/cli.ts status
 ```
+
+Der Rückweg ist nötig, weil neuere Versionen die Datenbank migrieren können; eine ältere Version startet nicht mit einer Datenbank aus der Zukunft (`backup:verify` meldet das). Ohne Docker: Dienste stoppen, alten Tag auschecken, `service-portal-cli restore DATEI --yes`, `install.sh` erneut ausführen.
 
 ## Alternative: signierte Images aus der Registry
 

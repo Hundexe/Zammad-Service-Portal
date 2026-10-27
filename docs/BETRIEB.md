@@ -49,7 +49,7 @@ docker compose logs -f app worker     # Logs als JSON, eine Zeile je Ereignis
 curl -sk https://serviceportal.firma.intern/readyz   # {"status":"ok","version":"…"}
 ```
 
-Für Monitoring (z. B. Checkmk, Zabbix, Uptime Kuma) eignet sich `/readyz`: HTTP 200 mit Versionsnummer, wenn App und Datenbank laufen. Zusätzlich in der Verwaltung: **Zustellung** (fehlgeschlagene Anfragen) und **Updates** (meldet sich der Updater?).
+Für Monitoring (z. B. Checkmk, Zabbix, Uptime Kuma) eignet sich `/readyz`: HTTP 200 mit Versionsnummer, wenn App und Datenbank laufen. Mehr sagt der Befehl `status` (siehe [Überwachung](#überwachung-und-alarme)). Zusätzlich in der Verwaltung: **Zustellung** (fehlgeschlagene Anfragen) und **Updates** (meldet sich der Updater?).
 
 Wichtige Log-Meldungen:
 
@@ -60,6 +60,9 @@ Wichtige Log-Meldungen:
 | `Virenscanner nicht erreichbar` | ClamAV läuft nicht oder lädt noch Signaturen (nach dem Start bis zu 2 Minuten) |
 | `Microsoft-Anmeldung abgelehnt` | Grund steht dabei (z. B. Tenant nicht erlaubt, Secret abgelaufen) |
 | `Entra liefert zu viele Gruppen im Token` | Gruppenanspruch auf „der Anwendung zugewiesene Gruppen“ umstellen |
+| `Lokale Anmeldung` (mit `"alert":true`) | Jemand hat sich mit einem lokalen Konto angemeldet – im Normalbetrieb nur das Notfallkonto, also **immer prüfen** |
+| `form.group_not_allowed` / `form.field_not_released` | Ein Formular will in eine nicht erlaubte Gruppe oder ein nicht freigegebenes Feld schreiben – Formular korrigieren |
+| `Anfrage war schon zugestellt – kein zweites Ticket` | Nach einer Zeitüberschreitung wurde das schon vorhandene Ticket übernommen (kein Duplikat) |
 
 ## Kommandozeile
 
@@ -71,6 +74,9 @@ $P user:reset-password --username max [--reset-totp]                            
 $P user:unlock --username max
 $P user:list
 $P backup                                     # Sicherung nach /data/backups/
+$P backup:verify /data/backups/DATEI.sqlite   # Sicherung prüfen (Integrität, Schema, passender Schlüssel)
+$P status                                     # Zustand für Monitoring, Exit-Code 2 bei Problemen (--json)
+$P scanner:test                               # Virenscanner mit EICAR-Testdatei prüfen
 $P audit:verify                               # Integrität des Audit-Logs prüfen
 $P secret:generate                            # neuen 32-Byte-Schlüssel ausgeben
 ```
@@ -90,22 +96,171 @@ Täglich per Cron (als Benutzer `portal`):
 ```bash
 crontab -e
 # 02:15 Uhr: Datenbank sichern, auf die VM kopieren, Sicherungen älter als 30 Tage löschen
-15 2 * * * cd /opt/zammad-service-portal/deploy && docker compose exec -T app /nodejs/bin/node src/server/cli.ts backup --out /data/backups/taeglich.sqlite && docker compose cp app:/data/backups/taeglich.sqlite /opt/backup/portal-$(date +\%F).sqlite && find /opt/backup -name 'portal-*.sqlite' -mtime +30 -delete
+15 2 * * * cd /opt/zammad-service-portal/deploy && docker compose exec -T app /nodejs/bin/node src/server/cli.ts backup --out /data/backups/taeglich.sqlite && docker compose exec -T app /nodejs/bin/node src/server/cli.ts backup:verify /data/backups/taeglich.sqlite && docker compose cp app:/data/backups/taeglich.sqlite /opt/backup/portal-$(date +\%F).sqlite && find /opt/backup -name 'portal-*.sqlite' -mtime +30 -delete
 ```
 
 `/opt/backup` sollte vom Proxmox-Backup (oder einem anderen Sicherungssystem) mit erfasst werden. Die VM selbst lässt sich zusätzlich mit Proxmox-Snapshots sichern.
 
 ## Wiederherstellung
 
+Der Befehl `restore` prüft die Sicherung (Integrität, Schema-Version, passt der `SECRET_KEY`?), sichert den aktuellen Stand nach `backups/vor-wiederherstellung-*.sqlite`, entfernt alte `-wal`/`-shm`-Dateien und spielt die Sicherung ein. Ohne `--yes` passiert nichts.
+
+**Docker:**
+
 ```bash
 cd /opt/zammad-service-portal/deploy
 docker compose stop app worker updater
-docker run --rm -v service-portal_portal-data:/data -v /opt/backup:/backup alpine:3.20 sh -c \
-  'cp /backup/portal-2026-10-20.sqlite /data/portal.sqlite && rm -f /data/portal.sqlite-wal /data/portal.sqlite-shm && chown 65532:65532 /data/portal.sqlite'
+docker compose cp /opt/backup/portal-2026-10-20.sqlite app:/data/backups/einspielen.sqlite   # nur nötig, wenn die Datei außerhalb liegt
+docker compose run --rm --no-deps app backup:verify /data/backups/einspielen.sqlite
+docker compose run --rm --no-deps app restore /data/backups/einspielen.sqlite --yes
 docker compose up -d
+docker compose exec app /nodejs/bin/node src/server/cli.ts status
 ```
 
-Auf einer neuen VM: Repository klonen, `.env`, `certs/` und **denselben** `secret_key` zurückspielen, dann wie oben die Datenbank einspielen und `docker compose up -d`.
+(`docker compose cp` funktioniert auch mit gestopptem Container.)
+
+**Ohne Docker:**
+
+```bash
+systemctl stop zammad-service-portal zammad-service-portal-worker
+service-portal-cli backup:verify /opt/backup/portal-2026-10-20.sqlite
+service-portal-cli restore /opt/backup/portal-2026-10-20.sqlite --yes
+systemctl start zammad-service-portal zammad-service-portal-worker
+```
+
+Auf einer neuen VM: Repository klonen, `.env`, `certs/` und **denselben** `secret_key` zurückspielen, installieren, dann wie oben einspielen. Mit einem anderen Schlüssel meldet `backup:verify` „Schlüssel: PASST NICHT“ – API-Tokens und wartende Anfragen wären dann unlesbar.
+
+Wartende Anfragen mit Anhängen brauchen zusätzlich die Dateien unter `/data/uploads` (Docker-Volume `portal-data` bzw. `/var/lib/zammad-service-portal/uploads`). Wer das ganze Volume sichert (Proxmox-Backup der VM), hat beides.
+
+### Restore-Probe (alle 3 Monate)
+
+Eine Sicherung ist erst etwas wert, wenn das Zurückspielen geklappt hat. Am einfachsten auf einer Test-VM oder lokal mit Docker:
+
+1. Sicherung und `secret_key` auf die Test-VM kopieren, Portal dort installieren.
+2. `backup:verify` – muss „Ergebnis: in Ordnung“ und „Schlüssel: passt“ melden.
+3. `restore … --yes`, starten, als Notfall-Admin anmelden, Formulare und Ticketsysteme ansehen, **Verbindung testen**.
+4. Ergebnis mit Datum festhalten (z. B. im Betriebshandbuch).
+
+Der Ablauf Sicherung → Änderung → Wiederherstellung ist zusätzlich automatisch getestet (`test/review.test.ts`, Abschnitt „#10“).
+
+## Überwachung und Alarme
+
+**Zustand abfragen** – für Checkmk, Zabbix, Nagios-Plugins oder ein Cron-Skript:
+
+```bash
+docker compose exec -T app /nodejs/bin/node src/server/cli.ts status            # lesbar
+docker compose exec -T app /nodejs/bin/node src/server/cli.ts status --json     # für Skripte
+echo $?                                                                          # 0 = OK, 2 = Problem
+```
+
+`status` prüft: wartende und fehlgeschlagene Anfragen, wie lange die älteste Anfrage schon wartet (Grenze `--max-queue-minutes`, Standard 30), den Virenscanner mit einer EICAR-Testdatei und die Hash-Kette des Audit-Logs. Ist ClamAV Pflicht (`CLAMAV_REQUIRED=true`) und erkennt EICAR nicht, ist das ein Problem; sonst nur ein Hinweis.
+
+Empfohlene Prüfungen:
+
+| Prüfung | Intervall | Alarm, wenn |
+| --- | --- | --- |
+| `GET /readyz` | 1 Minute | nicht HTTP 200 |
+| `cli.ts status` | 5 Minuten | Exit-Code ≠ 0 |
+| `cli.ts scanner:test` | stündlich (in `status` enthalten) | Exit-Code ≠ 0 |
+| Log-Ereignis `"alert":true` | sofort | immer (lokale Anmeldung) |
+| Log-Ereignis `Konto gesperrt` | sofort | mehrfach in kurzer Zeit |
+| Log-Ereignis `Zustellung endgültig fehlgeschlagen` | sofort | immer |
+| Zertifikat (`https://…`) | täglich | läuft in < 14 Tagen ab |
+
+**Logs weiterleiten.** Die Logs sind JSON-Zeilen auf stdout/stderr (ein Ereignis je Zeile, Geheimnisse geschwärzt).
+
+- Docker: in `docker-compose.yml` den Logging-Treiber auf `syslog` oder `journald` umstellen, z. B.
+  ```yaml
+  x-hardening: &hardening
+    logging:
+      driver: syslog
+      options: { syslog-address: "tcp://siem.firma.intern:514", tag: "service-portal/{{.Name}}" }
+  ```
+  oder lokal bei `json-file` bleiben und die Dateien mit dem vorhandenen Agenten (Filebeat, Vector, Promtail, Wazuh …) einsammeln.
+- Ohne Docker: die Dienste schreiben ins Journal (`journalctl -u zammad-service-portal`). Weiterleitung über `rsyslog` (`ForwardToSyslog=yes` in `/etc/systemd/journald.conf`, dann `*.* @@siem.firma.intern:514`) oder den Agenten des SIEM.
+
+Beispiel-Alarmregel (Graylog/Loki/Wazuh sinngemäß): `alert:true` → sofort an die Admin-Bereitschaft; `level:"warn" AND msg:"Konto gesperrt"` mehr als 5× in 10 Minuten → möglicher Angriff.
+
+Das **Audit-Log** (Verwaltung → Audit) ist zusätzlich als CSV exportierbar und lässt sich mit `audit:verify` auf Manipulation prüfen.
+
+## Container-Härtung prüfen
+
+```bash
+bash tools/check-hardening.sh              # Konfiguration + laufende Container (docker inspect)
+bash tools/check-hardening.sh --config-only
+```
+
+Das Skript prüft je Dienst: schreibgeschütztes Dateisystem, alle Capabilities entzogen, `no-new-privileges`, kein root, nicht privilegiert, kein Docker-Socket, keine Ports nach außen, kein `network_mode: host`. Erwartetes Ergebnis (Stand 1.3.0):
+
+| Dienst | read-only | cap_drop ALL | no-new-priv. | Benutzer | Ports | Ausnahme und Begründung |
+| --- | --- | --- | --- | --- | --- | --- |
+| app, worker | ✓ | ✓ | ✓ | 65532 | – | keine |
+| caddy | ✓ | ✓ | ✓ | root | 80/443 | einziger Dienst mit Ports; nur `NET_BIND_SERVICE` |
+| clamav | – | – | ✓ | root → clamav | – | offizielles Image schreibt Signaturen und wechselt beim Start selbst den Benutzer; eigenes Volume, kein Zugriff auf Portaldaten, nur internes Netz + Signatur-Updates |
+| socket-proxy | ✓ | – | ✓ | root | – | liest den Docker-Socket (nur lesend eingehängt), erlaubte API-Aufrufe begrenzt, nur internes Netz |
+| updater | ✓ | ✓ | ✓ | root | – | nur `DAC_OVERRIDE`, `CHOWN`, `FOWNER` für das Projektverzeichnis, kein Docker-Socket |
+
+Wer den Updater nicht nutzt (empfohlen für den Start), hat socket-proxy und updater gar nicht laufen. Alle Dienste haben Speicher- und Prozessgrenzen sowie Log-Rotation.
+
+## Ausgehende Verbindungen begrenzen (Egress-Firewall)
+
+Das Portal prüft Zammad-Adressen selbst (keine Loopback-, Link-Local- und Metadaten-Adressen, keine eigenen Dienstnamen, Prüfung der IP bei **jedem** Verbindungsaufbau, keine Weiterleitungen). Zusätzlich sollte die VM nur dorthin dürfen, wohin sie muss:
+
+| Ziel | Wofür |
+| --- | --- |
+| `login.microsoftonline.com`, `graph.microsoft.com` (443) | Anmeldung, Abteilung |
+| eigene Zammad-Server (443) | Tickets |
+| `github.com` (443/22) | nur mit Updater bzw. für `git fetch` |
+| `database.clamav.net` (443) | Virensignaturen |
+| Paketquellen (Debian, Docker, nodejs.org) | Updates des Systems |
+| DNS- und NTP-Server | |
+
+Beispiel **Docker** (Regeln in der Kette `DOCKER-USER`, gelten für alle Container; Adressen anpassen):
+
+```bash
+ZAMMAD=10.10.20.15          # eigener Zammad-Server
+DNS=10.10.0.53
+iptables -I DOCKER-USER -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -A DOCKER-USER -s 172.16.0.0/12 -d $DNS -p udp --dport 53 -j ACCEPT
+iptables -A DOCKER-USER -s 172.16.0.0/12 -d $ZAMMAD -p tcp --dport 443 -j ACCEPT
+iptables -A DOCKER-USER -s 172.16.0.0/12 -d 10.0.0.0/8 -j REJECT        # sonst nichts im internen Netz
+iptables -A DOCKER-USER -s 172.16.0.0/12 -d 192.168.0.0/16 -j REJECT
+iptables -A DOCKER-USER -s 172.16.0.0/12 -p tcp --dport 443 -j ACCEPT   # HTTPS ins Internet (Entra, Graph, ClamAV)
+iptables -A DOCKER-USER -s 172.16.0.0/12 -j REJECT
+apt-get install -y iptables-persistent && netfilter-persistent save
+```
+
+Beispiel **ohne Docker** (nftables, Dienstbenutzer `zsp`):
+
+```
+# /etc/nftables.d/service-portal.nft
+table inet zsp_egress {
+  chain out {
+    type filter hook output priority 0; policy accept;
+    meta skuid "zsp" ct state established,related accept
+    meta skuid "zsp" ip daddr 127.0.0.1 tcp dport 3310 accept          # ClamAV lokal
+    meta skuid "zsp" udp dport 53 accept
+    meta skuid "zsp" ip daddr 10.10.20.15 tcp dport 443 accept          # Zammad
+    meta skuid "zsp" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } reject
+    meta skuid "zsp" tcp dport 443 accept                               # Entra, Graph
+    meta skuid "zsp" reject
+  }
+}
+```
+
+Das Hypervisor-Management (z. B. Proxmox auf 8006), die Docker-API und andere Verwaltungsoberflächen dürfen von der Portal-VM aus nicht erreichbar sein – am besten zusätzlich auf der Netzwerk-Firewall sperren.
+
+## Wann Rechteänderungen greifen
+
+| Änderung | wirkt |
+| --- | --- |
+| Benutzer im Portal deaktiviert | sofort, alle Sitzungen |
+| lokale Anmeldung abgeschaltet | sofort für alle lokalen Sitzungen |
+| Rolle im Portal entzogen/zugewiesen | sofort (bei der nächsten Anfrage) |
+| Entra-Gruppe oder App-Rolle geändert | bei der nächsten Anmeldung **oder** Bestätigung (Step-up) über Microsoft, spätestens nach `SESSION_MAX_HOURS` |
+| Benutzer in Entra gesperrt | keine neue Anmeldung/Bestätigung mehr möglich; laufende Sitzung endet spätestens nach `SESSION_IDLE_MINUTES` Inaktivität bzw. `SESSION_MAX_HOURS` |
+
+Kritische Aktionen in der Verwaltung verlangen eine Bestätigung, die höchstens `STEPUP_MINUTES` (Standard 10) alt ist – dabei werden Gruppen frisch aus Entra übernommen. Wer Admin-Rechte schneller entziehen will: `SESSION_MAX_HOURS` verkürzen (z. B. 4) und beim Entzug den Benutzer zusätzlich kurz im Portal deaktivieren.
 
 ## Zertifikat der internen Caddy-CA verteilen
 

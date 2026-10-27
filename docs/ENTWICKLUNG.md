@@ -51,9 +51,21 @@ node --test test/flow.test.ts     # einzelne Datei
 | `test/admin.test.ts` | Verwaltung über die API |
 | `test/security-auth.test.ts` | Anmeldung, Sitzungen, CSRF, Rechte, OIDC-Manipulationen |
 | `test/security-app.test.ts` | IDOR, Injection, Uploads, SSRF, Pfade, Datenablage, Audit-Log |
+| `test/security-local-login.test.ts` | lokale Anmeldung: Sperre, 2FA-Pflicht, Rechteausweitung |
 | `test/updater.test.ts` | Updater mit simuliertem Git/Docker inkl. Rollback |
+| `test/review-oidc.test.ts` | Review 2026-10, #2: Einzelprüfungen des ID-Tokens mit selbst signierten Tokens |
+| `test/review.test.ts` | Review 2026-10, #3–#13: IDOR, Zammad-Felder und -Gruppen, Kundenzuordnung, SSRF-Guard, Uploads, Backup/Restore, Outbox, Step-up, Monitoring |
 
 Die Tests starten das Portal, den Zammad- und den Entra-Simulator im selben Prozess; es wird nichts weiter benötigt.
+
+Weitere Werkzeuge:
+
+```bash
+node tools/loadtest.ts                 # Lasttest (docs/LASTTEST.md)
+bash tools/check-hardening.sh          # Container-Härtung prüfen
+bash tools/secret-scan.sh dist/pages   # vor jeder Veröffentlichung: keine Geheimnisse
+bash tools/release.sh X.Y.Z            # signiertes Release (docs/UPDATES.md)
+```
 
 ## Screenshots
 

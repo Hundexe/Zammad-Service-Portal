@@ -19,7 +19,7 @@ In beiden echten Varianten folgen dieselben Fragen: Hostname oder IP, HTTPS- und
 | `… \| sudo bash -s -- --docker` | Variante 1 ohne Menü (`--debian`, `--demo` entsprechend) |
 | `… \| sudo bash -s -- --docker --ja` | zusätzlich ohne Rückfragen: IP des Servers, freie Ports, Virenscanner je nach RAM |
 | `… \| sudo PORTAL_DIR=/srv/portal bash` | anderes Zielverzeichnis |
-| `… \| sudo PORTAL_REF=v1.2.0 bash` | bestimmte Version statt der neuesten |
+| `… \| sudo PORTAL_REF=vX.Y.Z bash` | bestimmte Version (Tag aus **Releases**) statt `main` |
 
 **Aktualisieren:** denselben Befehl noch einmal ausführen. Einstellungen, Schlüssel, Daten und Benutzer bleiben erhalten.
 
@@ -87,7 +87,8 @@ Weiter als dieser Benutzer: `sudo -iu portal`
 sudo mkdir -p /opt/zammad-service-portal && sudo chown portal: /opt/zammad-service-portal
 git clone https://github.com/Hundexe/Zammad-Service-Portal.git /opt/zammad-service-portal
 cd /opt/zammad-service-portal
-git checkout v1.2.0        # für den Betrieb einen Release-Tag verwenden, zum Ausprobieren geht auch main
+git tag -l 'v*'             # vorhandene Release-Tags
+git checkout vX.Y.Z        # für den Betrieb einen signierten Release-Tag verwenden, zum Ausprobieren geht auch main
 ```
 
 Das Repository ist öffentlich, ein Schlüssel ist zum Klonen und für Updates nicht nötig.
@@ -149,6 +150,18 @@ Pro Zammad-Instanz (für den Test erst das Test-Zammad):
    - `ticket.agent` mit Zugriff **Anlegen + Lesen + Ändern** auf alle Gruppen, in die das Portal Tickets legt
 2. **Benutzer anlegen**, z. B. `service-portal@firma.intern`, nur mit dieser Rolle. Für ihn ein langes, zufälliges Passwort setzen und nirgends verwenden.
 3. Als dieser Benutzer anmelden: **Profil → Token-Zugriff → Neuer persönlicher Token**, Name `Service-Portal`, Rechte `admin.user`, `admin.object`, `ticket.agent`. Den Token notieren – er wird später in der Admin-Oberfläche eingetragen und dort verschlüsselt gespeichert.
+   **Welche Rechte braucht welche Betriebsart?** (Einstellung „Tickets anlegen“ am Ticketsystem)
+
+   | | Im Namen des Kunden (`on_behalf_of`, Standard) | Als Portal-Benutzer mit Kundenfeld (`customer_field`) |
+   | --- | --- | --- |
+   | Rechte des API-Benutzers | `admin.user`, `ticket.agent` (nur Portal-Gruppen), optional `admin.object` | `ticket.agent` (nur Portal-Gruppen), optional `admin.object` |
+   | Warum | Zammad erlaubt `X-On-Behalf-Of` nur mit `admin.user` | Kunden suchen und anlegen geht mit Agentenrechten |
+   | Wer prüft, welche Tickets ein Kunde sieht | **Zammad** (Kundensicht) **und** das Portal | nur das Portal (Kunden-ID, Organisation, interne Notizen werden herausgefiltert – getestet) |
+   | Ticket-Ersteller in Zammad | der Kunde | der API-Benutzer |
+   | Risiko bei gestohlenem Token | Benutzerverwaltung in Zammad | Lesen/Ändern der Tickets in den Portal-Gruppen |
+
+   Empfehlung: `on_behalf_of`, weil Zammad dann selbst eine zweite Prüfung macht. Wer `admin.user` nicht vergeben möchte, nimmt `customer_field`. In beiden Fällen: eigener Benutzer, nur die Gruppen, in die das Portal Tickets legt (in der Verwaltung unter **Erlaubte Zammad-Gruppen** dieselbe Liste eintragen), keine Organisationen außer den nötigen, Token jährlich erneuern, Rechte bei jedem Zammad-Update prüfen. `admin.object` braucht es nur zum Lesen der Ticket-Attribute; nach der Freigabe kann es wieder entfernt werden (bis zur nächsten Änderung).
+
 4. **Eingangsbestätigung per Trigger** (Zammad verschickt alle Mails, das Portal keine):
    Einstellungen → Trigger → Neu
    - Bedingung: *Aktion* ist *erstellt* **und** *Tags* enthält einen von `service-portal`

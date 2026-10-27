@@ -1,0 +1,88 @@
+{
+  "date": "2026-10-27T11:55:35.149Z",
+  "node": "v22.22.0",
+  "cpus": 2,
+  "memGb": 8,
+  "params": {
+    "users": 50,
+    "submits": 20,
+    "uploadKb": 1024
+  },
+  "login": {
+    "count": 50,
+    "ok": 50,
+    "errors": 0,
+    "p50": 393,
+    "p95": 591,
+    "max": 594,
+    "avg": 403,
+    "statusCodes": [
+      302
+    ],
+    "wallMs": 618
+  },
+  "ticketList": {
+    "count": 50,
+    "ok": 50,
+    "errors": 0,
+    "p50": 199,
+    "p95": 247,
+    "max": 250,
+    "avg": 201,
+    "statusCodes": [
+      200
+    ],
+    "wallMs": 257
+  },
+  "ticketListCached": {
+    "count": 50,
+    "ok": 50,
+    "errors": 0,
+    "p50": 40,
+    "p95": 41,
+    "max": 41,
+    "avg": 40,
+    "statusCodes": [
+      200
+    ],
+    "wallMs": 47
+  },
+  "ticketDetail": {
+    "count": 25,
+    "ok": 25,
+    "errors": 0,
+    "p50": 73,
+    "p95": 90,
+    "max": 91,
+    "avg": 74,
+    "statusCodes": [
+      200
+    ],
+    "wallMs": 94
+  },
+  "submit": {
+    "count": 20,
+    "ok": 20,
+    "errors": 0,
+    "p50": 501,
+    "p95": 575,
+    "max": 584,
+    "avg": 497,
+    "statusCodes": [
+      201
+    ],
+    "wallMs": 694
+  },
+  "delivery": {
+    "delivered": 20,
+    "wallMs": 436,
+    "perRequestMs": 22,
+    "statuses": {
+      "delivered": 20
+    }
+  },
+  "memory": {
+    "rssStartMb": 105,
+    "rssEndMb": 318
+  }
+}

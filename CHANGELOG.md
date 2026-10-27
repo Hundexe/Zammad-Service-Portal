@@ -1,5 +1,35 @@
 # Änderungen
 
+## 1.3.0 – 27.10.2026
+
+Umsetzung des externen Reviews (docs/REVIEW-2026-10.md, Issues #1–#14).
+
+Sicherheit:
+
+- Zammad-Felder: Kernattribute (`customer_id`, `owner_id`, `group_id`, `state_id`, `organization_id`, …) können aus Formularen nie gesetzt werden; freie Zuordnung nur in freigegebene Attribute – geprüft im Editor, beim Anlegen des Tickets und im Connector (#4)
+- Neu je Ticketsystem: **Erlaubte Zammad-Gruppen**; Tickets nur in diese Gruppen, Warnung in der Übersicht ohne Liste (#4)
+- `X-On-Behalf-Of` mit der Zammad-Kunden-ID statt der E-Mail-Adresse (#5)
+- Ticketverlauf ohne E-Mail-Adressen; optional Namen der Bearbeiter ausblenden (#6)
+- SSRF: Prüfung der aufgelösten IP bei jedem Verbindungsaufbau (DNS-Rebinding), eigene Dienstnamen gesperrt, `ALLOW_LOOPBACK_TICKET_URLS` nur für Demo (#7)
+- OIDC: JWKS-Schlüssel unter 2048 Bit werden verworfen (#2)
+- Step-up über Microsoft übernimmt Gruppen und Rollen frisch aus Entra; deaktivierte Benutzer kommen auch so nicht hinein (#12)
+- Log-Ereignis mit `"alert": true` bei jeder lokalen Anmeldung (#13)
+
+Betrieb:
+
+- Kein doppeltes Ticket mehr, wenn die Antwort von Zammad verloren geht oder der Worker mitten in der Zustellung abstürzt (#11)
+- `UPLOAD_MAX_FILE_MB`, `UPLOAD_MAX_TOTAL_MB` (#8)
+- Neue Befehle: `backup:verify`, `restore`, `status`, `scanner:test` (#8, #10, #13)
+- `tools/check-hardening.sh` (#9), `tools/loadtest.ts` (#11), `tools/release.sh` (#1), `tools/secret-scan.sh`
+
+Doku:
+
+- docs/GO-LIVE.md, docs/LASTTEST.md, docs/REVIEW-2026-10.md
+- Zammad-Rechte je Betriebsart, Egress-Firewall, Monitoring und Alarme, Restore-Probe, manuelles Update/Rollback, Tabelle der Token-Prüfungen und Autorisierungstests
+- SECURITY.md realistisch formuliert; keine Verweise mehr auf nicht vorhandene Tags (#1, #14)
+
+Tests: 59 neue, insgesamt 187.
+
 ## 1.2.0 – 26.10.2026
 
 - Installation mit einem Befehl: `curl -fsSL …/setup.sh | sudo bash` – Auswahl Docker, direkt auf Debian/Ubuntu oder Demo

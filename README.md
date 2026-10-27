@@ -57,7 +57,10 @@ Die ausführliche Anleitung mit Entra-App-Registrierung, Zammad-API-Benutzer und
 | [Sicherheit](docs/SICHERHEIT.md) | Schutzmaßnahmen, Bedrohungsmodell, Abgleich mit OWASP |
 | [Penetrationstest](docs/PENTEST.md) | Vorgehen, Werkzeuge, Ergebnisse und behobene Funde |
 | [Updates](docs/UPDATES.md) | Releases signieren, Updates aus der Oberfläche, Rollback |
-| [Betrieb](docs/BETRIEB.md) | Sicherung, Wiederherstellung, Logs, Störungen beheben |
+| [Betrieb](docs/BETRIEB.md) | Sicherung, Wiederherstellung, Monitoring, Egress-Firewall, Härtung prüfen |
+| [Go-Live](docs/GO-LIVE.md) | Checkliste mit Prüfanleitung vor dem Produktivbetrieb |
+| [Lasttest](docs/LASTTEST.md) | Messwerte, Ausfall- und Neustart-Szenarien |
+| [Review 2026-10](docs/REVIEW-2026-10.md) | Externes Review und was daraus geändert wurde |
 | [Entwicklung](docs/ENTWICKLUNG.md) | Lokale Demo, Tests, Screenshots |
 
 ## Technik in einem Satz
@@ -67,6 +70,6 @@ TypeScript auf Node.js 24 ohne externe Laufzeitpakete (HTTP, Krypto, SQLite und 
 ## Tests
 
 ```bash
-npm test             # 127 Tests: Funktionen, Sicherheit, Updater
+npm test             # 187 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
 npm run typecheck
 ```

@@ -90,9 +90,13 @@ Zeigt offene Aufgaben (z. B. Sicherheitshinweise zur Konfiguration), Zahlen zur 
 | Tag für Portal-Tickets | wird an jedes Ticket gehängt, z. B. für den Trigger der Eingangsbestätigung |
 | Status | Aktiv / Wartung (Anfragen werden gesammelt und später zugestellt) / Deaktiviert |
 | Sichtbar für Entra-Gruppen | leer = für alle; sonst nur für Mitglieder dieser Gruppen |
+| Erlaubte Zammad-Gruppen | nur in diese Gruppen legt das Portal Tickets; Formulare mit anderen Gruppen lassen sich nicht speichern (leer = keine Einschränkung, die Übersicht warnt dann) |
+| Namen der Bearbeiter ausblenden | Antworten erscheinen im Portal mit dem Namen des Ticketsystems statt mit dem Namen der Person; E-Mail-Adressen werden nie angezeigt |
 | Vier-Augen-Prinzip | Formulare und Branding gehen erst nach Freigabe durch eine zweite Person live |
 
 ![Verbindung](screenshots/11-admin-verbindung.png)
+
+![Erlaubte Zammad-Gruppen](screenshots/11b-admin-erlaubte-gruppen.png)
 
 ### Zammad-Objekte freigeben
 

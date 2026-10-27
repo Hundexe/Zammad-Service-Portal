@@ -18,12 +18,13 @@ Dieses Dokument beschreibt, wie das Portal geschützt ist, gegen welche Angriffe
 
 ### Anmeldung und Sitzungen (ASVS V2, V3)
 
-- **Microsoft Entra ID** per OpenID Connect, Authorization Code Flow mit **PKCE**, `state` und `nonce`. Das ID-Token wird vollständig selbst geprüft: Signatur (nur RS256, Schlüssel aus dem JWKS), Aussteller, Zielgruppe, **erlaubte Tenants**, Ablauf, Nonce. `alg: none`, fremde Tenants, abgelaufene oder manipulierte Tokens werden abgelehnt (automatisch getestet).
+- **Microsoft Entra ID** per OpenID Connect, Authorization Code Flow mit **PKCE**, `state` und `nonce`. Das ID-Token wird vollständig selbst geprüft – siehe [Prüfung des ID-Tokens](#prüfung-des-id-tokens-entra-id). `alg: none`, HS256-Verwechslung, fremde Tenants, abgelaufene oder manipulierte Tokens werden abgelehnt (automatisch getestet).
 - Tokens von Microsoft verlassen den Server nie; der Browser bekommt nur ein Sitzungscookie.
 - **MFA** für Microsoft-Konten über bedingten Zugriff in Entra; für **lokale Admin-Konten ist TOTP Pflicht** (RFC 6238, Codes nicht wiederverwendbar). Normale lokale Benutzer ohne Verwaltungsrechte brauchen keine 2FA (sie können sie freiwillig einrichten). Die Pflicht wird bei **jeder Anfrage** geprüft, nicht nur beim Login.
 - **Lokale Konten**: generierte Passwörter (20 Zeichen, ca. 115 Bit), Änderung bei der ersten Anmeldung erzwungen, Hash mit **scrypt** (N=2¹⁷, r=8, p=1, OWASP-Empfehlung), Ratenbegrenzung je IP, gleiche Antwort und gleiche Laufzeit für unbekannte Benutzer. **Kontosperre nach 5 Fehlversuchen**, wobei falsche Passwörter, falsche 2FA-Codes, falsche Bestätigungen (Step-up) und ein falsches aktuelles Passwort beim Passwortwechsel **gemeinsam** zählen. Die Sperre wächst: 15 min, 30 min, 1 h … bis 24 h (Standardwerte, einstellbar). Der Zähler wird erst nach einer **vollständig** erfolgreichen Anmeldung zurückgesetzt. Details: [Lokale Anmeldung im Detail](#lokale-anmeldung-im-detail).
 - **Sitzungen** serverseitig; im Cookie nur eine Zufalls-ID (256 Bit), in der Datenbank nur deren Hash. Cookie: `__Host-`-Präfix, `HttpOnly`, `Secure`, `SameSite=Strict`. Neue ID bei jeder Anmeldung (Schutz vor Session-Fixation). Leerlauf-Timeout 30 Minuten, absolute Laufzeit 10 Stunden. Abmelden löscht die Sitzung serverseitig. Passwortwechsel beendet alle anderen Sitzungen. Deaktivierte Benutzer verlieren sofort den Zugriff.
-- **Step-up:** Rollen, Benutzer, Ticketsystem-Zugangsdaten und Updates verlangen eine Anmeldung, die höchstens 10 Minuten alt ist.
+- **Step-up:** Rollen, Benutzer, Ticketsystem-Zugangsdaten und Updates verlangen eine Anmeldung, die höchstens 10 Minuten alt ist. Bei Microsoft-Konten übernimmt die Bestätigung Gruppen, App-Rollen und Profil frisch aus Entra – eine entzogene Admin-Gruppe wirkt damit spätestens bei der nächsten kritischen Aktion. Übersicht: [Wann Rechteänderungen greifen](BETRIEB.md#wann-rechteänderungen-greifen).
+- **Alarm:** Jede erfolgreiche lokale Anmeldung schreibt ein Log-Ereignis mit `"alert": true` (Regel im Log-System, siehe [BETRIEB.md](BETRIEB.md#überwachung-und-alarme)).
 
 ### Zugriffskontrolle (ASVS V4)
 
@@ -32,7 +33,7 @@ Dieses Dokument beschreibt, wie das Portal geschützt ist, gegen welche Angriffe
 - Die letzte Super-Admin-Zuordnung kann nicht entfernt werden; Admin-Rollen können nicht „allen“ zugeordnet werden.
 - **Keine Rechteausweitung:** Niemand kann Rechte vergeben, entziehen oder übernehmen, die er nicht selbst hat. Wer „Rollen verwalten“ darf, kann sich deshalb nicht selbst zum Super-Admin machen und keine Rolle mit mehr Rechten bauen. Wer „Benutzer verwalten“ darf, kann kein Konto mit höheren Rechten anlegen und weder Passwort noch 2FA eines höher berechtigten Kontos zurücksetzen (sonst könnte er sich damit anmelden). Ein Konto mit Rolle anlegen erfordert zusätzlich „Rollen verwalten“.
 - Ein automatischer Test ruft **jede** Route ohne Anmeldung (erwartet 401) und jede Admin-Route als normaler Benutzer (erwartet 403/404) auf. Neue Routen werden so automatisch mitgeprüft.
-- Tickets: Das Portal fragt Zammad im Namen des angemeldeten Kunden; Zammad und das Portal prüfen die Kunden-ID. Fremde oder nicht existierende Tickets liefern dieselbe Antwort (404), damit sich Ticket-IDs nicht erraten lassen.
+- Tickets: Das Portal fragt Zammad im Namen des angemeldeten Kunden; Zammad und das Portal prüfen die Kunden-ID. Fremde oder nicht existierende Tickets liefern dieselbe Antwort (404), damit sich Ticket-IDs nicht erraten lassen. Liste der Tests: [Autorisierungstests](#autorisierungstests).
 - **Vier-Augen-Prinzip** (optional pro System) für Formulare und Branding.
 - Optional: Admin-Bereich nur aus bestimmten Netzen (`ADMIN_ALLOWED_CIDRS`).
 
@@ -44,13 +45,14 @@ Dieses Dokument beschreibt, wie das Portal geschützt ist, gegen welche Angriffe
 - **Vorlagen** kennen nur Platzhalter wie `{{feld}}` – keine Logik, kein Code, kein Zugriff auf Objekt-Interna.
 - **JSON** ist der einzige angenommene Inhaltstyp (415 sonst); `__proto__`/`constructor` werden beim Parsen verworfen; Größenlimits je Route.
 - **Offene Weiterleitungen** nach dem Login sind ausgeschlossen (nur relative Pfade).
-- **SSRF:** Zammad-Adressen auf Loopback, Link-Local und Cloud-Metadaten (169.254.169.254) werden abgelehnt; Weiterleitungen werden nicht verfolgt.
+- **SSRF:** Zammad-Adressen auf Loopback, Link-Local, Multicast und Cloud-Metadaten (169.254.169.254, fd00:ec2::254) sowie die Namen der eigenen Dienste (`app`, `worker`, `caddy`, `clamav`, `socket-proxy`, `updater`, `localhost`) werden abgelehnt. Geprüft wird nicht nur beim Speichern, sondern bei **jedem Verbindungsaufbau** die tatsächlich aufgelöste IP (eigene Lookup-Funktion, `src/server/net/guarded-fetch.ts`) – ein später geänderter DNS-Eintrag (DNS-Rebinding) hilft also nicht. Weiterleitungen werden nie verfolgt. Private Netze sind erlaubt (Zammad steht meist intern), lassen sich aber mit `ALLOW_PRIVATE_TICKET_URLS=false` sperren. Zusätzlich empfohlen: [Egress-Firewall](BETRIEB.md#ausgehende-verbindungen-begrenzen-egress-firewall).
 - **CSV-Export** schützt vor Formel-Injection.
 
 ### Dateien (ASVS V12)
 
 - Dateityp wird am **Inhalt** erkannt (Magic Bytes) und muss zur Endung passen; erlaubt sind PDF, Bilder, Office-Dokumente, Text/CSV. Programme, Skripte, HTML und SVG als Anhang werden abgelehnt.
-- **Virenscan** mit ClamAV; ist der Scanner nicht erreichbar, werden Uploads abgelehnt (fail closed).
+- **Virenscan** mit ClamAV; ist der Scanner nicht erreichbar, werden Uploads abgelehnt (fail closed). `cli.ts scanner:test` schickt eine EICAR-Testdatei an ClamAV und meldet per Exit-Code, ob sie erkannt wird (auch in `status` enthalten – fürs Monitoring).
+- **Größen:** je Datei `UPLOAD_MAX_FILE_MB` (Standard 10, höchstens 20), je Anfrage `UPLOAD_MAX_TOTAL_MB` (Standard 25, höchstens 25). Formulare können kleinere Grenzen setzen, nie größere.
 - Dateinamen werden bereinigt (Pfade, Steuerzeichen, Unicode-Richtungszeichen).
 - Bis zur Zustellung liegen Dateien **verschlüsselt** auf der Platte und werden danach sofort gelöscht.
 - Anhänge aus Zammad werden immer als Download mit `application/octet-stream` und Sandbox-CSP ausgeliefert.
@@ -84,6 +86,56 @@ Dieses Dokument beschreibt, wie das Portal geschützt ist, gegen welche Angriffe
 - Netze getrennt: nur Caddy ist von außen erreichbar; ClamAV und die interne Kommunikation hängen in einem Netz ohne Internetzugang.
 - Docker-Zugriff hat nur der Updater, und nur über einen **Socket-Proxy** ohne `exec`, Secrets oder Swarm.
 - Updates nur aus **signierten Git-Tags** (bzw. mit cosign signierten Images), mit Backup und automatischem Rollback.
+- `tools/check-hardening.sh` prüft die Härtung aus `docker compose config` und `docker inspect`; Ausnahmen mit Begründung: [BETRIEB.md](BETRIEB.md#container-härtung-prüfen).
+
+## Prüfung des ID-Tokens (Entra ID)
+
+Code: `src/server/auth/oidc.ts`, Tests: `test/review-oidc.test.ts` (Einzelprüfungen mit selbst signierten Tokens) und `test/security-auth.test.ts` (kompletter Ablauf mit dem Entra-Simulator).
+
+| Prüfung | Regel | Test |
+| --- | --- | --- |
+| Algorithmus | nur `RS256`; `none`, `HS256` (auch mit dem öffentlichen Schlüssel als Geheimnis) und alles andere wird abgelehnt | `alg=none`, `HS256 … Algorithm Confusion` |
+| Schlüssel-ID (`kid`) | Pflicht; Schlüssel nur aus dem JWKS des Tenants | `ohne kid` |
+| Schlüssel | nur `kty: RSA`, `use` fehlt oder `sig`, mindestens 2048 Bit; `use: enc`, EC- und kaputte Schlüssel werden ignoriert | `Schlüssel mit use=enc, EC-, zu kurze …` |
+| Schlüsselwechsel | unbekannter `kid` → JWKS neu laden, höchstens alle 5 Minuten (kein Verstärker für Angreifer); danach gilt nur noch die neue Liste | `Schlüsselwechsel: neuer kid …` |
+| Signatur | RSA-SHA256 über Kopf und Nutzdaten | `mit fremdem Schlüssel signiert`, `manipulierte Nutzdaten` |
+| `tid` | muss in `ENTRA_ALLOWED_TENANTS` stehen | `fremder Tenant` |
+| `iss` | genau `https://login.microsoftonline.com/{tid}/v2.0` passend zum `tid` im Token | `Aussteller passt nicht zum Tenant`, `mehrere Tenants` |
+| `aud` | genau die eigene Client-ID (keine Liste) | `falsche Zielgruppe`, `aud als Liste` |
+| `exp` | nicht abgelaufen (2 Minuten Toleranz) | `abgelaufen` |
+| `nbf` | nicht in der Zukunft (2 Minuten Toleranz) | `nbf in der Zukunft` |
+| `iat` | nicht in der Zukunft | `iat in der Zukunft` |
+| `nonce` | Pflicht, muss zur Transaktion passen | `Nonce fehlt`, `Nonce falsch` |
+| `oid` | Pflicht, UUID – Benutzer werden **nur** über `oid` zugeordnet, nie über Name oder Mail | `Objekt-ID fehlt` |
+| `auth_time` (Step-up) | höchstens 10 Minuten alt | `Step-up: alte Anmeldung` |
+| `state` | Pflicht, muss zum verschlüsselten Transaktions-Cookie passen | `state-Parameter muss passen` (security-auth) |
+| Redirect-URI | fest aus `PUBLIC_URL`, nie aus der Anfrage | `keine offene Weiterleitung über returnTo` (security-auth) |
+| Gruppen | zu viele Gruppen (`_claim_names`) oder falscher Typ → keine Gruppen, nicht raten | `Gruppen-Überlauf` |
+
+## Autorisierungstests
+
+| Fall | Erwartung | Test |
+| --- | --- | --- |
+| jede geschützte Route ohne Anmeldung | 401 | security-auth: `jede geschützte API-Route antwortet mit 401` |
+| angemeldeter Benutzer ohne Recht auf Admin-Routen | 403/404, keine Daten | security-auth, review `#3` |
+| System-Admin A ändert System B, vergibt Rollen | 403 | security-auth |
+| fremde `userId`/`customer_id` im Request | wird ignoriert, Ticket gehört immer dem Angemeldeten | review `#3` |
+| unsichtbares Ticketsystem per ID (Tickets, Formulare, Anhänge, Absenden) | 404 | security-app, review `#3` |
+| fremdes Ticket lesen, beantworten, Anhang laden | 404 | security-app |
+| Tickets der Organisation | nur mit Einstellung „Tickets der eigenen Organisation anzeigen“; fremde Organisationen nie | review `#3` |
+| interne Notizen | nie sichtbar – auch im Modus „Kundenfeld“, in dem das Portal mit Agentenrechten liest | flow, review `#3` |
+| Anhang: fremdes Ticket, fremder Artikel unter eigenem Ticket, interne Notiz | 404 | review `#3` |
+| Absender in Antworten | keine E-Mail-Adressen; optional Systemname statt Agentenname | review `#6` |
+| Formular schreibt in geschützte Zammad-Felder (`owner_id`, `state_id`, …) oder fremde Gruppe | Editor lehnt ab; beim Ticket-Anlegen zusätzlich herausgefiltert | review `#4` |
+
+## Zammad: was das Portal setzen darf
+
+- **Kernfelder** setzt nur das Portal selbst: `title`, `group`, `customer_id`, `article`, `tags`, Priorität. Formulare können `id`, `number`, `group(_id)`, `owner(_id)`, `customer(_id)`, `organization(_id)`, `state(_id)`, `priority(_id)`, `pending_time`, `article`, `tags`, `type`, `created_by`, `updated_by`, Zeitstempel, `time_unit`, `preferences` und alle `*_id`/`*_ids` **nie** setzen – geprüft im Editor, beim Freigeben von Attributen und beim Anlegen des Tickets (`safeTicketFields`).
+- **Eigene Attribute** nur, wenn sie unter **Zammad-Objekte** freigegeben sind; Auswahlwerte nur aus der Freigabe.
+- **Gruppen:** pro Ticketsystem eine Liste „Erlaubte Zammad-Gruppen“. Standardgruppe, Formulargruppe und jede Gruppen-Zuordnung eines Auswahlfelds müssen darin stehen; Gruppe aus Freitext ist dann nicht möglich. Ohne Liste warnt die Übersicht der Verwaltung.
+- **Kundenzuordnung:** Beim ersten Kontakt sucht das Portal den Zammad-Kunden über die E-Mail-Adresse (exakter Vergleich, ohne Groß-/Kleinschreibung) und legt ihn nur an, wenn es ihn nicht gibt. Die gefundene **Zammad-ID** wird je Portal-Benutzer gespeichert; danach läuft alles über diese ID (`X-On-Behalf-Of: <ID>`), auch wenn sich Name oder Adresse ändern. Microsoft-Konten werden im Portal über die unveränderliche `oid` erkannt. Ein lokales Konto mit derselben Adresse wie ein Microsoft-Konto bekommt keinen Zugriff auf dessen Tickets. Bei Wechsel von Adresse oder Token des Ticketsystems wird die Zuordnung neu aufgebaut.
+- **Absender** in der Ticketansicht ohne E-Mail-Adressen; mit „Namen der Bearbeiter ausblenden“ erscheinen alle Antworten als Name des Ticketsystems.
+- **Doppelte Tickets** nach Zeitüberschreitung oder Absturz: Vor jedem Wiederholungsversuch sucht das Portal unter den Tickets des Kunden eines mit gleichem Titel, dessen erster Artikel die Anfrage-ID enthält, und übernimmt es statt ein zweites anzulegen.
 
 ## Lokale Anmeldung im Detail
 
@@ -157,8 +209,10 @@ active
 | Super-Admins | haben bewusst alle Rechte | wenige Personen, Entra-Gruppe mit PIM/Zugriffsüberprüfung |
 | Formular-Prüfmuster | Admins können reguläre Ausdrücke hinterlegen; Eingabelängen sind begrenzt | Prüfmuster nur durch vertrauenswürdige Admins (ist durch Rechte gegeben) |
 | Hauptschlüssel | wer `secret_key` und die Datenbank hat, kann Tokens entschlüsseln | Schlüssel getrennt vom Backup im Tresor aufbewahren |
-| Zammad-API-Token | hat `admin.user` (nötig für `X-On-Behalf-Of`) | eigener API-Benutzer nur mit den nötigen Rechten und Gruppen, Token regelmäßig erneuern |
-| `node:sqlite` | in Node 24 noch als „experimentell“ markiert, aber stabil im Einsatz | bei Node-Updates Testsuite laufen lassen (passiert im CI) |
+| Zammad-API-Token | hat `admin.user` (nötig für `X-On-Behalf-Of`) – damit könnte ein Angreifer mit Zugriff auf Server **und** Hauptschlüssel Zammad-Benutzer verwalten | eigener API-Benutzer nur mit den nötigen Rechten und Gruppen, Token regelmäßig erneuern; Alternative mit weniger Rechten: Modus „Kundenfeld“ ([INSTALLATION.md](INSTALLATION.md#5-zammad-api-benutzer-und-token)) |
+| Eigenentwicklung | OIDC, Sitzungen, CSRF, TOTP, Verschlüsselung sind selbst geschrieben (nur Node-Bordmittel, keine Laufzeit-Pakete) und bisher nur projektintern geprüft | vor dem breiten Einsatz unabhängigen Web-Pentest einplanen; Prüfliste in [GO-LIVE.md](GO-LIVE.md) |
+| Projektgröße | kleines Projekt, wenige Maintainer | eigenen Fork intern spiegeln, Verantwortlichen benennen, nur geprüfte signierte Tags installieren |
+| `node:sqlite` | in Node 22/24 noch als „experimentell“ markiert, aber stabil im Einsatz | bei Node-Updates die Testsuite laufen lassen (`tools/release.sh` macht das vor jedem Release) |
 | Interne CA von Caddy | Clients müssen dem Stammzertifikat vertrauen | Firmen-CA verwenden |
 
 ## Sicherheitsprobleme melden
