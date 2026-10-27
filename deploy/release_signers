@@ -1,0 +1,4 @@
+# Offizieller Signaturschlüssel für die Release-Tags dieses Repositorys (nur der ÖFFENTLICHE Schlüssel).
+# install.sh übernimmt ihn nach deploy/allowed_signers, wenn es diese Datei noch nicht gibt.
+# Wer ein eigenes Fork mit eigenen Releases pflegt, trägt in deploy/allowed_signers stattdessen den eigenen Schlüssel ein.
+126276774+Hundexe@users.noreply.github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICPHPq0rOrUc+caBWPFUN04jaE4LFMUAQreF8Vq5Vj+e zammad-service-portal-release

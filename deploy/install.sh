@@ -106,7 +106,9 @@ if [[ ",${COMPOSE_PROFILES:-}," == *",updater,"* ]] && [ "${UPDATE_SOURCE:-git}"
     note "Hinweis: secrets/deploy_key fehlt – bei einem per SSH geklonten (privaten) Repository kann der Updater ohne Deploy-Key keine neuen Versionen holen (docs/UPDATES.md)."
   fi
   [ -f known_hosts ] || ssh-keyscan -t ed25519 github.com > known_hosts 2>/dev/null || true
-  if [ "${UPDATE_REQUIRE_SIGNED_TAGS:-true}" = "true" ] && [ ! -f allowed_signers ]; then
+  # Offiziellen Release-Schlüssel übernehmen, wenn noch keiner eingetragen ist
+  [ -f allowed_signers ] || { [ -f release_signers ] && grep -v '^#' release_signers > allowed_signers; } || true
+  if [ "${UPDATE_REQUIRE_SIGNED_TAGS:-true}" = "true" ] && [ ! -s allowed_signers ]; then
     note "Hinweis: deploy/allowed_signers fehlt – signierte Updates können erst danach installiert werden (docs/UPDATES.md)."
   fi
 fi

@@ -4,6 +4,8 @@ Self-Service-Portal für IT-Abteilungen mit einem oder mehreren Zammad-Systemen:
 
 **[▶ Demo im Browser ansehen](https://hundexe.github.io/Zammad-Service-Portal/)** – ohne Installation, mit Beispieldaten (Portal und Verwaltung zum Durchklicken).
 
+**Aktuelle Version: 1.3.0** – mit allen Punkten aus einem externen Architektur- und Sicherheits-Review ([was geändert wurde](docs/REVIEW-2026-10.md), [Änderungen](CHANGELOG.md)).
+
 ![Startseite des Portals](docs/screenshots/02-portal-start.png)
 
 ## Was das Portal kann
@@ -14,10 +16,11 @@ Self-Service-Portal für IT-Abteilungen mit einem oder mehreren Zammad-Systemen:
 | Mehrere Ticketsysteme | Beliebig viele Zammad-Instanzen; Benutzer wählen, wohin die Anfrage geht. Pro System eigene Formulare, Vorlagen, Übersichten, Farben und Logos |
 | Formulare | Editor mit Drag-and-Drop, Live-Vorschau, Pflichtfeldern, Prüfmustern, Sichtbarkeitsregeln, Feldern nur für bestimmte Gruppen, Datei-Uploads, Versionierung und optionalem Vier-Augen-Prinzip |
 | Zammad-Objekte | Ticket-Attribute aus dem Zammad-Objekt-Manager (z. B. `sec_status` als tree_select) werden gezielt freigegeben – inklusive Auswahl der erlaubten Werte – und erscheinen als Auswahlfelder |
-| Tickets | Ticket wird im Namen des Benutzers angelegt (`X-On-Behalf-Of`), bekommt einen Portal-Tag, Gruppe, Priorität, Tags und Attribute aus dem Formular. Mitarbeitende sehen ihre Tickets in konfigurierbaren Übersichten, lesen den Verlauf ohne interne Notizen und können antworten |
+| Tickets | Ticket wird im Namen des Benutzers angelegt (`X-On-Behalf-Of` mit der Zammad-Kunden-ID), bekommt einen Portal-Tag, Gruppe, Priorität, Tags und freigegebene Attribute aus dem Formular – nur in **erlaubte Zammad-Gruppen**, Kernfelder wie Besitzer oder Status setzt nie ein Formular. Mitarbeitende sehen ihre Tickets in konfigurierbaren Übersichten, lesen den Verlauf ohne interne Notizen und ohne E-Mail-Adressen der Bearbeiter (auf Wunsch ganz ohne Namen) und können antworten |
 | Verwaltung | Rollen und Rechte global oder pro Ticketsystem (Entra-Gruppen, App-Rollen, Personen), Benutzerverwaltung, Audit-Log mit Hash-Kette, Zustellungsübersicht, Updates per Klick mit automatischem Rollback |
 | Oberfläche | Ruhiges, helles Design mit großer Farbfläche je Ticketsystem, dunkles Design per Schalter, für Handy und Desktop, barrierearm (Tastatur, Screenreader, Kontrastprüfung) |
-| Betrieb | Docker-Compose-Stack oder direkt auf Debian/Ubuntu (systemd), Installation mit einem Befehl, nur intern erreichbar, Caddy mit TLS, ClamAV-Virenscan, verschlüsselte Ablage, keine npm-Laufzeitabhängigkeiten |
+| Ausfallsicherheit | Anfragen landen verschlüsselt in einer Warteschlange und werden zugestellt, sobald Zammad erreichbar ist – auch nach Neustart oder Absturz, ohne doppelte Tickets |
+| Betrieb | Docker-Compose-Stack oder direkt auf Debian/Ubuntu (systemd), Installation mit einem Befehl, nur intern erreichbar, Caddy mit TLS, ClamAV-Virenscan, verschlüsselte Ablage, keine npm-Laufzeitabhängigkeiten. Befehle für Status/Monitoring, Virenscanner-Test, Sicherung prüfen und wiederherstellen; Alarm bei jeder lokalen Anmeldung |
 
 ## Installation mit einem Befehl
 
@@ -45,7 +48,26 @@ git clone https://github.com/Hundexe/Zammad-Service-Portal.git && cd Zammad-Serv
 
 und dann <http://localhost:3000> öffnen („Mit Microsoft anmelden“ meldet ohne Passwort als Demo-Admin an).
 
-Die ausführliche Anleitung mit Entra-App-Registrierung, Zammad-API-Benutzer und Zertifikaten steht in [docs/INSTALLATION.md](docs/INSTALLATION.md).
+Die ausführliche Anleitung mit Entra-App-Registrierung, Zammad-API-Benutzer und Zertifikaten steht in [docs/INSTALLATION.md](docs/INSTALLATION.md). Für den Betrieb eine feste Version verwenden: `… | sudo PORTAL_REF=vX.Y.Z bash` mit einem signierten Tag aus **Releases**.
+
+## Vor dem Produktivbetrieb
+
+Das Portal ist ein kleines Projekt. Für den Einsatz im Unternehmen empfehlen wir den Weg aus dem Review: eigene VM, einige Wochen mit wenigen IT-Benutzern, dann eine Abteilung, erst danach alle. Was vorher erledigt sein sollte – eigener Fork, nur ein lokales Notfallkonto, ClamAV verpflichtend, Admin-Bereich nur aus dem Admin-Netz, Zammad-API-Benutzer mit Minimalrechten, getestetes Restore, Egress-Firewall, Monitoring, unabhängiger Security-Check – steht mit Prüfanleitung in der **[Go-Live-Checkliste](docs/GO-LIVE.md)**.
+
+## Betrieb auf einen Blick
+
+```bash
+cd /opt/zammad-service-portal/deploy
+P="docker compose exec app /nodejs/bin/node src/server/cli.ts"   # ohne Docker: service-portal-cli
+$P status                 # Warteschlange, Virenscanner, Audit-Log – Exit-Code 2 bei Problemen (fürs Monitoring)
+$P scanner:test           # ClamAV mit EICAR-Testdatei prüfen
+$P backup                 # Sicherung nach /data/backups/
+$P backup:verify DATEI    # Sicherung prüfen (Integrität, Schema, passender Schlüssel)
+$P restore DATEI --yes    # Sicherung zurückspielen (Portal vorher stoppen)
+bash ../tools/check-hardening.sh   # Container-Härtung prüfen
+```
+
+Mehr dazu, inklusive Alarmregeln, Log-Weiterleitung und Egress-Firewall: [docs/BETRIEB.md](docs/BETRIEB.md).
 
 ## Dokumentation
 
@@ -70,6 +92,25 @@ TypeScript auf Node.js 24 ohne externe Laufzeitpakete (HTTP, Krypto, SQLite und 
 ## Tests
 
 ```bash
-npm test             # 187 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
+npm test                        # 187 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
 npm run typecheck
+node tools/loadtest.ts          # Lasttest: 50 Logins, 50 Ticketansichten, 20 Anfragen mit Anhang
+bash tools/secret-scan.sh       # vor jeder Veröffentlichung: keine Geheimnisse im Repository
 ```
+
+| Bereich | Tests |
+| --- | ---: |
+| Sicherheit: Anmeldung, Sitzungen, CSRF, Rechte, OIDC | 34 |
+| Sicherheit: IDOR, Injection, Uploads, SSRF, Datenablage, Audit-Log | 30 |
+| Sicherheit: lokale Anmeldung, Sperre, 2FA | 20 |
+| Review: Token-Prüfung im Detail | 22 |
+| Review: Zugriffe, Zammad-Felder und -Gruppen, Kundenzuordnung, SSRF-Schutz, Uploads, Backup/Restore, Zustellung, Step-up, Monitoring | 37 |
+| Grundfunktionen, Ende-zu-Ende, Verwaltung, Updater | 44 |
+
+Die Tests starten Portal, Zammad- und Microsoft-Simulator im selben Prozess – es wird nichts weiter benötigt. Lasttest-Ergebnisse: [docs/LASTTEST.md](docs/LASTTEST.md).
+
+## Versionen und Sicherheit
+
+- Versionen erscheinen als **signierte Git-Tags** unter Releases; Änderungen stehen im [CHANGELOG](CHANGELOG.md). Veröffentlicht wird mit `tools/release.sh` (ohne GitHub Actions).
+- Updates manuell oder per Klick aus der Verwaltung: [docs/UPDATES.md](docs/UPDATES.md).
+- Sicherheitsprobleme bitte vertraulich melden: [SECURITY.md](SECURITY.md).

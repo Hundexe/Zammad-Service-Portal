@@ -28,8 +28,7 @@ Beim öffentlichen Repository (per `https://` geklont) ist dafür nichts weiter 
 ```bash
 cd /opt/zammad-service-portal/deploy
 ssh-keyscan -t ed25519 github.com > known_hosts     # macht install.sh automatisch
-cp allowed_signers.example allowed_signers
-nano allowed_signers                                # öffentliche Signaturschlüssel eintragen (siehe unten)
+grep -v '^#' release_signers > allowed_signers      # macht install.sh automatisch (offizieller Release-Schlüssel)
 grep COMPOSE_PROFILES .env                          # muss "updater" enthalten
 docker compose up -d
 ```
@@ -42,7 +41,17 @@ In `.env`:
 | `UPDATE_REQUIRE_SIGNED_TAGS=true` | nur signierte Tags installieren (dringend empfohlen) |
 | `PORTAL_DIR` | absoluter Pfad des Repositorys – muss stimmen, sonst findet Compose die Dateien nicht |
 
-### Signaturschlüssel für Releases (auf dem Build-PC)
+### Wer Releases signiert
+
+Die Release-Tags dieses Repositorys sind mit dem Projektschlüssel aus [`deploy/release_signers`](../deploy/release_signers) signiert. `install.sh` übernimmt ihn automatisch nach `deploy/allowed_signers`, wenn dort noch nichts steht. Prüfen von Hand:
+
+```bash
+git -c gpg.ssh.allowedSignersFile=deploy/release_signers verify-tag v1.3.0
+```
+
+Wer ein **eigenes Fork** betreibt und selbst Releases baut, erzeugt einen eigenen Schlüssel (unten) und trägt nur diesen in `deploy/allowed_signers` ein – dann installiert der Updater ausschließlich Versionen aus dem eigenen Fork.
+
+### Signaturschlüssel für eigene Releases (auf dem Build-PC)
 
 Git kann Tags mit einem SSH-Schlüssel signieren:
 
