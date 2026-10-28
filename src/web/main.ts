@@ -114,6 +114,17 @@ adminRoute('/admin/audit', auditPage);
 adminRoute('/admin/updates', updatesPage);
 adminRoute('/admin/einstellungen', loginSettingsPage);
 
+/**
+ * Links, Schaltflächen und Bilder der Oberfläche lassen sich nicht wegziehen (sonst entsteht beim Klicken
+ * mit leichter Mausbewegung ein Drag-Bild mit URL). Ausnahmen: alles mit draggable="true"
+ * (z. B. Felder im Formular-Editor) und Texte in Eingabefeldern.
+ */
+document.addEventListener('dragstart', (e) => {
+  const t = e.target instanceof Element ? e.target : (e.target as Node | null)?.parentElement;
+  if (!t || t.closest('[draggable="true"]')) return;
+  if (t.closest('a, button, img, svg, summary, label, .btn')) e.preventDefault();
+});
+
 async function boot() {
   try {
     if (DEMO) {

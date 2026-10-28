@@ -121,7 +121,15 @@ a { color: var(--link); text-decoration: none; }
 a:hover { text-decoration: underline; text-underline-offset: 3px; }
 code, pre { font-family: var(--mono); font-size: .875em; letter-spacing: 0; }
 pre { white-space: pre-wrap; word-break: break-word; background: var(--canvas); padding: .875rem 1rem; border-radius: var(--r-sm); margin: .5rem 0; }
-img { max-width: 100%; }
+img { max-width: 100%; -webkit-user-drag: none; }
+/* Bedienelemente verhalten sich wie in einer App: kein Markieren beim Klicken/Doppelklicken, kein Wegziehen.
+   Inhalte (Tickettexte, Tabellen, Formulareingaben, Hinweise) bleiben markier- und kopierbar. */
+a, button, .btn, .icon-btn, summary, label, .tab, .switch, .switch-item, .badge, .band, .sidebar, .user-menu summary,
+.menu-item, .form-list, .theme-option, .palette-chip, .crumbs, .page-actions, .form-actions, .dialog-head, .side-head, .nav-title, .toast, .dropzone {
+  -webkit-user-select: none; user-select: none; -webkit-user-drag: none; -webkit-tap-highlight-color: transparent;
+}
+/* Was man kopieren können soll, auch wenn es in einem der Bereiche oben steht */
+.user-menu .menu-who, .secret code, .secret-pw, .mono-ish, .msg-body, .facts dd, .num, input, textarea, select, [contenteditable] { -webkit-user-select: text; user-select: text; }
 [hidden] { display: none !important; }
 ::selection { background: color-mix(in srgb, var(--brand) 22%, transparent); }
 .visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

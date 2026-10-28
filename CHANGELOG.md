@@ -1,5 +1,9 @@
 # Änderungen
 
+## 1.4.2 – 28.10.2026
+
+- Bedienelemente verhalten sich wie in einer App: Schaltflächen, Navigation, Benutzermenü, Reiter, Formular-Kacheln und Seitenleiste lassen sich nicht mehr versehentlich markieren, Links und Bilder nicht mehr wegziehen (kein Drag-Bild mit Adresse). Tickettexte, Tabellen, Eingabefelder, Ticketnummern und Passwort-Anzeigen bleiben markier- und kopierbar; das Verschieben von Feldern im Formular-Editor funktioniert weiter
+
 ## 1.4.1 – 27.10.2026
 
 - Behoben: Aufklapplisten von Auswahlfeldern waren im dunklen Design unter Windows (Chrome/Edge) unlesbar – helle Schrift auf weißer Liste, vor allem in den Stilen Glas und Material mit durchscheinenden Feldern. Die Optionen haben jetzt in jedem Stil einen deckenden Hintergrund und die Schriftfarbe des Designs
