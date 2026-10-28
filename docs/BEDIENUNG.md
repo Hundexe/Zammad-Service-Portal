@@ -234,6 +234,10 @@ Jeder Stil funktioniert im hellen und im dunklen Design. Die Vorschau im Auswahl
 
 **Weitere Angaben** pro Ticketsystem: Anzeigename, Farbe der großen Farbfläche (Startseite) und der Schrift darauf, Primärfarbe (Schaltflächen, Links, Symbole) und Akzentfarbe, Logo auf der Farbfläche (wird im dunklen Design auch in der Navigationsleiste verwendet; ist die Farbfläche hell, zum Beispiel bei Material, erscheint dort das Logo für helle Flächen), Logo für die helle Navigationsleiste, Favicon, Begrüßung, Fußzeile, Links zu Impressum und Datenschutz. Die Vorschau rechts zeigt das Ergebnis, die Kontrastprüfung warnt bei schlecht lesbaren Kombinationen (WCAG AA). Logos: PNG, JPEG, WebP oder SVG bis 1 MB; SVGs mit Skripten oder externen Verweisen werden abgelehnt.
 
+**Logogröße.** Zwei Schieberegler stellen die Höhe des Logos ein: in der Navigationsleiste (20–72 Pixel, Standard 28) und auf der Farbfläche der Startseite (24–200 Pixel, Standard 44). Die Breite passt sich an. Auf der Anmeldeseite gilt die Größe der Navigationsleiste etwas vergrößert.
+
+**Links in der Navigationsleiste.** Bis zu sechs eigene Links, zum Beispiel Intranet, Wissensdatenbank oder IT-Hotline. Erlaubt sind `https://`, `http://`, `mailto:` und `tel:`. Web-Links öffnen in einem neuen Tab. Ein oder zwei Links stehen direkt in der Leiste, ab drei kommen sie in ein Menü **Links** (auf dem Handy als Ketten-Symbol).
+
 ![Farben und Logo](screenshots/16-admin-branding.png)
 
 Die Anmeldeseite (vor der Wahl eines Ticketsystems) hat ein eigenes Erscheinungsbild unter **Anmeldeseite**, mit derselben Stil- und Farbauswahl. Die Verwaltung selbst bleibt im Standard-Stil, weil sie alle Ticketsysteme gemeinsam betreut.

@@ -134,6 +134,26 @@ describe('Branding', () => {
     assert.ok(validateBranding({ ...DEFAULT_BRANDING, imprintUrl: 'javascript:alert(1)' }).errors.length);
     assert.equal(validateBranding(DEFAULT_BRANDING).errors.length, 0);
   });
+  test('Logogrößen und Links in der Navigationsleiste', () => {
+    const old = validateBranding({ ...DEFAULT_BRANDING, logoNavHeight: undefined, logoHeroHeight: undefined, navLinks: undefined });
+    assert.equal(old.branding!.logoNavHeight, 28, 'alte Daten: Standardgröße');
+    assert.equal(old.branding!.logoHeroHeight, 44);
+    assert.deepEqual(old.branding!.navLinks, []);
+    const ok = validateBranding({ ...DEFAULT_BRANDING, logoNavHeight: 48, logoHeroHeight: 120, navLinks: [
+      { label: ' Intranet ', url: 'https://intranet.example.org' }, { label: 'Wiki', url: 'http://wiki.intern/start' },
+      { label: 'IT-Hotline', url: 'tel:+49 123 4567' }, { label: 'Mail an IT', url: 'mailto:it@example.org' },
+    ] });
+    assert.deepEqual(ok.errors, []);
+    assert.equal(ok.branding!.logoNavHeight, 48);
+    assert.equal(ok.branding!.navLinks![0].label, 'Intranet');
+    for (const bad of [
+      { logoNavHeight: 10 }, { logoNavHeight: 500 }, { logoHeroHeight: 30.5 }, { logoNavHeight: '40' },
+      { navLinks: [{ label: 'X', url: 'javascript:alert(1)' }] }, { navLinks: [{ label: 'X', url: 'data:text/html,hi' }] },
+      { navLinks: [{ label: '', url: 'https://a.example.org' }] }, { navLinks: [{ label: 'X'.repeat(41), url: 'https://a.example.org' }] },
+      { navLinks: Array.from({ length: 7 }, (_, i) => ({ label: `L${i}`, url: 'https://a.example.org' })) },
+      { navLinks: 'https://a.example.org' },
+    ]) assert.ok(validateBranding({ ...DEFAULT_BRANDING, ...bad }).errors.length, JSON.stringify(bad));
+  });
   test('Stile: Auswahl, eigene oder Stil-Farben, alte Daten ohne Stil', () => {
     for (const t of THEMES) {
       const r = validateBranding({ ...DEFAULT_BRANDING, theme: t, colorMode: 'theme' });

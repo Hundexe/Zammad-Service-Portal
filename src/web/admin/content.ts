@@ -5,7 +5,7 @@ import { badge, button, checkbox, confirmDialog, dialog, errorText, fieldWrap, i
 import { can, navigate, state, curPath, assetUrl, bandLogoId } from '../lib/app.ts';
 import { adminSystem, loadAdminSystems } from './common.ts';
 import { exportFormsFile, importFormsDialog } from './forms.ts';
-import { contrastWarnings, effectiveColors, PALETTES, THEMES, THEME_INFO, themeOf, type Branding, type Palette, type ThemeId } from '../../shared/branding.ts';
+import { contrastWarnings, effectiveColors, LOGO_LIMITS, NAV_LINKS_MAX, PALETTES, THEMES, THEME_INFO, themeOf, type Branding, type NavLink, type Palette, type ThemeId } from '../../shared/branding.ts';
 
 const KIND: Record<string, string> = { title: 'Ticket-Titel', body: 'Tickettext', success: 'Text nach dem Absenden' };
 
@@ -124,6 +124,33 @@ function logoField(label: string, id: string | null | undefined, kind: 'logo' | 
       button('Entfernen', () => { draw(null); onChange(null); }, { kind: 'ghost' })));
 }
 
+/** Schieberegler für eine Logohöhe in Pixeln. */
+function sizeField(label: string, value: number, lim: { min: number; max: number; default: number }, onChange: (v: number) => void): HTMLElement {
+  const out = h('span', { class: 'size-value' }, `${value} px`);
+  const range = h('input', { attrs: { type: 'range', min: lim.min, max: lim.max, step: 1, value, 'aria-label': label } });
+  range.addEventListener('input', () => { out.textContent = `${range.value} px`; onChange(Number(range.value)); });
+  const reset = h('button', { class: 'link-btn', attrs: { type: 'button' }, on: { click: () => { range.value = String(lim.default); out.textContent = `${lim.default} px`; onChange(lim.default); } } }, 'Standard');
+  return h('div', { class: 'field' }, h('p', { class: 'label' }, label), h('div', { class: 'size-row' }, range, out, reset));
+}
+
+/** Liste zusätzlicher Links für die Navigationsleiste. */
+function linksField(initial: NavLink[], onChange: (v: NavLink[]) => void): HTMLElement {
+  const links = initial.map((l) => ({ ...l }));
+  const host = h('div', { class: 'stack' });
+  const draw = () => {
+    mount(host,
+      ...links.map((l, i) => h('div', { class: 'link-row' },
+        input(l.label, (v) => { l.label = v; onChange(links); }, { placeholder: 'Bezeichnung, z. B. Intranet', maxlength: 40, 'aria-label': `Link ${i + 1}: Bezeichnung` }),
+        input(l.url, (v) => { l.url = v.trim(); onChange(links); }, { placeholder: 'https://…', maxlength: 500, 'aria-label': `Link ${i + 1}: Adresse` }),
+        h('button', { class: 'icon-btn', attrs: { type: 'button', 'aria-label': `Link ${i + 1} entfernen` }, on: { click: () => { links.splice(i, 1); onChange(links); draw(); } } }, icon('x', 16)))),
+      links.length < NAV_LINKS_MAX ? button('Link hinzufügen', () => { links.push({ label: '', url: 'https://' }); onChange(links); draw(); }, { icon: 'plus', kind: 'ghost' }) : null);
+  };
+  draw();
+  return h('div', { class: 'field' }, h('p', { class: 'label' }, 'Links in der Navigationsleiste'),
+    h('p', { class: 'help', style: { marginTop: '0' } }, `Bis zu ${NAV_LINKS_MAX} Links, z. B. Intranet, Wissensdatenbank oder Telefonliste. Web-Links öffnen in einem neuen Tab. Erlaubt: https://, http://, mailto:, tel:`),
+    host);
+}
+
 function setColors(el: HTMLElement, c: Palette): void {
   el.style.setProperty('--brand', c.primaryColor);
   el.style.setProperty('--band', c.headerColor);
@@ -156,9 +183,10 @@ export function brandingEditor(initial: Branding, uploadUrl: string, extra: { on
     setColors(preview, c);
     for (const [id, mini] of minis) setColors(mini, b.colorMode === 'theme' ? THEME_INFO[id].palette : c);
     mount(preview,
-      h('div', { class: 'bp-nav' }, b.logoLightId ? h('img', { attrs: { src: assetUrl(b.logoLightId), alt: '' } }) : h('span', { class: 'brand-mark' }, (b.displayName || '?').slice(0, 1)), b.logoLightId ? null : h('span', null, b.displayName || 'Name')),
+      h('div', { class: 'bp-nav' }, b.logoLightId ? h('img', { attrs: { src: assetUrl(b.logoLightId), alt: '' }, style: { height: `${Math.round((b.logoNavHeight ?? LOGO_LIMITS.nav.default) * 0.8)}px`, maxWidth: '70%' } }) : h('span', { class: 'brand-mark' }, (b.displayName || '?').slice(0, 1)), b.logoLightId ? null : h('span', null, b.displayName || 'Name'),
+        (b.navLinks ?? []).length ? h('span', { class: 'bp-links' }, ...(b.navLinks ?? []).map((l) => h('span', null, l.label || '…'))) : null),
       h('div', { class: 'bp-hero' },
-        bandLogoId(b) ? h('img', { attrs: { src: assetUrl(bandLogoId(b)!), alt: '' } }) : null,
+        bandLogoId(b) ? h('img', { attrs: { src: assetUrl(bandLogoId(b)!), alt: '' }, style: { height: `${Math.round((b.logoHeroHeight ?? LOGO_LIMITS.hero.default) * 0.64)}px`, maxWidth: '85%' } }) : null,
         h('p', { class: 'bp-title' }, b.welcomeText || 'Wie können wir helfen?')),
       h('div', { class: 'bp-body' },
         h('div', { class: 'bp-row' }, h('span', { class: 'form-icon' }, icon('bolt', 18)), h('span', null, 'Störung melden'), icon('next', 16)),
@@ -219,6 +247,10 @@ export function brandingEditor(initial: Branding, uploadUrl: string, extra: { on
       logoField('Logo auf der Farbfläche', b.logoDarkId, 'logo', uploadUrl, set('logoDarkId'), true),
       logoField('Logo für die Navigationsleiste (helle Fläche, optional)', b.logoLightId, 'logo', uploadUrl, set('logoLightId')),
       logoField('Favicon', b.faviconId, 'favicon', uploadUrl, set('faviconId')),
+      h('div', { class: 'stack' },
+        sizeField('Logogröße in der Navigationsleiste', b.logoNavHeight ?? LOGO_LIMITS.nav.default, LOGO_LIMITS.nav, (v) => { b.logoNavHeight = v; draw(); }),
+        sizeField('Logogröße auf der Farbfläche', b.logoHeroHeight ?? LOGO_LIMITS.hero.default, LOGO_LIMITS.hero, (v) => { b.logoHeroHeight = v; draw(); })),
+      linksField(b.navLinks ?? [], (v) => { b.navLinks = v; draw(); }),
       fieldWrap(input(b.welcomeText, set('welcomeText')), { label: 'Begrüßung auf der Startseite' }),
       fieldWrap(textarea(b.footerText, set('footerText'), { rows: 2 }), { label: 'Fußzeile' }),
       h('div', { class: 'grid-2' },

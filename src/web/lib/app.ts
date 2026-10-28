@@ -2,7 +2,7 @@
 import { h, icon, mount, type Child } from './dom.ts';
 import { ApiError, get, onStepupRequired, onUnauthorized, post, setCsrf } from './api.ts';
 import { button, dialog, errorText, fieldWrap, input, loading, notice, toast } from './ui.ts';
-import { effectiveColors, luminance, themeOf, type Branding } from '../../shared/branding.ts';
+import { effectiveColors, LOGO_LIMITS, luminance, NAV_LINK_RE, themeOf, type Branding } from '../../shared/branding.ts';
 import { DEMO, demoBackend } from './env.ts';
 
 // ---------------------------------------------------------------- Adresse
@@ -64,6 +64,8 @@ export function applyBranding(b: Branding | undefined | null): void {
   root.style.setProperty('--brand-accent', c.accentColor);
   root.style.setProperty('--band', c.headerColor);
   root.style.setProperty('--band-text', c.headerTextColor);
+  root.style.setProperty('--logo-nav-h', `${br.logoNavHeight ?? LOGO_LIMITS.nav.default}px`);
+  root.style.setProperty('--logo-hero-h', `${br.logoHeroHeight ?? LOGO_LIMITS.hero.default}px`);
   // Gestaltungsstil des Ticketsystems; für den nächsten Seitenaufruf merken (kein Aufblitzen)
   const style = themeOf(br);
   if (root.getAttribute('data-style') !== style) {
@@ -99,6 +101,22 @@ export function navBrand(b: Branding): Child[] {
     h('span', { class: 'theme-light-only' }, ...(b.logoLightId ? [img(b.logoLightId)] : fallback())),
     h('span', { class: 'theme-dark-only' }, ...(b.logoDarkId ? [img(b.logoDarkId)] : fallback())),
   ];
+}
+
+/** Zusätzliche Links aus den Einstellungen für die Navigationsleiste. Bis zu zwei stehen direkt in der Leiste,
+ *  mehr kommen in ein Menü „Links“ – sonst würde die Leiste zu voll. Web-Links öffnen in einem neuen Tab. */
+export function navLinks(b: Branding): { inline: HTMLElement[]; menu: HTMLElement | null } {
+  const list = (b.navLinks ?? []).filter((l) => NAV_LINK_RE.test(l.url));
+  const a = (l: { label: string; url: string }, cls?: string) => {
+    const web = /^https?:/i.test(l.url);
+    return h('a', { class: cls, attrs: { href: l.url, ...(web ? { target: '_blank', rel: 'noopener noreferrer' } : {}) } }, l.label, web ? icon('ext', 13) : null);
+  };
+  if (list.length <= 2) return { inline: list.map((l) => a(l, 'nav-ext')), menu: null };
+  const details = h('details', { class: ['user-menu', 'links-menu'] },
+    h('summary', { attrs: { 'aria-label': 'Links' } }, icon('link', 16), h('span', { class: 'links-label' }, 'Links'), icon('chev', 14)),
+    h('div', { class: 'menu' }, ...list.map((l) => a(l))));
+  details.addEventListener('click', (e) => { if ((e.target as HTMLElement).closest('a')) details.open = false; });
+  return { inline: [], menu: details };
 }
 
 // ---------------------------------------------------------------- Helles / dunkles Design

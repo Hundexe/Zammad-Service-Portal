@@ -1,7 +1,7 @@
 // Einstiegspunkt des Frontends.
 import { h, mount, type Child } from './lib/dom.ts';
 import { get } from './lib/api.ts';
-import { applyBranding, currentSystem, link, loadMe, loadSystems, navBrand, themeToggle, render, route, selectSystem, setLayouts, setPrepare, state, userMenu, navigate } from './lib/app.ts';
+import { applyBranding, currentSystem, link, loadMe, loadSystems, navBrand, navLinks, themeToggle, render, route, selectSystem, setLayouts, setPrepare, state, userMenu, navigate } from './lib/app.ts';
 import { notice } from './lib/ui.ts';
 import { DEMO, setDemoBackend } from './lib/env.ts';
 import { loginPage } from './pages/login.ts';
@@ -28,6 +28,7 @@ function portalLayout(content: Child, path: string): Child {
   const base = sys ? `/s/${sys.id}` : '/';
   const onTickets = path.includes('/tickets');
   const onApprovals = path.startsWith('/freigaben');
+  const extra = navLinks(b);
   const onOther = path === '/anfragen' || path === '/konto' || onApprovals;
   void refreshCounts();
   return [
@@ -38,7 +39,9 @@ function portalLayout(content: Child, path: string): Child {
         h('nav', { class: 'main-nav', attrs: { 'aria-label': 'Hauptnavigation' } },
           h('a', { class: !onTickets && !onOther ? 'active' : undefined, attrs: { href: base, 'data-link': '' } }, 'Anfrage stellen'),
           sys ? h('a', { class: onTickets ? 'active' : undefined, attrs: { href: `${base}/tickets`, 'data-link': '' } }, 'Meine Tickets') : null,
-          approvalsNavLink(onApprovals)),
+          approvalsNavLink(onApprovals),
+          ...extra.inline),
+        extra.menu,
         bell(),
         themeToggle(),
         userMenu())),

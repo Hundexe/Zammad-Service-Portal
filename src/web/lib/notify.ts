@@ -100,5 +100,5 @@ export function bell(): HTMLElement {
 
 // Klick daneben schließt die Liste
 document.addEventListener('click', (e) => {
-  for (const d of document.querySelectorAll<HTMLDetailsElement>('details.notif-menu[open]')) if (!d.contains(e.target as Node)) d.open = false;
+  for (const d of document.querySelectorAll<HTMLDetailsElement>('details.notif-menu[open], details.links-menu[open]')) if (!d.contains(e.target as Node)) d.open = false;
 });

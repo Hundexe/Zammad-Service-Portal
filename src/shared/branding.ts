@@ -61,7 +61,20 @@ export interface Branding {
   footerText: string;
   imprintUrl?: string;
   privacyUrl?: string;
+  /** Höhe des Logos in der Navigationsleiste (px) */
+  logoNavHeight?: number;
+  /** Höhe des Logos auf der Farbfläche der Startseite (px) */
+  logoHeroHeight?: number;
+  /** Zusätzliche Links in der Navigationsleiste, z. B. Intranet oder Wissensdatenbank */
+  navLinks?: NavLink[];
 }
+
+export interface NavLink { label: string; url: string }
+
+export const LOGO_LIMITS = { nav: { min: 20, max: 72, default: 28 }, hero: { min: 24, max: 200, default: 44 } } as const;
+export const NAV_LINKS_MAX = 6;
+/** Erlaubte Ziele: Web-Adressen, E-Mail, Telefon – nie javascript: o. Ä. */
+export const NAV_LINK_RE = /^(https?:\/\/[^\s"'<>]+|mailto:[^\s"'<>]+|tel:[+0-9 ()\/-]+)$/i;
 
 export const DEFAULT_BRANDING: Branding = {
   theme: 'standard',
@@ -78,6 +91,9 @@ export const DEFAULT_BRANDING: Branding = {
   footerText: '',
   imprintUrl: '',
   privacyUrl: '',
+  logoNavHeight: LOGO_LIMITS.nav.default,
+  logoHeroHeight: LOGO_LIMITS.hero.default,
+  navLinks: [],
 };
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -154,6 +170,24 @@ export function validateBranding(input: unknown): { branding?: Branding; errors:
     if (typeof v !== 'string' || !/^[0-9a-f-]{36}$/.test(v)) { errors.push(`${k} ungültig`); return null; }
     return v;
   };
+  const size = (k: string, lim: { min: number; max: number; default: number }): number => {
+    const v = i[k];
+    if (v === undefined || v === null || v === '') return lim.default;
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < lim.min || v > lim.max) { errors.push(`${k}: ${lim.min}–${lim.max} Pixel`); return lim.default; }
+    return v;
+  };
+  const navLinks: NavLink[] = [];
+  if (i.navLinks !== undefined && i.navLinks !== null) {
+    if (!Array.isArray(i.navLinks) || i.navLinks.length > NAV_LINKS_MAX) errors.push(`navLinks: höchstens ${NAV_LINKS_MAX} Links`);
+    else for (const [n, l] of i.navLinks.entries()) {
+      const o = (l && typeof l === 'object' ? l : {}) as Record<string, unknown>;
+      const label = typeof o.label === 'string' ? o.label.trim() : '';
+      const url = typeof o.url === 'string' ? o.url.trim() : '';
+      if (!label || label.length > 40) { errors.push(`Link ${n + 1}: Bezeichnung fehlt oder zu lang (max. 40 Zeichen)`); continue; }
+      if (url.length > 500 || !NAV_LINK_RE.test(url)) { errors.push(`Link ${n + 1}: nur https://, http://, mailto: oder tel:`); continue; }
+      navLinks.push({ label, url });
+    }
+  }
   const theme = i.theme === undefined || i.theme === null || i.theme === '' ? 'standard' : i.theme;
   if (typeof theme !== 'string' || !(THEMES as readonly string[]).includes(theme)) errors.push('theme: unbekannter Stil');
   const colorMode = i.colorMode === undefined || i.colorMode === null || i.colorMode === '' ? 'custom' : i.colorMode;
@@ -173,6 +207,9 @@ export function validateBranding(input: unknown): { branding?: Branding; errors:
     footerText: str('footerText', 500),
     imprintUrl: url('imprintUrl'),
     privacyUrl: url('privacyUrl'),
+    logoNavHeight: size('logoNavHeight', LOGO_LIMITS.nav),
+    logoHeroHeight: size('logoHeroHeight', LOGO_LIMITS.hero),
+    navLinks,
   };
   return { branding: errors.length ? undefined : branding, errors };
 }

@@ -1,5 +1,12 @@
 # Änderungen
 
+## 1.7.0 – 28.10.2026
+
+- **Logogröße einstellbar** unter **Stil, Farben und Logo** (und **Anmeldeseite**): Höhe in der Navigationsleiste (20–72 px, Standard 28) und auf der Farbfläche (24–200 px, Standard 44), mit Vorschau
+- **Eigene Links in der Navigationsleiste:** bis zu sechs (z. B. Intranet, Wissensdatenbank, IT-Hotline), erlaubt sind https, http, mailto und tel. Bis zu zwei direkt in der Leiste, mehr im Menü **Links**; Web-Links öffnen in neuem Tab
+- Navigationsleiste: Einträge brechen nicht mehr um, bei Platzmangel lässt sich die Leiste waagrecht wischen
+- Tests: 1 neuer, insgesamt 239
+
 ## 1.6.3 – 28.10.2026
 
 - Fehlermeldung bei nicht freigegebenen Zammad-Objekten (Editor und „Aus Datei übernehmen“) sagt jetzt, wo man sie freigibt
