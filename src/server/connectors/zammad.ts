@@ -216,30 +216,95 @@ export class ZammadConnector implements Connector {
       priority: t.priority !== undefined ? String(t.priority) : null,
       group: t.group !== undefined ? String(t.group) : null,
       customerId: Number(t.customer_id),
+      organizationId: t.organization_id === null || t.organization_id === undefined || t.organization_id === '' ? null : Number(t.organization_id),
       createdAt: String(t.created_at ?? ''),
       updatedAt: String(t.updated_at ?? ''),
     };
   }
 
-  private mayView(customer: CustomerRef, t: TicketSummary): boolean {
-    return this.sys.showOrgTickets || t.customerId === customer.customerId;
+  /**
+   * Darf der Kunde dieses Ticket im Portal sehen? Eigene Tickets immer; Tickets der eigenen Organisation nur mit
+   * der Einstellung „Tickets der eigenen Organisation anzeigen“ – und nur wirklich derselben Organisation.
+   * Was Zammad dem Konto sonst noch zeigt (z. B. als Agent in seinen Gruppen), gehört nicht ins Portal.
+   */
+  private mayView(customer: CustomerRef, t: TicketSummary, org: number | null): boolean {
+    if (t.customerId === customer.customerId) return true;
+    return this.sys.showOrgTickets && org !== null && t.organizationId === org;
   }
 
-  async listTickets(customer: CustomerRef): Promise<TicketSummary[]> {
-    const out: TicketSummary[] = [];
+  private orgCache = new Map<number, { at: number; org: number | null }>();
+
+  /** Organisation des Kunden (nur gebraucht, wenn Organisations-Tickets angezeigt werden). */
+  private async organizationOf(customer: CustomerRef): Promise<number | null> {
+    if (!this.sys.showOrgTickets) return null;
+    const hit = this.orgCache.get(customer.customerId);
+    if (hit && Date.now() - hit.at < 10 * 60_000) return hit.org;
+    let u: Json = null;
+    try {
+      u = await this.call('GET', `/api/v1/users/${this.behalf(customer)}`);
+    } catch (err) {
+      // Ohne Organisation nur die eigenen Tickets – sicherer als gar nichts anzuzeigen
+      if (!(err instanceof ConnectorError) || err.retryable) throw err;
+    }
+    const org = u?.organization_id === null || u?.organization_id === undefined || u?.organization_id === '' ? null : Number(u.organization_id);
+    this.orgCache.set(customer.customerId, { at: Date.now(), org: Number.isSafeInteger(org) && (org as number) > 0 ? org : null });
+    if (this.orgCache.size > 5000) this.orgCache.clear();
+    return this.orgCache.get(customer.customerId)!.org;
+  }
+
+  private static ticketList(res: Json): Json[] {
+    if (Array.isArray(res)) return res;
+    if (Array.isArray(res?.records)) return res.records;
+    const ids = Array.isArray(res?.tickets) ? res.tickets : Array.isArray(res?.record_ids) ? res.record_ids : null;
+    return ids ? ids.map((id: number) => res.assets?.Ticket?.[id]).filter(Boolean) : [];
+  }
+
+  /**
+   * Tickets mit einer Bedingung suchen (z. B. customer_id = 42), neueste zuerst. Ohne Suchbegriff sucht Zammad
+   * direkt in der Datenbank – unabhängig von Elasticsearch und immer aktuell.
+   */
+  private async searchBy(field: 'customer_id' | 'organization_id', value: number, onBehalfOf: string | undefined): Promise<Json[]> {
+    const q = new URLSearchParams({
+      [`condition[ticket.${field}][operator]`]: 'is',
+      [`condition[ticket.${field}][value]`]: String(value),
+      sort_by: 'updated_at', order_by: 'desc', limit: '200', expand: 'true',
+    });
+    return ZammadConnector.ticketList(await this.call('GET', `/api/v1/tickets/search?${q}`, { onBehalfOf }));
+  }
+
+  /** Alter Weg für Zammad-Versionen ohne Suche mit Bedingung. */
+  private async listTicketsLegacy(customer: CustomerRef): Promise<Json[]> {
+    const out: Json[] = [];
     if (this.sys.creationMode === 'on_behalf_of') {
       for (let page = 1; page <= 5; page++) {
         const list = (await this.call('GET', `/api/v1/tickets?expand=true&per_page=100&page=${page}`, { onBehalfOf: this.behalf(customer) })) as Json[];
         if (!Array.isArray(list) || list.length === 0) break;
-        out.push(...list.map((t) => this.summary(t)));
+        out.push(...list);
         if (list.length < 100) break;
       }
-    } else {
-      const res = await this.call('GET', `/api/v1/tickets/search?query=${encodeURIComponent(`customer_id:${customer.customerId}`)}&limit=200&expand=true`);
-      const list: Json[] = Array.isArray(res) ? res : Array.isArray(res?.tickets) ? res.tickets.map((id: number) => res.assets?.Ticket?.[id]).filter(Boolean) : [];
-      out.push(...list.map((t) => this.summary(t)));
+      return out;
     }
-    return out.filter((t) => this.mayView(customer, t));
+    return ZammadConnector.ticketList(await this.call('GET', `/api/v1/tickets/search?query=${encodeURIComponent(`customer_id:${customer.customerId}`)}&limit=200&expand=true`));
+  }
+
+  async listTickets(customer: CustomerRef): Promise<TicketSummary[]> {
+    // Früher: alle für das Konto sichtbaren Tickets seitenweise (älteste zuerst) und dann filtern. Ist der Kunde in
+    // Zammad zugleich Agent, sieht er dort Tausende Tickets – die eigenen neuen lagen dann jenseits der ersten Seiten.
+    const onBehalfOf = this.sys.creationMode === 'on_behalf_of' ? this.behalf(customer) : undefined;
+    const org = await this.organizationOf(customer);
+    let raw: Json[];
+    try {
+      raw = await this.searchBy('customer_id', customer.customerId, onBehalfOf);
+      if (org !== null) raw.push(...await this.searchBy('organization_id', org, onBehalfOf));
+    } catch (err) {
+      // Ältere Zammad-Versionen kennen die Suche mit Bedingung nicht – dann wie bisher
+      if (!(err instanceof ConnectorError) || ![400, 404, 422, 500].includes(err.status ?? 0)) throw err;
+      raw = await this.listTicketsLegacy(customer);
+    }
+    const seen = new Set<number>();
+    return raw.map((t) => this.summary(t))
+      .filter((t) => Number.isSafeInteger(t.id) && !seen.has(t.id) && seen.add(t.id) && this.mayView(customer, t, org))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
   async getTicket(customer: CustomerRef, ticketId: number): Promise<{ ticket: TicketSummary; articles: ArticleSummary[] } | null> {
@@ -254,7 +319,7 @@ export class ZammadConnector implements Connector {
     }
     if (!raw) return null;
     const ticket = this.summary(raw);
-    if (!this.mayView(customer, ticket)) return null;
+    if (!this.mayView(customer, ticket, ticket.customerId === customer.customerId ? null : await this.organizationOf(customer))) return null;
     const arts = ((await this.call('GET', `/api/v1/ticket_articles/by_ticket/${ticketId}?expand=true`, { onBehalfOf })) ?? []) as Json[];
     const articles: ArticleSummary[] = arts
       .filter((a) => a.internal !== true && a.internal !== 'true')

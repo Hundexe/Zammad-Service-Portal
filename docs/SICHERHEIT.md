@@ -125,7 +125,8 @@ Code: `src/server/auth/oidc.ts`, Tests: `test/review-oidc.test.ts` (Einzelprüfu
 | fremde `userId`/`customer_id` im Request | wird ignoriert, Ticket gehört immer dem Angemeldeten | review `#3` |
 | unsichtbares Ticketsystem per ID (Tickets, Formulare, Anhänge, Absenden) | 404 | security-app, review `#3` |
 | fremdes Ticket lesen, beantworten, Anhang laden | 404 | security-app |
-| Tickets der Organisation | nur mit Einstellung „Tickets der eigenen Organisation anzeigen“; fremde Organisationen nie | review `#3` |
+| Tickets der Organisation | nur mit Einstellung „Tickets der eigenen Organisation anzeigen“; fremde Organisationen nie – in beiden Modi, auch per Ticket-ID | review `#3`, ticketlist |
+| Konto ist in Zammad zugleich Agent | Portal zeigt nur eigene (bzw. Organisations-)Tickets, keine Agenten-Tickets; Detail fremder Tickets 404 | ticketlist |
 | interne Notizen | nie sichtbar – auch im Modus „Kundenfeld“, in dem das Portal mit Agentenrechten liest | flow, review `#3` |
 | Anhang: fremdes Ticket, fremder Artikel unter eigenem Ticket, interne Notiz | 404 | review `#3` |
 | Absender in Antworten | keine E-Mail-Adressen; optional Systemname statt Agentenname | review `#6` |

@@ -89,12 +89,13 @@ Anfragende Person        Portal                                   Freigebende Pe
 | Stammdaten | `GET /api/v1/groups`, `ticket_states`, `ticket_priorities`, `object_manager_attributes` | |
 | Kunde finden/anlegen | `GET /api/v1/users/search`, `POST /api/v1/users` | |
 | Ticket anlegen | `POST /api/v1/tickets` (inkl. Artikel, Anhänge, Tags, Attribute) | `X-On-Behalf-Of: <Kunden-ID>` |
-| Eigene Tickets | `GET /api/v1/tickets?expand=true` | `X-On-Behalf-Of` |
+| Eigene Tickets | `GET /api/v1/tickets/search?condition[ticket.customer_id]…&sort_by=updated_at&order_by=desc` (ohne Suchbegriff: direkt in der Datenbank, unabhängig von Elasticsearch); mit Organisations-Tickets zusätzlich `ticket.organization_id`. Ältere Zammad-Versionen: `GET /api/v1/tickets?expand=true` | `X-On-Behalf-Of` |
+| Organisation des Kunden | `GET /api/v1/users/{id}` (nur mit „Tickets der eigenen Organisation anzeigen“) | |
 | Ticketverlauf | `GET /api/v1/tickets/{id}`, `ticket_articles/by_ticket/{id}` | `X-On-Behalf-Of` |
 | Anhang | `GET /api/v1/ticket_attachment/{t}/{a}/{id}` | `X-On-Behalf-Of` |
 | Antwort | `POST /api/v1/ticket_articles` | `X-On-Behalf-Of` |
 
-Mit `X-On-Behalf-Of` handelt Zammad als der Kunde selbst. Zammad entscheidet also, welche Tickets er sehen darf; das Portal prüft zusätzlich die Kunden-ID. Interne Notizen werden doppelt ausgefiltert. Alle Aufrufe laufen über einen fetch mit SSRF-Schutz (`src/server/net/guarded-fetch.ts`): die aufgelöste IP wird bei jedem Verbindungsaufbau geprüft, Weiterleitungen werden nicht verfolgt. Nur freigegebene Attribute und erlaubte Gruppen gelangen ins Ticket (Details: [SICHERHEIT.md](SICHERHEIT.md#zammad-was-das-portal-setzen-darf)). HTML aus Zammad wird im Portal nie als HTML angezeigt, sondern serverseitig in Text umgewandelt.
+Mit `X-On-Behalf-Of` handelt Zammad als der Kunde selbst. Zammad entscheidet also, welche Tickets er sehen darf; das Portal zeigt davon nur eigene Tickets (bzw. die der eigenen Organisation). Das ist wichtig, wenn ein Kunde in Zammad zugleich Agent ist: Was er dort als Agent sieht, erscheint im Portal nicht. Interne Notizen werden doppelt ausgefiltert. Alle Aufrufe laufen über einen fetch mit SSRF-Schutz (`src/server/net/guarded-fetch.ts`): die aufgelöste IP wird bei jedem Verbindungsaufbau geprüft, Weiterleitungen werden nicht verfolgt. Nur freigegebene Attribute und erlaubte Gruppen gelangen ins Ticket (Details: [SICHERHEIT.md](SICHERHEIT.md#zammad-was-das-portal-setzen-darf)). HTML aus Zammad wird im Portal nie als HTML angezeigt, sondern serverseitig in Text umgewandelt.
 
 **Zammad-Objekte:** Ticket-Attribute aus dem Objekt-Manager werden über `object_manager_attributes` gelesen. Unterstützt werden `input`, `textarea`, `select`, `multiselect`, `tree_select`, `multi_tree_select`, `boolean`, `integer` und `date`. Baumwerte haben in Zammad die Form `Eltern::Kind` und werden im Portal als „Eltern › Kind“ angezeigt.
 

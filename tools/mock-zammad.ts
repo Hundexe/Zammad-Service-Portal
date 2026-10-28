@@ -15,6 +15,8 @@ export interface MockZammad {
   url: string;
   state: { users: User[]; tickets: Ticket[]; articles: Article[]; requests: { method: string; path: string; onBehalfOf?: string; body?: any }[] };
   failNext: (n: number, status?: number) => void;
+  /** Wie ältere Zammad-Versionen: Suche mit Bedingung wird nicht unterstützt */
+  setLegacySearch: (on: boolean) => void;
   /** Die nächsten n Tickets werden angelegt, die Antwort geht aber verloren (504) – wie bei einer Zeitüberschreitung */
   loseNextCreateResponse: (n: number) => void;
   close: () => Promise<void>;
@@ -69,7 +71,7 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
   const articles: Article[] = [];
   const requests: MockZammad['state']['requests'] = [];
   let nextUser = 10, nextTicket = 100, nextArticle = 1000, nextAtt = 5000, ticketNo = 61001;
-  let failCount = 0, failStatus = 503, loseCreate = 0;
+  let failCount = 0, failStatus = 503, loseCreate = 0, legacySearch = false;
 
   const addCustomer = (email: string, firstname: string, lastname: string) => {
     const u: User = { id: nextUser++, login: email, email, firstname, lastname, roles: ['Customer'], organization_id: 1 };
@@ -191,9 +193,26 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
         return send(res, 200, tickets.filter(canSee).slice((page - 1) * per, page * per).map(expandTicket));
       }
       if (req.method === 'GET' && p === '/api/v1/tickets/search') {
+        // Wie Zammad: mit Suchbegriff über den Suchindex, ohne Suchbegriff mit Bedingung direkt in der Datenbank
+        const cond: Record<string, string> = {};
+        for (const [k, v] of url.searchParams) {
+          const c = /^condition\[ticket\.([a-z_]+)\]\[value\]$/.exec(k);
+          if (c) cond[c[1]] = v;
+        }
+        if (Object.keys(cond).length && legacySearch) return send(res, 500, { error: 'invalid selector' });
         const m = /customer_id:(\d+)/.exec(url.searchParams.get('query') ?? '');
-        return send(res, 200, tickets.filter((t) => canSee(t) && (!m || t.customer_id === Number(m[1]))).map(expandTicket));
+        let list = tickets.filter((t) => canSee(t) && (!m || t.customer_id === Number(m[1])) && Object.entries(cond).every(([f, v]) => String(t[f]) === v));
+        if (url.searchParams.get('sort_by') === 'updated_at') list = [...list].sort((a, b) => (url.searchParams.get('order_by') === 'desc' ? -1 : 1) * a.updated_at.localeCompare(b.updated_at));
+        const limit = Number(url.searchParams.get('limit') ?? 50);
+        return send(res, 200, list.slice(0, Math.min(limit, 200)).map(expandTicket));
       }
+      let mu = /^\/api\/v1\/users\/(\d+)$/.exec(p);
+      if (req.method === 'GET' && mu) {
+        if (isCustomer) return send(res, 403, { error: 'Not authorized' });
+        const u = users.find((x) => x.id === Number(mu![1]));
+        return u ? send(res, 200, { id: u.id, email: u.email, organization_id: u.organization_id }) : send(res, 404, { error: 'not found' });
+      }
+      void mu;
       let m = /^\/api\/v1\/tickets\/(\d+)$/.exec(p);
       if (req.method === 'GET' && m) {
         const t = tickets.find((x) => x.id === Number(m![1]));
@@ -248,6 +267,7 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
     server, url,
     state: { users, tickets, articles, requests },
     failNext: (n, status = 503) => { failCount = n; failStatus = status; },
+    setLegacySearch: (on) => { legacySearch = on; },
     loseNextCreateResponse: (n) => { loseCreate = n; },
     close: () => new Promise((r) => server.close(() => r())),
   };

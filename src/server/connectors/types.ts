@@ -27,6 +27,8 @@ export interface TicketSummary {
   priority: string | null;
   group: string | null;
   customerId: number;
+  /** Organisation des Tickets (für „Tickets der eigenen Organisation anzeigen“) */
+  organizationId: number | null;
   createdAt: string;
   updatedAt: string;
 }

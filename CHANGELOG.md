@@ -1,5 +1,11 @@
 # Änderungen
 
+## 1.5.1 – 28.10.2026
+
+- Behoben: **„Meine Tickets“ blieb leer**, wenn das Konto in Zammad zugleich Agent ist (z. B. Mitarbeitende der IT). Das Portal holte alle für das Konto sichtbaren Tickets – älteste zuerst, höchstens 500 – und filterte danach; die eigenen neuen Tickets lagen dahinter. Jetzt fragt es Zammad gezielt nach den Tickets des Kunden, neueste zuerst. Die Abfrage läuft ohne Suchbegriff direkt über die Datenbank von Zammad und hängt nicht von Elasticsearch ab. Ältere Zammad-Versionen ohne diese Abfrage nutzen automatisch den bisherigen Weg
+- Sicherheit: „Tickets der eigenen Organisation anzeigen“ prüft jetzt die Organisation des Kunden. Vorher zeigte die Einstellung im Modus „Kundenfeld“ (Agenten-Token) jedes Ticket, das der API-Benutzer sehen kann, wenn man die Ticket-ID kannte, und bei Agent-Kunden auch deren Agenten-Tickets
+- Tests: 4 neue (Agent als Kunde mit 600 fremden Tickets, gezielte Abfrage ohne Suchindex, Organisationen in beiden Modi, ältere Zammad-Versionen), insgesamt 220
+
 ## 1.5.0 – 28.10.2026
 
 **Freigabe durch Vorgesetzte**
