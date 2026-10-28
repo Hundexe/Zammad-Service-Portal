@@ -1,5 +1,13 @@
 # Änderungen
 
+## 1.6.0 – 28.10.2026
+
+- **Export und Import** in der Verwaltung (nur globale Admins): alle Ticketsysteme mit Verbindung, erlaubten Gruppen, freigegebenen Zammad-Objekten, Formularen mit allen Versionen, Vorlagen, Übersichten, Stil, Farben und Logos als eine JSON-Datei – und in einem anderen Portal genauso wieder einspielen
+- Zammad-API-Tokens optional mit Export-Passwort (scrypt + AES-256-GCM); ohne Passwort enthält die Datei keine Geheimnisse
+- Import ersetzt alles: Vorschau zeigt, was ersetzt, neu angelegt und gelöscht wird; danach Bestätigung und frische Anmeldung. Gleiche Kürzel behalten ihre interne ID (Rollen-Zuordnungen und alte Anfragen bleiben). Ganz oder gar nicht in einer Transaktion; Ticketsysteme mit offenen Anfragen werden nicht gelöscht
+- Jede Datei wird wie eine Eingabe in der Verwaltung geprüft (SSRF-Schutz, Formulare, Logos, Stil)
+- Tests: 8 neue (Export mit/ohne Tokens, Vorschau, Ersetzen, Rundreise, unsichere Inhalte, Rechte und Step-up), insgesamt 232
+
 ## 1.5.2 – 28.10.2026
 
 - **Anfragen in der Verwaltung abbrechen:** Unter **Zustellung** gibt es bei fehlgeschlagenen, wartenden und auf eine Freigabe wartenden Anfragen **Abbrechen** – mit freiwilligem Grund. Inhalt und Anhänge werden gelöscht, nichts geht an Zammad, „Erneut senden“ ist danach nicht mehr möglich. Eine offene Freigabe endet mit. Anfragende und freigebende Person werden im Portal benachrichtigt; Eintrag im Audit-Log (`request.cancelled`). Nur mit dem Recht „Ticketsystem verwalten“ für das System; Anfragen, die gerade zugestellt werden, nicht

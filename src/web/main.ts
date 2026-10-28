@@ -14,6 +14,7 @@ import { formEditorPage, formsListPage } from './admin/forms.ts';
 import { brandingPage, loginSettingsPage, overviewsPage, templatesPage } from './admin/content.ts';
 import { rolesPage, usersPage } from './admin/access.ts';
 import { auditPage, dashboardPage, deliveryPage, updatesPage } from './admin/ops.ts';
+import { transferPage } from './admin/transfer.ts';
 
 function skipLink(): HTMLElement {
   return h('a', { class: 'skip', attrs: { href: '#main' } }, 'Zum Inhalt springen');
@@ -118,6 +119,7 @@ adminRoute('/admin/systeme/:systemId/branding', brandingPage);
 adminRoute('/admin/rollen', rolesPage);
 adminRoute('/admin/benutzer', usersPage);
 adminRoute('/admin/zustellung', deliveryPage);
+adminRoute('/admin/export', transferPage);
 adminRoute('/admin/audit', auditPage);
 adminRoute('/admin/updates', updatesPage);
 adminRoute('/admin/einstellungen', loginSettingsPage);

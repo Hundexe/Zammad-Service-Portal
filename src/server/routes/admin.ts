@@ -21,6 +21,7 @@ import { createLocalUser, emailInUse, getUser, publicUser, resetLocalPassword, t
 import { destroyUserSessions } from '../auth/sessions.ts';
 import { retryRequest } from '../services/requests.ts';
 import { cancelRequest } from '../services/approvals.ts';
+import { applyImport, buildExport, planImport, summarizePlan } from '../services/transfer.ts';
 import { ConnectorError } from '../connectors/types.ts';
 import { OVERVIEW_COLUMNS } from './portal.ts';
 import { placeholders } from '../../shared/template.ts';
@@ -925,6 +926,41 @@ export function registerAdminRoutes(router: Router, app: App): void {
     if (!r || !can(ctx.user, 'system.manage', r.system_id)) throw new HttpError(404, 'Anfrage nicht gefunden', 'not_found');
     cancelRequest(app, ctx.user!, actor(ctx), ctx.params.requestId, (ctx.body as { reason?: unknown })?.reason);
     return { ok: true };
+  });
+
+  // ---------------------------------------------------------------- Export und Import der Ticketsysteme
+  function requireGlobalSystemManage(ctx: AppCtx) {
+    if (!can(ctx.user, 'system.manage', null)) throw new HttpError(403, 'Export und Import darf nur ein globaler Admin', 'forbidden');
+  }
+  const exportPassword = (b: Body): string | undefined => {
+    const v = b?.password;
+    if (v === undefined || v === null || v === '') return undefined;
+    if (typeof v !== 'string' || v.length > 200) throw new HttpError(422, 'Passwort ungültig', 'validation', { password: 'ungültig' });
+    return v;
+  };
+
+  router.post('/api/admin/transfer/export', admin('system.manage', { stepup: true }), (ctx: AppCtx) => {
+    requireGlobalSystemManage(ctx);
+    const b = ctx.body as Body;
+    const password = b.includeTokens === true ? exportPassword(b) : undefined;
+    if (b.includeTokens === true && !password) throw new HttpError(422, 'Für die Zammad-Tokens ist ein Export-Passwort nötig', 'validation', { password: 'Pflichtfeld' });
+    const file = buildExport(app, password);
+    audit(app.db, actor(ctx), { action: 'transfer.exported', targetType: 'portal', details: { systeme: file.systems.length, tokens: Boolean(password) } });
+    return { file };
+  });
+
+  router.post('/api/admin/transfer/preview', admin('system.manage', { bodyLimit: 40 * 1024 * 1024 }), async (ctx: AppCtx) => {
+    requireGlobalSystemManage(ctx);
+    const b = ctx.body as Body;
+    return { plan: summarizePlan(await planImport(app, b.file, exportPassword(b))) };
+  });
+
+  router.post('/api/admin/transfer/import', admin('system.manage', { stepup: true, bodyLimit: 40 * 1024 * 1024 }), async (ctx: AppCtx) => {
+    requireGlobalSystemManage(ctx);
+    const b = ctx.body as Body;
+    if (b.confirm !== true) throw new HttpError(422, 'Bitte den Import bestätigen', 'validation');
+    const plan = await planImport(app, b.file, exportPassword(b));
+    return { imported: applyImport(app, plan, actor(ctx)) };
   });
 
   // ---------------------------------------------------------------- Audit-Log

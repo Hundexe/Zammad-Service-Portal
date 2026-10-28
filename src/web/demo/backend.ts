@@ -156,6 +156,7 @@ export async function createDemoBackend(): Promise<DemoBackend> {
       assets[id] = `data:${sniffMime(body.data)};base64,${body.data}`;
       return ok({ created: true, id }, 201);
     }
+    if (p.startsWith('/api/admin/transfer/')) return fail(409, 'Export und Import gehen in der Demo nicht.', 'demo');
     if (m === 'POST' && /\/(forms|copy)$/.test(p)) return fail(409, 'Neue Formulare anlegen geht in der Demo nicht – bestehende lassen sich öffnen und bearbeiten.', 'demo');
     return ok({ ok: true });
   }

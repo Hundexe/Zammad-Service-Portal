@@ -81,6 +81,13 @@ Dieses Dokument beschreibt, wie das Portal geschützt ist, gegen welche Angriffe
 - Ratenbegrenzung je IP für alle API-Aufrufe, ändernde Aufrufe und Anmeldungen.
 - API-Antworten werden weder zwischengespeichert (`no-store`) noch komprimiert (BREACH-Vorbeugung).
 
+### Export und Import
+
+- Nur globale Admins mit „Ticketsystem verwalten“, aus dem Admin-Netz; Export und Import verlangen eine frische Anmeldung (Step-up). Beides steht im Audit-Log (`transfer.exported`, `transfer.imported`).
+- Zammad-Tokens kommen nur mit Export-Passwort mit: Schlüssel per scrypt (N=2¹⁷, r=8, p=1) aus dem Passwort, Verschlüsselung mit AES-256-GCM, das Kürzel des Ticketsystems als zusätzliche authentifizierte Daten (ein Token lässt sich nicht einem anderen System unterschieben). Ein Prüfwert erkennt ein falsches Passwort. Ohne Passwort enthält die Datei keine Geheimnisse; die Vorschau zeigt nie Tokens.
+- Der Import prüft die Datei wie Eingaben in der Verwaltung: Zammad-Adressen mit SSRF-Schutz, Formulare mit `validateDefinition` (keine geschützten Zammad-Felder), Stil mit `validateBranding`, Logos am Inhalt (SVG ohne Skripte), Vorlagen- und Übersichts-Grenzen, freigegebene Zammad-Objekte ohne geschützte Felder. Benutzer-IDs aus der Quelle werden nicht übernommen.
+- Alles läuft in einer Transaktion. Ein Ticketsystem mit offenen Anfragen wird nicht gelöscht; dann bricht der Import vorher ab.
+
 ### Container und Betrieb
 
 - App und Worker: **distroless**-Image ohne Shell und Paketmanager, Benutzer 65532, `read_only`, `cap_drop: ALL`, `no-new-privileges`, Speicher- und Prozesslimits.
@@ -137,6 +144,8 @@ Code: `src/server/auth/oidc.ts`, Tests: `test/review-oidc.test.ts` (Einzelprüfu
 | Entscheidung nach Fristende oder ein zweites Mal | 409, nichts wird zugestellt | approvals |
 | fremde Benachrichtigungen als gelesen markieren | wirkungslos | approvals |
 | Anfrage abbrechen ohne „Ticketsystem verwalten“ für das System | 403/404 | cancel |
+| Export/Import als System-Admin oder normaler Benutzer; Import ohne frische Anmeldung | 403/404 bzw. `stepup_required` | transfer |
+| Import mit geschütztem Zammad-Feld, SVG mit Skript, Metadaten-Adresse, falschem Passwort | 422, nichts geändert | transfer |
 
 ## Zammad: was das Portal setzen darf
 

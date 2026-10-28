@@ -68,6 +68,7 @@ export function sidebar(path: string): HTMLElement {
       item('/admin/rollen', 'Rollen und Rechte', can('role.manage')),
       item('/admin/benutzer', 'Benutzer', can('user.manage')),
       item('/admin/zustellung', 'Zustellung', canAnywhere('system.manage')),
+      item('/admin/export', 'Export und Import', can('system.manage')),
       item('/admin/audit', 'Audit-Log', canAnywhere('audit.read')),
       item('/admin/updates', 'Updates', can('update.read') || can('update.install')),
       item('/admin/einstellungen', 'Anmeldeseite', can('settings.manage')),

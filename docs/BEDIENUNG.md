@@ -276,6 +276,23 @@ Alle Anfragen auf dem Weg nach Zammad. Fehlgeschlagene Anfragen (z. B. weil eine
 
 ![Zustellung](screenshots/21-admin-zustellung.png)
 
+### Export und Import
+
+Unter **Export und Import** (nur für globale Admins) lassen sich alle Ticketsysteme mit ihren Einstellungen in ein anderes Portal übertragen, z. B. vom Test- ins Produktivsystem.
+
+**Exportieren:** Die Datei enthält alle Ticketsysteme: Verbindung, erlaubte Gruppen, freigegebene Zammad-Objekte, Formulare mit allen Versionen, Vorlagen, Übersichten, Stil, Farben und Logos. Benutzer, Rollen, Anfragen und Audit-Log sind nicht enthalten.
+
+- **Zammad-API-Tokens mitnehmen:** Dann wird ein Export-Passwort (mindestens 12 Zeichen) verlangt. Die Tokens werden damit verschlüsselt. Das Passwort getrennt von der Datei weitergeben.
+- Ohne Tokens enthält die Datei keine Geheimnisse. Im Zielsystem werden die Tokens dann unter **Verbindung** eingetragen; neue Ticketsysteme ohne Token werden dort deaktiviert angelegt.
+
+**Importieren:** Datei wählen, ggf. Export-Passwort eingeben, **Datei prüfen**. Die Vorschau zeigt, welche Ticketsysteme ersetzt, neu angelegt und gelöscht werden. Erst **Import ausführen** ändert etwas – nach einer Bestätigung und mit frischer Anmeldung.
+
+- Der Import **ersetzt alles**: Danach gibt es genau die Ticketsysteme aus der Datei. Ticketsysteme mit gleichem Kürzel werden überschrieben (Formulare, Versionen, Vorlagen, Übersichten, Stil), fehlende gelöscht.
+- Rollen-Zuordnungen und alte Anfragen von Ticketsystemen mit gleichem Kürzel bleiben erhalten.
+- Ein Ticketsystem, das noch offene Anfragen hat (Zustellung oder Freigabe), wird nicht gelöscht – der Import bricht dann vorher ab, ohne etwas zu ändern.
+- Alles wird geprüft wie bei der Eingabe in der Verwaltung (Zammad-Adressen, Formulare, Logos). Läuft etwas schief, bleibt das Zielsystem unverändert.
+- Vorher eine Sicherung machen (`cli.ts backup`), danach je Ticketsystem **Verbindung testen** und die Zammad-Objekte prüfen.
+
 ### Audit-Log
 
 Jede Anmeldung und jede Änderung mit Person, Zeit, IP und Vorher/Nachher. Einträge können nicht geändert oder gelöscht werden; **Integrität prüfen** erkennt Manipulationen direkt in der Datenbank. Export als CSV.

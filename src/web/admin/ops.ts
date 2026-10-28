@@ -91,7 +91,7 @@ const ACTIONS: Record<string, string> = {
   'role.created': 'Rolle angelegt', 'role.updated': 'Rolle geändert', 'role.deleted': 'Rolle gelöscht', 'role.assigned': 'Rolle zugeordnet', 'role.unassigned': 'Zuordnung entfernt',
   'request.created': 'Anfrage gesendet', 'request.retry': 'Erneut gesendet',
   'approval.requested': 'Freigabe erbeten', 'approval.approved': 'Anfrage freigegeben', 'approval.rejected': 'Anfrage abgelehnt', 'approval.withdrawn': 'Anfrage zurückgezogen',
-  'approval.reassigned': 'Freigebende Person geändert', 'approval.expired': 'Freigabe abgelaufen', 'request.cancelled': 'Anfrage abgebrochen', 'ticket.reply': 'Antwort gesendet',
+  'approval.reassigned': 'Freigebende Person geändert', 'approval.expired': 'Freigabe abgelaufen', 'request.cancelled': 'Anfrage abgebrochen', 'transfer.exported': 'Export erstellt', 'transfer.imported': 'Import ausgeführt', 'ticket.reply': 'Antwort gesendet',
   'update.requested': 'Update angefordert', 'update.check_requested': 'Update-Prüfung angefordert', 'audit.exported': 'Audit-Log exportiert',
 };
 

@@ -91,6 +91,8 @@ $P secret:generate                            # neuen 32-Byte-Schlüssel ausgebe
 
 ## Sicherung
 
+> **Sicherung oder Export?** Die Sicherung (unten) enthält die ganze Datenbank und braucht zum Wiederherstellen denselben `SECRET_KEY`. Der **Export** in der Verwaltung (Export und Import) überträgt nur die Ticketsysteme mit ihren Einstellungen in ein *anderes* Portal mit eigenem Schlüssel – z. B. vom Test- ins Produktivsystem. Er ersetzt keine Sicherung.
+
 Zu sichern sind **drei Dinge**:
 
 | Was | Wo | Hinweis |
