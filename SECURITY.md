@@ -29,6 +29,7 @@ Sicherheitskorrekturen gibt es nur für die jeweils neueste Version (signierte T
 
 - automatische Sicherheitstests (Anmeldung, Token-Prüfung, Zugriffskontrolle, Uploads, SSRF, Injection), siehe [docs/SICHERHEIT.md](docs/SICHERHEIT.md)
 - projektinterner Penetrationstest: [docs/PENTEST.md](docs/PENTEST.md)
+- zweiter projektinterner Sicherheitstest (28.10.2026) mit offenen Punkten: [docs/SICHERHEITSTEST-2026-10-28.md](docs/SICHERHEITSTEST-2026-10-28.md)
 - externes Architektur- und Code-Review im Oktober 2026: [docs/REVIEW-2026-10.md](docs/REVIEW-2026-10.md)
 
 Ein unabhängiger Penetrationstest durch Dritte steht noch aus.

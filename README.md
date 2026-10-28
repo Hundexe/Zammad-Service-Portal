@@ -81,6 +81,7 @@ Mehr dazu, inklusive Alarmregeln, Log-Weiterleitung und Egress-Firewall: [docs/B
 | [Architektur](docs/ARCHITEKTUR.md) | Aufbau, Datenfluss, Datenmodell, Zammad-Anbindung |
 | [Sicherheit](docs/SICHERHEIT.md) | Schutzmaßnahmen, Bedrohungsmodell, Abgleich mit OWASP |
 | [Penetrationstest](docs/PENTEST.md) | Vorgehen, Werkzeuge, Ergebnisse und behobene Funde |
+| [Sicherheitstest 28.10.2026](docs/SICHERHEITSTEST-2026-10-28.md) | Zweiter Test mit Schwerpunkt auf den neuen Funktionen, offene Funde mit Issues |
 | [Updates](docs/UPDATES.md) | Releases signieren, Updates aus der Oberfläche, Rollback |
 | [Betrieb](docs/BETRIEB.md) | Sicherung, Wiederherstellung, Monitoring, Egress-Firewall, Härtung prüfen |
 | [Go-Live](docs/GO-LIVE.md) | Checkliste mit Prüfanleitung vor dem Produktivbetrieb |
