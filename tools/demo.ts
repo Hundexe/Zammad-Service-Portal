@@ -115,6 +115,7 @@ export async function seedDemo(app: App, urls: { zentral: string; nord: string }
     fields: [
       { id: 'was', type: 'select', label: 'Was ist betroffen?', required: true, options: [{ value: 'rechner', label: 'Rechner / Laptop' }, { value: 'drucker', label: 'Drucker' }, { value: 'netzwerk', label: 'Netzwerk / WLAN / VPN' }, { value: 'programm', label: 'Programm' }, { value: 'sonstiges', label: 'Sonstiges' }], mapping: { target: 'group', valueMap: { netzwerk: 'IT-Support::Netzwerk', rechner: 'IT-Support::Hardware', drucker: 'IT-Support::Hardware' } } },
       { id: 'programm', type: 'text', label: 'Welches Programm?', required: true, visibleIf: { field: 'was', op: 'eq', value: 'programm' } },
+      { id: 'was_sonstiges', type: 'text', label: 'Was genau ist betroffen?', required: true, maxLength: 200, visibleIf: { field: 'was', op: 'eq', value: 'sonstiges' } },
       { id: 'betreff', type: 'text', label: 'Kurz zusammengefasst', required: true, placeholder: 'z. B. Outlook startet nicht', maxLength: 120 },
       { id: 'beschreibung', type: 'textarea', label: 'Was genau passiert?', required: true, help: 'Fehlermeldung, seit wann, was Sie schon versucht haben.' },
       { id: 'standort', type: 'zammad', label: 'Standort', attribute: 'standort', required: true },

@@ -158,6 +158,8 @@ Nicht unterstützte Typen (z. B. Benutzerauswahl) sind ausgegraut. Fehlt die Lis
 
 **Formulare** listet alle Formulare mit Status. **Kopieren …** übernimmt ein Formular als Entwurf in ein anderes Ticketsystem.
 
+**Aus Datei übernehmen …** spielt mehrere Formulare auf einmal aus einer JSON-Datei ein (`{"forms": [{"slug", "name", "description", "category", "sort", "definition"}], "templates": [...]}`). Die Vorschau zeigt je Formular „neu“, „neue Version“ oder „unverändert“. Formulare mit gleichem Kürzel bekommen eine neue Version, andere bleiben unangetastet. Mit **Direkt veröffentlichen** sind die Änderungen sofort aktiv (mit Vier-Augen-Prinzip gehen sie zur Freigabe), sonst bleiben sie Entwürfe zum Prüfen im Editor.
+
 ![Formulare](screenshots/13-admin-formulare.png)
 
 Der Editor hat vier Reiter:

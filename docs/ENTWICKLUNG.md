@@ -49,6 +49,7 @@ node --test test/flow.test.ts     # einzelne Datei
 | `test/unit.test.ts` | Krypto, TOTP (RFC-6238-Vektoren), Vorlagen, Validierung, Branding, Dateierkennung, Proxy-Vertrauen |
 | `test/flow.test.ts` | Ende-zu-Ende: Anmeldung, Formular → Ticket, Meine Tickets, Antworten, Ausfall von Zammad |
 | `test/admin.test.ts` | Verwaltung über die API |
+| `test/formimport.test.ts` | Formulare aus Datei übernehmen: Vorschau, neue Version, unverändert, Fehler, Rechte |
 | `test/transfer.test.ts` | Export und Import zwischen zwei Portalen: Tokens, Vorschau, Ersetzen, Rundreise, unsichere Inhalte, Rechte |
 | `test/cancel.test.ts` | Verwaltung: Anfragen abbrechen (fehlgeschlagen, wartend, bei Freigabe), Rechte |
 | `test/ticketlist.test.ts` | „Meine Tickets“: Agent als Kunde, gezielte Abfrage ohne Suchindex, Organisationen, ältere Zammad-Versionen |

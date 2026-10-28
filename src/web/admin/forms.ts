@@ -43,7 +43,10 @@ export async function formsListPage(p: Record<string, string>) {
   const s = adminSystem(p.systemId);
   const r = await get<{ forms: AdminForm[] }>(`/api/admin/systems/${s.id}/forms`);
   return h('div', null,
-    pageHead('Formulare', `Formulare für ${s.name}`, can('form.edit', s.id) ? [button('Formular anlegen', () => void createFormDialog(s.id), { kind: 'primary', icon: 'plus' })] : []),
+    pageHead('Formulare', `Formulare für ${s.name}`, can('form.edit', s.id) ? [
+      button('Aus Datei übernehmen …', () => void importFormsDialog(s.id, s.name), { icon: 'file' }),
+      button('Formular anlegen', () => void createFormDialog(s.id), { kind: 'primary', icon: 'plus' }),
+    ] : []),
     table(r.forms, [
       { label: 'Name', class: 'grow', render: (f) => link(`/admin/systeme/${s.id}/formulare/${f.id}`, f.name) },
       { label: 'Kategorie', render: (f) => f.category },
@@ -72,6 +75,60 @@ async function createFormDialog(systemId: string) {
       } catch (err) { mount(msg, notice('error', errorText(err))); }
     }, { kind: 'primary' }),
   ]);
+}
+
+interface ImportSummary { forms: { slug: string; name: string; action: 'create' | 'update' | 'unchanged' }[]; templates: { kind: string; name: string; action: string }[]; publish: 'draft' | 'pending' | 'published' }
+
+/** Formulare aus einer JSON-Datei übernehmen: gleiches Kürzel → neue Version, sonst neues Formular. */
+async function importFormsDialog(systemId: string, systemName: string) {
+  let data: { forms?: unknown; templates?: unknown } | null = null;
+  let publish = can('form.publish', systemId);
+  const msg = h('div', { attrs: { 'aria-live': 'polite' } });
+  const planHost = h('div');
+  const fileInput = h('input', { attrs: { type: 'file', accept: '.json,application/json', class: 'visually-hidden', id: 'forms-file' } });
+  const fileLabel = h('span', { class: 'muted' }, 'Keine Datei gewählt');
+  const ACTION: Record<string, string> = { create: 'neu', update: 'neue Version', unchanged: 'unverändert' };
+  const errorBox = (err: unknown) => err instanceof ApiError && Array.isArray(err.details)
+    ? notice('error', h('p', null, err.message), h('ul', null, ...(err.details as string[]).map((d) => h('li', null, String(d)))))
+    : notice('error', errorText(err));
+  const preview = async () => {
+    mount(msg); mount(planHost);
+    if (!data) return;
+    try {
+      const r = await post<{ plan: ImportSummary }>(`/api/admin/systems/${systemId}/forms/import`, { forms: data.forms, templates: data.templates, publish, dryRun: true });
+      mount(planHost,
+        table(r.plan.forms, [{ label: 'Formular', class: 'grow', render: (f) => h('span', null, f.name, h('br'), h('span', { class: 'muted small' }, f.slug)) }, { label: 'Übernahme', render: (f) => ACTION[f.action] }]),
+        r.plan.templates.length ? h('p', { class: 'small muted' }, `Vorlagen: ${r.plan.templates.map((t) => `${t.name} (${t.action === 'create' ? 'neu' : 'aktualisiert'})`).join(', ')}`) : null,
+        h('p', { class: 'small' }, r.plan.publish === 'published' ? 'Geänderte Formulare werden sofort veröffentlicht.' : r.plan.publish === 'pending' ? 'Geänderte Formulare gehen zur Freigabe (Vier-Augen-Prinzip).' : 'Geänderte Formulare werden als Entwurf gespeichert.'));
+    } catch (err) { mount(msg, errorBox(err)); }
+  };
+  fileInput.addEventListener('change', async () => {
+    const f = fileInput.files?.[0];
+    fileInput.value = '';
+    if (!f) return;
+    try {
+      const parsed = JSON.parse(await f.text());
+      data = Array.isArray(parsed) ? { forms: parsed } : parsed;
+      fileLabel.textContent = f.name;
+      await preview();
+    } catch { data = null; mount(msg, notice('error', 'Die Datei ist kein gültiges JSON.')); }
+  });
+  await dialog(`Formulare übernehmen – ${systemName}`, h('div', { class: 'stack' },
+    h('p', { class: 'muted' }, 'JSON-Datei mit „forms“ (Kürzel, Name, Beschreibung, Kategorie, Definition) und optional „templates“. Formulare mit gleichem Kürzel bekommen eine neue Version, neue werden angelegt. Gelöscht wird nichts.'),
+    h('div', { class: 'row' }, h('label', { class: ['btn', 'btn-secondary'], attrs: { for: 'forms-file' } }, icon('file', 16), 'Datei wählen'), fileInput, fileLabel),
+    can('form.publish', systemId) ? checkbox(publish, 'Direkt veröffentlichen', (v) => { publish = v; void preview(); }, 'Sonst bleiben die neuen Versionen Entwürfe und lassen sich im Editor prüfen.') : null,
+    msg, planHost), (close) => [
+    button('Abbrechen', () => close(), { kind: 'ghost' }),
+    button('Übernehmen', async () => {
+      if (!data) { mount(msg, notice('error', 'Bitte zuerst eine Datei wählen.')); return; }
+      try {
+        await post(`/api/admin/systems/${systemId}/forms/import`, { forms: data.forms, templates: data.templates, publish });
+        close();
+        toast('Formulare übernommen');
+        navigate(curPath(), true);
+      } catch (err) { mount(msg, errorBox(err)); }
+    }, { kind: 'primary' }),
+  ], { wide: true });
 }
 
 async function copyDialog(systemId: string, f: AdminForm) {

@@ -472,6 +472,84 @@ export function registerAdminRoutes(router: Router, app: App): void {
     return { status: 'published' };
   });
 
+  // Formulare aus einer Datei übernehmen ({forms: [{slug, name, description, category, sort, definition}], templates?: [...]}).
+  // Gleiches Kürzel → neue Version (Entwurf, auf Wunsch veröffentlicht); neues Kürzel → neues Formular. Nichts wird gelöscht.
+  router.post('/api/admin/systems/:systemId/forms/import', admin('form.edit', { bodyLimit: 5 * 1024 * 1024 }), (ctx: AppCtx) => {
+    const s = sysOr404(ctx.params.systemId);
+    const b = ctx.body as Body;
+    const dryRun = b.dryRun === true;
+    const publish = b.publish === true;
+    if (publish && !can(ctx.user, 'form.publish', s.id)) throw new HttpError(403, 'Zum Veröffentlichen fehlt das Recht „Formulare veröffentlichen“', 'forbidden');
+    if (!Array.isArray(b.forms) || b.forms.length === 0 || b.forms.length > 200) throw new HttpError(422, 'Die Datei enthält keine Formulare', 'validation');
+    const errors: string[] = [];
+    const plan: { slug: string; name: string; action: 'create' | 'update' | 'unchanged'; id: string | null; meta: ReturnType<typeof readFormMeta>; def: FormDefinition | null }[] = [];
+    const seen = new Set<string>();
+    for (const [i, raw] of (b.forms as unknown[]).entries()) {
+      const f = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Body;
+      let sl = '';
+      try { sl = slug(f, 'slug'); } catch { errors.push(`Formular ${i + 1}: Kürzel ungültig`); continue; }
+      if (seen.has(sl)) { errors.push(`Formular „${sl}“ doppelt`); continue; }
+      seen.add(sl);
+      const existing = app.db.get<FormRow>('SELECT * FROM forms WHERE system_id = ? AND slug = ?', s.id, sl);
+      let meta: ReturnType<typeof readFormMeta>;
+      try { meta = readFormMeta(f, existing); } catch (err) { errors.push(`Formular „${sl}“: ${(err as Error).message}`); continue; }
+      let def: FormDefinition | null = null;
+      try { def = checkDefinition(s, f.definition); } catch (err) {
+        const d = err instanceof HttpError && Array.isArray(err.details) ? (err.details as string[]).slice(0, 5).join('; ') : (err as Error).message;
+        errors.push(`Formular „${sl}“: ${d}`); continue;
+      }
+      if (existing && latestVersion(app, existing.id)?.status === 'pending') { errors.push(`Formular „${sl}“: eine Version wartet noch auf Freigabe – erst freigeben oder ablehnen`); continue; }
+      const cur = existing ? publishedVersion(app, existing.id) : undefined;
+      const same = existing && cur && JSON.stringify(parseJson(cur.definition, {})) === JSON.stringify(def)
+        && existing.name === meta.name && existing.description === meta.description && existing.category === meta.category && existing.sort === meta.sort;
+      plan.push({ slug: sl, name: meta.name, action: !existing ? 'create' : same ? 'unchanged' : 'update', id: existing?.id ?? null, meta, def });
+    }
+    const templates: { kind: string; name: string; content: string }[] = [];
+    if (b.templates !== undefined) {
+      if (!Array.isArray(b.templates) || b.templates.length > 100) errors.push('Vorlagen ungültig');
+      else for (const tp of b.templates as Body[]) {
+        const kind = typeof tp?.kind === 'string' ? tp.kind : '';
+        if (!['title', 'body', 'success'].includes(kind) || typeof tp.name !== 'string' || !tp.name.trim() || tp.name.length > 120
+          || typeof tp.content !== 'string' || tp.content.length > (kind === 'body' ? 20000 : 1000)) { errors.push('Vorlage ungültig'); continue; }
+        templates.push({ kind, name: tp.name.trim(), content: tp.content });
+      }
+    }
+    if (errors.length) throw new HttpError(422, 'Die Datei kann nicht übernommen werden', 'validation', errors.slice(0, 50));
+    const summary = {
+      forms: plan.map((p) => ({ slug: p.slug, name: p.name, action: p.action })),
+      templates: templates.map((tp) => ({ kind: tp.kind, name: tp.name, action: app.db.get('SELECT 1 FROM templates WHERE system_id = ? AND kind = ? AND name = ?', s.id, tp.kind, tp.name) ? 'update' : 'create' })),
+      publish: publish ? (s.require_approval === 1 ? 'pending' : 'published') : 'draft',
+    };
+    if (dryRun) return { plan: summary };
+    const t = Date.now();
+    app.db.tx(() => {
+      for (const p of plan) {
+        if (p.action === 'unchanged') continue;
+        let id = p.id;
+        if (!id) {
+          id = uuid();
+          app.db.run('INSERT INTO forms (id, system_id, slug, name, description, category, visible_groups, sort, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            id, s.id, p.slug, p.meta.name, p.meta.description, p.meta.category, p.meta.visible_groups, p.meta.sort, p.meta.active, t, t);
+        } else {
+          app.db.run('UPDATE forms SET name = ?, description = ?, category = ?, visible_groups = ?, sort = ?, active = ?, updated_at = ? WHERE id = ?',
+            p.meta.name, p.meta.description, p.meta.category, p.meta.visible_groups, p.meta.sort, p.meta.active, t, id);
+        }
+        const v = saveDraft(app, id, p.def!, ctx.user!.id, 'Aus Datei übernommen');
+        if (publish) {
+          if (s.require_approval === 1) app.db.run("UPDATE form_versions SET status = 'pending', submitted_by = ? WHERE id = ?", ctx.user!.id, v.id);
+          else { app.db.run('UPDATE form_versions SET submitted_by = ? WHERE id = ?', ctx.user!.id, v.id); publishVersion(app, v, null); }
+        }
+        audit(app.db, actor(ctx), { action: p.action === 'create' ? 'form.created' : 'form.draft_saved', targetType: 'form', targetId: id, systemId: s.id, details: { slug: p.slug, quelle: 'Datei', veroeffentlicht: publish } });
+      }
+      for (const tp of templates) {
+        const ex = app.db.get<{ id: string }>('SELECT id FROM templates WHERE system_id = ? AND kind = ? AND name = ?', s.id, tp.kind, tp.name);
+        if (ex) app.db.run('UPDATE templates SET content = ?, updated_at = ?, updated_by = ? WHERE id = ?', tp.content, t, ctx.user!.id, ex.id);
+        else app.db.run('INSERT INTO templates (id, system_id, kind, name, content, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', uuid(), s.id, tp.kind, tp.name, tp.content, t, t, ctx.user!.id);
+      }
+    });
+    return { imported: summary };
+  });
+
   router.post('/api/admin/systems/:systemId/forms/:formId/versions/:versionId/approve', admin('form.approve'), (ctx: AppCtx) => {
     const f = formOr404(ctx.params.systemId, ctx.params.formId);
     const v = app.db.get<FormVersionRow>("SELECT * FROM form_versions WHERE id = ? AND form_id = ? AND status = 'pending'", ctx.params.versionId, f.id);

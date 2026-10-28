@@ -49,6 +49,8 @@ export class Db {
   }
 
   tx<T>(fn: () => T): T {
+    // Verschachtelt: Teil der äußeren Transaktion (ein Fehler rollt dort alles zurück)
+    if (this.raw.isTransaction) return fn();
     this.raw.exec('BEGIN IMMEDIATE');
     try {
       const out = fn();

@@ -1,5 +1,12 @@
 # Änderungen
 
+## 1.6.1 – 28.10.2026
+
+- **Formulare aus Datei übernehmen:** In der Verwaltung unter **Formulare** → **Aus Datei übernehmen …** eine JSON-Datei mit Formularen (und optional Vorlagen) einspielen. Gleiches Kürzel bekommt eine neue Version, neue Kürzel werden angelegt, gelöscht wird nichts. Vorschau mit „neu / neue Version / unverändert“, auf Wunsch direkt veröffentlichen (mit Vier-Augen-Prinzip: zur Freigabe). Jede Definition wird wie im Editor geprüft
+- Demo: „Störung melden“ fragt bei „Sonstiges“ nach, was genau betroffen ist
+- Intern: Datenbank-Transaktionen lassen sich verschachteln
+- Tests: 4 neue, insgesamt 236
+
 ## 1.6.0 – 28.10.2026
 
 - **Export und Import** in der Verwaltung (nur globale Admins): alle Ticketsysteme mit Verbindung, erlaubten Gruppen, freigegebenen Zammad-Objekten, Formularen mit allen Versionen, Vorlagen, Übersichten, Stil, Farben und Logos als eine JSON-Datei – und in einem anderen Portal genauso wieder einspielen
