@@ -1,5 +1,10 @@
 # Änderungen
 
+## 1.8.1 – 28.10.2026
+
+- **Sicherheit (Installation ohne Docker):** Der Update-Dienst läuft als root und setzte den Besitzer der Datenbank- und Backup-Dateien im Datenverzeichnis des Dienstbenutzers – dabei folgte er symbolischen Links. Wer bereits Code als Dienstbenutzer ausführen konnte, hätte so Systemdateien übernehmen können. Jetzt werden Dateien ohne Linkverfolgung geöffnet und nur echte Dateien mit genau einem Link übereignet; liegt dort ein Link, bricht der Update-Dienst ab. Betrifft nur 1.8.0 (Version 1.8.0 wurde nicht als Release veröffentlicht)
+- Tests: 1 neuer, insgesamt 243
+
 ## 1.8.0 – 28.10.2026
 
 - **Updates aus der Verwaltung auch ohne Docker:** `deploy/native/install.sh` richtet den Dienst `zammad-service-portal-updater` ein. Er prüft die signierten Release-Tags, sichert die Datenbank, checkt die neue Version aus und führt `install.sh --ja` aus; bei einem Fehler setzt er Datenbank und Code automatisch zurück. Danach startet er sich selbst mit dem neuen Code neu. Abschalten mit `UPDATER_ENABLED=false` in `portal.env`. Installationen vor 1.8.0: einmal den Installationsbefehl erneut ausführen

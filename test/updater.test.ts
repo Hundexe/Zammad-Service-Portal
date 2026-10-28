@@ -1,7 +1,7 @@
 // Tests des Update-Dienstes mit simuliertem Docker/Git.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, statSync, symlinkSync, linkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Db, uuid } from '../src/server/db/db.ts';
@@ -181,4 +181,33 @@ test('ohne Docker: fehlende Signaturdatei verhindert das Update', async () => {
     assert.match(job.log, /Signaturschlüssel/);
     assert.ok(!s.calls.some((c) => c.includes('checkout') || c.includes('install.sh')));
   } finally { s.cleanup(); }
+});
+
+test('ohne Docker: Links im Datenverzeichnis werden nie übereignet (Schutz vor Rechteausweitung)', async (t) => {
+  if (process.getuid?.() !== 0) { t.skip('nur als root prüfbar'); return; }
+  const s = setup({ healthyVersion: () => '1.2.0', mode: 'native' });
+  const victimDir = mkdtempSync(join(tmpdir(), 'zsp-opfer-'));
+  try {
+    s.u.cfg.appUid = 12345; s.u.cfg.appGid = 12345;
+    const victim = join(victimDir, 'shadow');
+    writeFileSync(victim, 'root:x');
+    mkdirSync(join(s.dir, 'backups'), { recursive: true });
+    writeFileSync(join(s.dir, 'backups', 'echt.sqlite'), 'x');
+    symlinkSync(victim, join(s.dir, 'backups', 'link'));
+    linkSync(victim, join(s.dir, 'backups', 'hardlink'));
+    s.u.fixOwnership();
+    assert.equal(statSync(victim).uid, 0, 'Linkziel bleibt bei root');
+    assert.equal(statSync(join(s.dir, 'backups', 'echt.sqlite')).uid, 12345, 'echte Backups gehören dem Dienstbenutzer');
+    // Backup-Ordner als Link auf ein Systemverzeichnis
+    rmSync(join(s.dir, 'backups'), { recursive: true });
+    symlinkSync(victimDir, join(s.dir, 'backups'));
+    s.u.fixOwnership();
+    assert.equal(statSync(victimDir).uid, 0);
+    assert.equal(statSync(victim).uid, 0);
+    // Updates laufen dann nicht
+    const id = addJob(s.u, '1.2.0');
+    await assert.rejects(() => s.u.tick(), /ist ein Link/);
+    assert.equal(s.u.db.get<{ status: string }>('SELECT status FROM update_jobs WHERE id = ?', id)!.status, 'requested');
+    assert.ok(!s.calls.some((c) => c.includes('install.sh')));
+  } finally { s.cleanup(); rmSync(victimDir, { recursive: true, force: true }); }
 });

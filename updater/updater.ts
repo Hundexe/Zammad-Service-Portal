@@ -15,7 +15,7 @@
 // "zammad-service-portal-updater". Statt Images zu bauen, checkt er den signierten Tag aus
 // und führt deploy/native/install.sh --ja aus (baut die Oberfläche, startet die Dienste neu).
 import { execFile } from 'node:child_process';
-import { chownSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, constants as fsc, copyFileSync, existsSync, fchownSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Db } from '../src/server/db/db.ts';
 
@@ -98,6 +98,7 @@ export class Updater {
     this.cfg = cfg;
     this.exec = exec;
     this.fetchImpl = fetchImpl;
+    this.assertNoLinks();
     this.db = new Db(join(cfg.dataDir, 'portal.sqlite'));
     this.fixOwnership();
   }
@@ -114,15 +115,48 @@ export class Updater {
    * Datenbank-Nebendateien (-wal, -shm) oder Backups an, gehören sie root – das Portal könnte dann nicht
    * mehr schreiben. Deshalb nach jedem Schritt dem Dienstbenutzer zurückgeben.
    */
+  //
+  // Sicherheit: Das Datenverzeichnis gehört dem Dienstbenutzer. Er könnte dort symbolische oder harte
+  // Links auf Systemdateien (z. B. /etc/shadow) anlegen. Deshalb nie einem Link folgen: Datei mit
+  // O_NOFOLLOW öffnen, am offenen Handle prüfen (nur echte Datei/Verzeichnis, genau ein Link) und dort
+  // den Besitzer setzen (fchown) – so gibt es auch kein Zeitfenster zwischen Prüfen und Ändern.
   fixOwnership(): void {
     if (!this.native) return;
-    const { appUid: uid, appGid: gid, dataDir } = this.cfg;
-    const own = (f: string) => { try { if (existsSync(f)) chownSync(f, uid, gid); } catch { /* ohne Rechte (Tests) */ } };
-    for (const ext of ['', '-wal', '-shm']) own(join(dataDir, `portal.sqlite${ext}`));
+    const { dataDir } = this.cfg;
+    for (const ext of ['', '-wal', '-shm']) this.ownSafe(join(dataDir, `portal.sqlite${ext}`), 'file');
     const backups = join(dataDir, 'backups');
-    if (existsSync(backups)) {
-      own(backups);
-      for (const f of readdirSync(backups)) own(join(backups, f));
+    if (this.ownSafe(backups, 'dir')) {
+      for (const f of readdirSync(backups)) this.ownSafe(join(backups, f), 'file');
+    }
+  }
+
+  /** Setzt den Besitzer ohne Links zu folgen. true = war ein echtes Objekt der erwarteten Art. */
+  private ownSafe(path: string, kind: 'file' | 'dir'): boolean {
+    let fd: number;
+    try {
+      fd = openSync(path, fsc.O_RDONLY | fsc.O_NOFOLLOW | fsc.O_NONBLOCK | (kind === 'dir' ? fsc.O_DIRECTORY : 0));
+    } catch {
+      return false; // fehlt, ist ein symbolischer Link (ELOOP) oder etwas anderes
+    }
+    try {
+      const st = fstatSync(fd);
+      const ok = kind === 'dir' ? st.isDirectory() : st.isFile() && st.nlink === 1;
+      if (!ok) return false;
+      try { fchownSync(fd, this.cfg.appUid, this.cfg.appGid); } catch { /* ohne CHOWN-Recht (Tests) */ }
+      return true;
+    } finally {
+      closeSync(fd);
+    }
+  }
+
+  /** Ohne Docker: Abbruch, wenn Datenbank oder Backup-Ordner ein symbolischer Link ist (Schutz vor Rechteausweitung). */
+  assertNoLinks(): void {
+    if (!this.native) return;
+    const { dataDir } = this.cfg;
+    for (const p of [dataDir, ...['', '-wal', '-shm'].map((e) => join(dataDir, `portal.sqlite${e}`)), join(dataDir, 'backups')]) {
+      let st;
+      try { st = lstatSync(p); } catch { continue; }
+      if (st.isSymbolicLink() || (st.isFile() && st.nlink > 1)) throw new Error(`${p} ist ein Link – Update-Dienst bricht ab (möglicher Angriff, bitte prüfen).`);
     }
   }
 
@@ -202,6 +236,7 @@ export class Updater {
   // ------------------------------------------------------------ Update
   private backupFile(from: string, to: string): string {
     const dir = join(this.cfg.dataDir, 'backups');
+    this.assertNoLinks();
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const file = join(dir, `vor-update-${from}-auf-${to}-${new Date().toISOString().replace(/[:.]/g, '-')}.sqlite`);
     this.db.backupTo(file);
@@ -211,9 +246,11 @@ export class Updater {
   private restoreDb(backup: string): void {
     this.db.close();
     const target = join(this.cfg.dataDir, 'portal.sqlite');
-    for (const ext of ['-wal', '-shm']) rmSync(target + ext, { force: true });
-    copyFileSync(backup, target);
-    try { chownSync(target, this.cfg.appUid, this.cfg.appGid); } catch { /* ohne CHOWN-Recht (Tests) */ }
+    // Erst entfernen (auch einen evtl. untergeschobenen Link), dann exklusiv neu anlegen – nie in ein Linkziel schreiben
+    for (const ext of ['', '-wal', '-shm']) rmSync(target + ext, { force: true });
+    copyFileSync(backup, target, fsc.COPYFILE_EXCL);
+    this.ownSafe(target, 'file');
+    this.assertNoLinks();
     this.db = new Db(target);
     this.fixOwnership();
   }
@@ -347,6 +384,7 @@ export class Updater {
   /** Ein Durchlauf. Rückgabe: true, wenn ein Update-Auftrag bearbeitet wurde. */
   async tick(): Promise<boolean> {
     try {
+      this.assertNoLinks();
       this.heartbeat();
       if (this.checkDue()) await this.check();
       const job = this.db.get<{ id: string; target_version: string }>("SELECT id, target_version FROM update_jobs WHERE status = 'requested' ORDER BY created_at LIMIT 1");
