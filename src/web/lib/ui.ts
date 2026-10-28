@@ -184,7 +184,7 @@ export function pageHead(title: string, sub?: Child, actions?: Child[]): HTMLEle
 
 export function statusBadge(status: string): HTMLElement {
   const map: Record<string, [string, 'neutral' | 'ok' | 'warn' | 'error' | 'info']> = {
-    awaiting_approval: ['Wartet auf Freigabe', 'warn'], rejected: ['Abgelehnt', 'error'], withdrawn: ['Zurückgezogen', 'neutral'], expired: ['Abgelaufen', 'neutral'], approved: ['Freigegeben', 'ok'],
+    awaiting_approval: ['Wartet auf Freigabe', 'warn'], rejected: ['Abgelehnt', 'error'], withdrawn: ['Zurückgezogen', 'neutral'], expired: ['Abgelaufen', 'neutral'], approved: ['Freigegeben', 'ok'], cancelled: ['Abgebrochen', 'neutral'],
     queued: ['Wird übermittelt', 'info'], sending: ['Wird übermittelt', 'info'], delivered: ['Übermittelt', 'ok'], failed: ['Fehlgeschlagen', 'error'],
     draft: ['Entwurf', 'neutral'], pending: ['Wartet auf Freigabe', 'warn'], published: ['Veröffentlicht', 'ok'], archived: ['Archiviert', 'neutral'],
     active: ['Aktiv', 'ok'], maintenance: ['Wartung', 'warn'], inactive: ['Deaktiviert', 'neutral'],

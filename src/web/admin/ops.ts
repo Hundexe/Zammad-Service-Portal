@@ -1,7 +1,7 @@
 // Verwaltung: Übersicht, Zustellung, Audit-Log, Updates.
 import { h, mount, fmtDate, relTime } from '../lib/dom.ts';
 import { get, post } from '../lib/api.ts';
-import { badge, button, confirmDialog, emptyState, errorText, notice, pageHead, select, statusBadge, table, toast } from '../lib/ui.ts';
+import { badge, button, confirmDialog, dialog, emptyState, errorText, fieldWrap, notice, pageHead, select, statusBadge, table, textarea, toast } from '../lib/ui.ts';
 import { can, link, navigate, curPath, curSearch } from '../lib/app.ts';
 import { admin, loadAdminSystems } from './common.ts';
 
@@ -42,17 +42,41 @@ export async function deliveryPage(_p: Record<string, string>, q: URLSearchParam
   return h('div', null,
     pageHead('Zustellung', 'Anfragen auf dem Weg vom Portal nach Zammad'),
     h('div', { class: 'row' }, select(status, [{ value: 'failed', label: 'Fehlgeschlagen' }, { value: 'queued', label: 'Wartend' }, { value: 'delivered', label: 'Übermittelt' },
-      { value: 'awaiting_approval', label: 'Wartet auf Freigabe' }, { value: 'rejected', label: 'Abgelehnt' }, { value: 'withdrawn', label: 'Zurückgezogen' }, { value: 'expired', label: 'Abgelaufen' }], (x) => navigate(`/admin/zustellung${x ? `?status=${x}` : ''}`), { empty: 'Alle' })),
+      { value: 'awaiting_approval', label: 'Wartet auf Freigabe' }, { value: 'rejected', label: 'Abgelehnt' }, { value: 'withdrawn', label: 'Zurückgezogen' }, { value: 'expired', label: 'Abgelaufen' }, { value: 'cancelled', label: 'Abgebrochen' }], (x) => navigate(`/admin/zustellung${x ? `?status=${x}` : ''}`), { empty: 'Alle' })),
     table(r.requests, [
       { label: 'Gesendet', render: (x) => fmtDate(x.createdAt) },
       { label: 'Betreff', class: 'grow', render: (x) => h('span', null, x.title, h('br'), h('span', { class: 'muted small' }, `${x.userName}, ${x.systemName}`)) },
       { label: 'Status', render: (x) => h('span', null, statusBadge(x.status), x.status === 'queued' && x.attempts > 0 ? h('span', { class: 'muted small' }, ` nächster Versuch ${relTime(x.nextAttemptAt).replace('vor', 'in')}`) : null) },
       { label: 'Ticket', class: 'num', render: (x) => x.ticketNumber ? `#${x.ticketNumber}` : '' },
       { label: 'Letzter Fehler', render: (x) => x.lastError ? h('span', { class: 'small' }, x.lastError) : '' },
-      { label: '', render: (x) => x.status === 'failed' && can('system.manage', x.systemId) ? button('Erneut senden', async () => {
-        try { await post(`/api/admin/requests/${x.id}/retry`); toast('Wird erneut gesendet'); navigate(curPath() + curSearch(), true); } catch (err) { toast(errorText(err), 'error'); }
-      }, { kind: 'ghost', icon: 'refresh' }) : null },
+      { label: '', render: (x) => can('system.manage', x.systemId) && ['failed', 'queued', 'awaiting_approval'].includes(x.status) ? h('span', { class: 'row' },
+        x.status === 'failed' ? button('Erneut senden', async () => {
+          try { await post(`/api/admin/requests/${x.id}/retry`); toast('Wird erneut gesendet'); navigate(curPath() + curSearch(), true); } catch (err) { toast(errorText(err), 'error'); }
+        }, { kind: 'ghost', icon: 'refresh' }) : null,
+        button('Abbrechen', () => void cancelDialog(x), { kind: 'ghost', icon: 'x' })) : null },
     ], { empty: 'Keine Anfragen in dieser Ansicht.' }));
+}
+
+/** Anfrage abbrechen: Inhalt und Anhänge werden gelöscht, nichts geht an Zammad. */
+async function cancelDialog(x: { id: string; title: string; userName: string; status: string }) {
+  let reason = '';
+  const msg = h('div');
+  const field = textarea('', (v) => { reason = v; }, { rows: 3, maxlength: 2000 });
+  await dialog('Anfrage abbrechen?', h('div', { class: 'stack' }, msg,
+    h('p', null, `„${x.title}“ von ${x.userName} wird nicht an Zammad übermittelt. Inhalt und Anhänge werden gelöscht.`
+      + (x.status === 'awaiting_approval' ? ' Die offene Freigabe wird beendet.' : '') + ' Die Person wird im Portal benachrichtigt.'),
+    fieldWrap(field, { label: 'Grund (freiwillig)', help: 'Steht in der Benachrichtigung und im Audit-Log.' })),
+  (close) => [
+    button('Zurück', () => close(), { kind: 'ghost' }),
+    button('Anfrage abbrechen', async () => {
+      try {
+        await post(`/api/admin/requests/${x.id}/cancel`, { reason });
+        close();
+        toast('Anfrage abgebrochen');
+        navigate(curPath() + curSearch(), true);
+      } catch (err) { mount(msg, notice('error', errorText(err))); }
+    }, { kind: 'danger' }),
+  ]);
 }
 
 const ACTIONS: Record<string, string> = {
@@ -67,7 +91,7 @@ const ACTIONS: Record<string, string> = {
   'role.created': 'Rolle angelegt', 'role.updated': 'Rolle geändert', 'role.deleted': 'Rolle gelöscht', 'role.assigned': 'Rolle zugeordnet', 'role.unassigned': 'Zuordnung entfernt',
   'request.created': 'Anfrage gesendet', 'request.retry': 'Erneut gesendet',
   'approval.requested': 'Freigabe erbeten', 'approval.approved': 'Anfrage freigegeben', 'approval.rejected': 'Anfrage abgelehnt', 'approval.withdrawn': 'Anfrage zurückgezogen',
-  'approval.reassigned': 'Freigebende Person geändert', 'approval.expired': 'Freigabe abgelaufen', 'ticket.reply': 'Antwort gesendet',
+  'approval.reassigned': 'Freigebende Person geändert', 'approval.expired': 'Freigabe abgelaufen', 'request.cancelled': 'Anfrage abgebrochen', 'ticket.reply': 'Antwort gesendet',
   'update.requested': 'Update angefordert', 'update.check_requested': 'Update-Prüfung angefordert', 'audit.exported': 'Audit-Log exportiert',
 };
 

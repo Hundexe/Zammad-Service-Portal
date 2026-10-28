@@ -256,6 +256,7 @@ function approvalLine(x: MyRequest): Child {
     case 'rejected': return h('span', { class: 'small' }, `von ${a.decidedByName ?? who}`, a.comment ? h('span', { class: 'quote-inline' }, `„${a.comment}“`) : null);
     case 'expired': return h('span', { class: 'muted small' }, `${who} hat nicht entschieden`);
     case 'withdrawn': return null;
+    case 'cancelled': return h('span', { class: 'muted small' }, 'von der IT abgebrochen');
     default: return a.status === 'approved' ? h('span', { class: 'muted small' }, `freigegeben von ${a.decidedByName ?? who}`) : null;
   }
 }

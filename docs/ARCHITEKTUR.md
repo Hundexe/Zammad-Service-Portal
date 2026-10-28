@@ -77,7 +77,7 @@ Anfragende Person        Portal                                   Freigebende Pe
    │◀─ Benachrichtigung ──│ Status rejected, Inhalt + Anhänge löschen │                          │
 ```
 
-- Zustände von `requests`: `awaiting_approval` → `queued` → `sending` → `delivered` / `failed`, oder `awaiting_approval` → `rejected` / `withdrawn` (anfragende Person zieht zurück) / `expired` (Frist `APPROVAL_EXPIRE_DAYS`). Der Worker fasst nur `queued` an.
+- Zustände von `requests`: `awaiting_approval` → `queued` → `sending` → `delivered` / `failed`, oder `awaiting_approval` → `rejected` / `withdrawn` (anfragende Person zieht zurück) / `expired` (Frist `APPROVAL_EXPIRE_DAYS`). Aus `failed`, `queued` und `awaiting_approval` kann die Verwaltung eine Anfrage abbrechen (`cancelled`). Der Worker fasst nur `queued` an.
 - Der Worker prüft stündlich die Fristen: einmalige Erinnerung nach `APPROVAL_REMIND_DAYS`, Ablauf nach `APPROVAL_EXPIRE_DAYS`.
 - Benachrichtigungen (`src/server/services/notifications.ts`) landen in der Tabelle `notifications` und erscheinen an der Glocke. Ziel ist ein Konto oder – für Personen, die sich vielleicht noch nie angemeldet haben – eine E-Mail-Adresse. Weitere Kanäle hängen sich über `registerChannel()` an; heute gibt es nur den Posteingang im Portal.
 

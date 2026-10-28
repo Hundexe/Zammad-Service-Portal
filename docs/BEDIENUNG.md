@@ -272,6 +272,8 @@ Für Rollen, Benutzer, Ticketsystem-Zugangsdaten und Updates verlangt das Portal
 
 Alle Anfragen auf dem Weg nach Zammad. Fehlgeschlagene Anfragen (z. B. weil eine Gruppe in Zammad umbenannt wurde) lassen sich nach der Korrektur **erneut senden**. Der Filter zeigt auch Anfragen, die noch bei Vorgesetzten liegen (**Wartet auf Freigabe**) oder nie übermittelt wurden (**Abgelehnt**, **Zurückgezogen**, **Abgelaufen**). Entscheiden kann darüber nur die eingetragene Person, nicht die Verwaltung.
 
+**Abbrechen:** Fehlgeschlagene, wartende und auf eine Freigabe wartende Anfragen lassen sich hier abbrechen (z. B. doppelt gestellt oder versehentlich abgeschickt). Ein Grund ist freiwillig und steht in der Benachrichtigung an die Person. Inhalt und Anhänge werden gelöscht, nichts geht an Zammad; eine offene Freigabe endet mit. Anfragen, die gerade zugestellt werden, lassen sich nicht abbrechen – kurz warten und erneut versuchen.
+
 ![Zustellung](screenshots/21-admin-zustellung.png)
 
 ### Audit-Log

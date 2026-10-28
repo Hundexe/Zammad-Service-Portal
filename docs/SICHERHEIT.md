@@ -136,6 +136,7 @@ Code: `src/server/auth/oidc.ts`, Tests: `test/review-oidc.test.ts` (Einzelprüfu
 | lokales Konto mit der Adresse eines Microsoft-Kontos | sieht weder Freigaben noch Benachrichtigungen dieser Adresse | approvals |
 | Entscheidung nach Fristende oder ein zweites Mal | 409, nichts wird zugestellt | approvals |
 | fremde Benachrichtigungen als gelesen markieren | wirkungslos | approvals |
+| Anfrage abbrechen ohne „Ticketsystem verwalten“ für das System | 403/404 | cancel |
 
 ## Zammad: was das Portal setzen darf
 

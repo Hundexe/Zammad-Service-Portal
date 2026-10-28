@@ -13,7 +13,7 @@ interface Approval {
 interface Summary { form: string; system: string; requester: { name: string; email: string; department: string }; fields: { label: string; value: string; multiline: boolean }[] }
 
 const DONE_TEXT: Record<string, string> = {
-  approved: 'Freigegeben', rejected: 'Abgelehnt', withdrawn: 'Von der anfragenden Person zurückgezogen', expired: 'Ohne Entscheidung abgelaufen',
+  approved: 'Freigegeben', rejected: 'Abgelehnt', withdrawn: 'Von der anfragenden Person zurückgezogen', expired: 'Ohne Entscheidung abgelaufen', cancelled: 'Von der IT abgebrochen',
 };
 
 function approvalStatus(a: Approval): HTMLElement {
@@ -85,7 +85,7 @@ export async function approvalDetailPage(p: Record<string, string>) {
     h('nav', { class: 'crumbs', attrs: { 'aria-label': 'Navigation' } }, link('/freigaben', icon('back', 14), 'Freigaben')),
     h('div', { class: 'ticket-head' }, h('h1', null, a.title), h('p', { class: 'ticket-meta' }, approvalStatus(a))),
     a.status !== 'pending' ? notice(a.status === 'approved' ? 'ok' : a.status === 'rejected' ? 'error' : 'info',
-      h('strong', null, DONE_TEXT[a.status] ?? a.status), a.decidedAt ? ` am ${fmtDate(a.decidedAt)}` : '', a.decidedByName && a.status !== 'withdrawn' && a.status !== 'expired' ? ` von ${a.decidedByName}` : '',
+      h('strong', null, DONE_TEXT[a.status] ?? a.status), a.decidedAt ? ` am ${fmtDate(a.decidedAt)}` : '', a.decidedByName && !['withdrawn', 'expired', 'cancelled'].includes(a.status) ? ` von ${a.decidedByName}` : '',
       a.comment ? h('p', { class: 'quote' }, a.comment) : null,
       a.status === 'approved' ? h('p', { class: 'small' }, 'Die Anfrage wurde an das Ticketsystem übermittelt. Den Inhalt zeigt das Portal nach der Entscheidung nicht mehr an.') : null) : null,
     h('section', { class: 'panel' }, h('dl', { class: 'facts' }, ...facts)),

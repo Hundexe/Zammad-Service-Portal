@@ -20,6 +20,7 @@ import { checkLogo, decodeBase64Strict } from '../services/files.ts';
 import { createLocalUser, emailInUse, getUser, publicUser, resetLocalPassword, toAuthUser, type UserRow } from '../services/users.ts';
 import { destroyUserSessions } from '../auth/sessions.ts';
 import { retryRequest } from '../services/requests.ts';
+import { cancelRequest } from '../services/approvals.ts';
 import { ConnectorError } from '../connectors/types.ts';
 import { OVERVIEW_COLUMNS } from './portal.ts';
 import { placeholders } from '../../shared/template.ts';
@@ -899,7 +900,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
     const status = ctx.query.get('status');
     const where: string[] = [];
     const params: string[] = [];
-    if (status && ['awaiting_approval', 'queued', 'sending', 'delivered', 'failed', 'rejected', 'withdrawn', 'expired'].includes(status)) { where.push('r.status = ?'); params.push(status); }
+    if (status && ['awaiting_approval', 'queued', 'sending', 'delivered', 'failed', 'rejected', 'withdrawn', 'expired', 'cancelled'].includes(status)) { where.push('r.status = ?'); params.push(status); }
     if (allowed) { where.push(`r.system_id IN (${allowed.map(() => '?').join(',')})`); params.push(...allowed); }
     const rows = app.db.all(
       `SELECT r.id, r.system_id AS systemId, s.name AS systemName, r.title, r.status, r.attempts, r.last_error AS lastError, r.ticket_number AS ticketNumber,
@@ -916,6 +917,13 @@ export function registerAdminRoutes(router: Router, app: App): void {
     if (!r || !can(ctx.user, 'system.manage', r.system_id)) throw new HttpError(404, 'Anfrage nicht gefunden', 'not_found');
     if (!retryRequest(app, ctx.params.requestId)) throw new HttpError(409, 'Nur fehlgeschlagene Anfragen mit Inhalt können erneut gesendet werden', 'conflict');
     audit(app.db, actor(ctx), { action: 'request.retry', targetType: 'request', targetId: ctx.params.requestId, systemId: r.system_id });
+    return { ok: true };
+  });
+
+  router.post('/api/admin/requests/:requestId/cancel', admin(), (ctx: AppCtx) => {
+    const r = /^[0-9a-f-]{36}$/.test(ctx.params.requestId) ? app.db.get<{ system_id: string }>('SELECT system_id FROM requests WHERE id = ?', ctx.params.requestId) : undefined;
+    if (!r || !can(ctx.user, 'system.manage', r.system_id)) throw new HttpError(404, 'Anfrage nicht gefunden', 'not_found');
+    cancelRequest(app, ctx.user!, actor(ctx), ctx.params.requestId, (ctx.body as { reason?: unknown })?.reason);
     return { ok: true };
   });
 

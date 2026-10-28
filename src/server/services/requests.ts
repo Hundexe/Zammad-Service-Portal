@@ -287,7 +287,7 @@ export function purgeOld(app: App): number {
     removeRequestFiles(app, r.id);
   }
   // Einträge ganz entfernen, wenn sie älter als ein Jahr sind
-  app.db.run("DELETE FROM requests WHERE created_at < ? AND status IN ('delivered', 'failed', 'rejected', 'withdrawn', 'expired')", Date.now() - 365 * 86400_000);
+  app.db.run("DELETE FROM requests WHERE created_at < ? AND status IN ('delivered', 'failed', 'rejected', 'withdrawn', 'expired', 'cancelled')", Date.now() - 365 * 86400_000);
   return rows.length;
 }
 

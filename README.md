@@ -95,7 +95,7 @@ TypeScript auf Node.js 24 ohne externe Laufzeitpakete (HTTP, Krypto, SQLite und 
 ## Tests
 
 ```bash
-npm test                        # 220 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
+npm test                        # 224 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
 npm run typecheck
 node tools/loadtest.ts          # Lasttest: 50 Logins, 50 Ticketansichten, 20 Anfragen mit Anhang
 bash tools/secret-scan.sh       # vor jeder Veröffentlichung: keine Geheimnisse im Repository
@@ -109,7 +109,7 @@ bash tools/secret-scan.sh       # vor jeder Veröffentlichung: keine Geheimnisse
 | Review: Token-Prüfung im Detail, Schlüsselwechsel, JWKS-Erneuerung und Höchstalter | 33 |
 | Review: Zugriffe, Zammad-Felder und -Gruppen, Kundenzuordnung, SSRF-Schutz (inkl. IPv6 und TLS), Uploads, Backup/Restore, Zustellung, Step-up, Monitoring | 40 |
 | Freigabe durch Vorgesetzte: Ablauf, Rechte (404 für Fremde, keine Selbstfreigabe), Fristen, Benachrichtigungen, Migration | 14 |
-| Grundfunktionen, Ende-zu-Ende, Ticketliste, Verwaltung, Stile, Updater | 49 |
+| Grundfunktionen, Ende-zu-Ende, Ticketliste, Verwaltung (inkl. Abbrechen), Stile, Updater | 53 |
 
 Die Tests starten Portal, Zammad- und Microsoft-Simulator im selben Prozess – es wird nichts weiter benötigt. Lasttest-Ergebnisse: [docs/LASTTEST.md](docs/LASTTEST.md).
 

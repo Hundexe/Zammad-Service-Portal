@@ -300,6 +300,42 @@ export function approvalsOfRequests(app: App, requestIds: string[]): Map<string,
   return out;
 }
 
+// ---------------------------------------------------------------- Abbrechen (Verwaltung)
+
+/** Status, aus denen die Verwaltung eine Anfrage abbrechen kann. "sending" nicht: die Zustellung läuft gerade. */
+export const CANCELLABLE = ['failed', 'queued', 'awaiting_approval'] as const;
+
+/**
+ * Bricht eine noch nicht zugestellte Anfrage ab: Inhalt und Anhänge werden gelöscht, nichts geht an Zammad.
+ * Wartet sie auf eine Freigabe, wird auch diese beendet. Anfragende und ggf. freigebende Person werden benachrichtigt.
+ */
+export function cancelRequest(app: App, admin: AuthUser, actor: Actor, requestId: string, rawReason: unknown): { previous: string } {
+  const reason = typeof rawReason === 'string' ? rawReason.replace(/\r\n/g, '\n').trim() : '';
+  if (reason.length > COMMENT_MAX) throw new HttpError(422, `Höchstens ${COMMENT_MAX} Zeichen`, 'validation', { reason: `Höchstens ${COMMENT_MAX} Zeichen` });
+  const r = app.db.get<{ id: string; user_id: string; system_id: string; title: string; status: string }>('SELECT id, user_id, system_id, title, status FROM requests WHERE id = ?', requestId)!;
+  const ap = app.db.get<ApprovalRow>("SELECT * FROM approvals WHERE request_id = ? AND status = 'pending'", requestId);
+  const t = Date.now();
+  app.db.tx(() => {
+    const upd = app.db.run(
+      `UPDATE requests SET status = 'cancelled', payload = NULL, purge_after = ?, last_error = ?
+        WHERE id = ? AND status IN ('failed', 'queued', 'awaiting_approval')`,
+      t + app.cfg.retentionDays * 86400_000, `Abgebrochen von ${admin.displayName}${reason ? `: ${reason.slice(0, 300)}` : ''}`, requestId,
+    );
+    if (!upd.changes) {
+      throw new HttpError(409, r.status === 'sending' ? 'Die Anfrage wird gerade zugestellt – bitte gleich noch einmal versuchen' : 'Nur wartende oder fehlgeschlagene Anfragen lassen sich abbrechen', 'conflict');
+    }
+    app.db.run('UPDATE request_files SET stored = 0 WHERE request_id = ?', requestId);
+    if (ap) app.db.run("UPDATE approvals SET status = 'cancelled', summary = NULL, decided_by = ?, decided_by_name = ?, decided_at = ? WHERE id = ? AND status = 'pending'", admin.id, admin.displayName, t, ap.id);
+    audit(app.db, actor, { action: 'request.cancelled', targetType: 'request', targetId: requestId, systemId: r.system_id, details: { vorher: r.status, ...(reason ? { grund: reason.slice(0, 300) } : {}) } });
+  });
+  removeRequestFiles(app, requestId);
+  const why = reason ? ` Grund: „${reason.slice(0, 300)}${reason.length > 300 ? ' …' : ''}“` : '';
+  notify(app, { to: { userId: r.user_id }, kind: 'request.cancelled', title: `Abgebrochen: ${r.title}`, body: `Die IT hat Ihre Anfrage abgebrochen. Sie wurde nicht übermittelt.${why}`, link: '/anfragen' });
+  if (ap) notify(app, { to: { email: ap.approver_email }, kind: 'request.cancelled', title: `Abgebrochen: ${r.title}`, body: 'Die IT hat die Anfrage abgebrochen. Sie müssen nichts mehr tun.', link: `/freigaben/${ap.id}` });
+  log.info('Anfrage abgebrochen', { request: requestId, vorher: r.status });
+  return { previous: r.status };
+}
+
 // ---------------------------------------------------------------- Fristen (Worker)
 
 export function approvalHousekeeping(app: App): { expired: number; reminded: number } {

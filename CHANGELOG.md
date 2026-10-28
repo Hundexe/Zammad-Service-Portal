@@ -1,5 +1,11 @@
 # Änderungen
 
+## 1.5.2 – 28.10.2026
+
+- **Anfragen in der Verwaltung abbrechen:** Unter **Zustellung** gibt es bei fehlgeschlagenen, wartenden und auf eine Freigabe wartenden Anfragen **Abbrechen** – mit freiwilligem Grund. Inhalt und Anhänge werden gelöscht, nichts geht an Zammad, „Erneut senden“ ist danach nicht mehr möglich. Eine offene Freigabe endet mit. Anfragende und freigebende Person werden im Portal benachrichtigt; Eintrag im Audit-Log (`request.cancelled`). Nur mit dem Recht „Ticketsystem verwalten“ für das System; Anfragen, die gerade zugestellt werden, nicht
+- Neuer Status „Abgebrochen“ (Migration 005), Filter in **Zustellung**
+- Tests: 4 neue, insgesamt 224
+
 ## 1.5.1 – 28.10.2026
 
 - Behoben: **„Meine Tickets“ blieb leer**, wenn das Konto in Zammad zugleich Agent ist (z. B. Mitarbeitende der IT). Das Portal holte alle für das Konto sichtbaren Tickets – älteste zuerst, höchstens 500 – und filterte danach; die eigenen neuen Tickets lagen dahinter. Jetzt fragt es Zammad gezielt nach den Tickets des Kunden, neueste zuerst. Die Abfrage läuft ohne Suchbegriff direkt über die Datenbank von Zammad und hängt nicht von Elasticsearch ab. Ältere Zammad-Versionen ohne diese Abfrage nutzen automatisch den bisherigen Weg
