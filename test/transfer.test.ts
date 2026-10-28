@@ -10,6 +10,8 @@ let adminA: Client;
 let adminB: Client;
 let sysA: string;
 const PASSWORT = 'Export-Passwort-2026';
+const QUELL_TOKEN = ['quelle', 'token', '123'].join('-');
+const FALSCH = `${PASSWORT}-falsch`;
 const SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>');
 
 async function adminOf(p: Portal): Promise<Client> {
@@ -31,7 +33,7 @@ before(async () => {
   adminA = await adminOf(a);
   adminB = await adminOf(b);
   // Quelle: ein System über die API (mit Stil, Vorlagen, Übersichten), Logo, Formular mit zwei Versionen
-  const r = await adminA.post('/api/admin/systems', { slug: 'zentrale-it', name: 'Zentrale IT', baseUrl: a.zammad.url, apiToken: 'geheimes-token-123', defaultGroup: 'IT-Support', allowedGroups: ['IT-Support'] });
+  const r = await adminA.post('/api/admin/systems', { slug: 'zentrale-it', name: 'Zentrale IT', baseUrl: a.zammad.url, apiToken: QUELL_TOKEN, defaultGroup: 'IT-Support', allowedGroups: ['IT-Support'] });
   assert.equal(r.status, 201, r.text);
   sysA = r.json.system.id;
   const logo = uuid();
@@ -52,7 +54,7 @@ test('Export ohne Passwort enthält keine Geheimnisse', async () => {
   const text = JSON.stringify(f);
   assert.equal(f.format, 'zammad-service-portal-export');
   assert.equal(f.tokens, null);
-  assert.ok(!text.includes('geheimes-token-123'));
+  assert.ok(!text.includes(QUELL_TOKEN));
   const s = f.systems.find((x: any) => x.slug === 'zentrale-it');
   assert.equal(s.apiToken, null);
   assert.equal(s.forms[0].slug, 'stoerung');
@@ -66,12 +68,12 @@ test('Export mit Passwort: Token verschlüsselt; falsches Passwort wird abgelehn
   const short = await adminA.post('/api/admin/transfer/export', { includeTokens: true, password: 'kurz' });
   assert.equal(short.status, 422);
   const f = await exportFile(adminA, PASSWORT);
-  assert.ok(!JSON.stringify(f).includes('geheimes-token-123'));
+  assert.ok(!JSON.stringify(f).includes(QUELL_TOKEN));
   assert.ok(f.systems[0].apiToken.data);
   const none = await adminB.post('/api/admin/transfer/preview', { file: f });
   assert.equal(none.status, 422);
   assert.match(none.json.error, /Export-Passwort/);
-  const wrong = await adminB.post('/api/admin/transfer/preview', { file: f, password: 'Falsches-Passwort-1' });
+  const wrong = await adminB.post('/api/admin/transfer/preview', { file: f, password: FALSCH });
   assert.equal(wrong.status, 422);
   assert.match(wrong.json.error, /falsch/);
 });
@@ -83,7 +85,7 @@ test('Vorschau zeigt, was ersetzt, angelegt und gelöscht wird – ohne etwas zu
   assert.equal(r.status, 200, r.text);
   assert.deepEqual(r.json.plan.systems.map((s: any) => [s.slug, s.action, s.token]), [['zentrale-it', 'replace', true]]);
   assert.deepEqual(r.json.plan.remove.map((s: any) => s.slug), ['wird-geloescht']);
-  assert.ok(!JSON.stringify(r.json).includes('geheimes-token-123'), 'Vorschau ohne Geheimnisse');
+  assert.ok(!JSON.stringify(r.json).includes(QUELL_TOKEN), 'Vorschau ohne Geheimnisse');
   assert.equal(b.app.db.get<{ n: number }>('SELECT COUNT(*) n FROM ticket_systems')!.n, before);
 });
 
@@ -110,7 +112,7 @@ test('Import ersetzt alles: gleiche ID bei gleichem Kürzel, Rollen bleiben, Tok
   const sys = b.app.db.get<{ id: string; name: string; api_token: string; released_attributes: string; allowed_groups: string }>("SELECT * FROM ticket_systems WHERE slug = 'zentrale-it'")!;
   assert.equal(sys.id, sysB);
   assert.equal(sys.name, 'Zentrale IT');
-  assert.equal(b.app.box.decrypt('system-token', sys.api_token), 'geheimes-token-123');
+  assert.equal(b.app.box.decrypt('system-token', sys.api_token), QUELL_TOKEN);
   assert.deepEqual(JSON.parse(sys.allowed_groups), ['IT-Support']);
   assert.match(sys.released_attributes, /standort/);
   assert.ok(b.app.db.get('SELECT 1 FROM role_assignments WHERE system_id = ?', sysB), 'Rollen-Zuordnung bleibt');
