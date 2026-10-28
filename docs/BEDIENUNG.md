@@ -158,7 +158,7 @@ Nicht unterstützte Typen (z. B. Benutzerauswahl) sind ausgegraut. Fehlt die Lis
 
 **Formulare** listet alle Formulare mit Status. **Kopieren …** übernimmt ein Formular als Entwurf in ein anderes Ticketsystem.
 
-**Aus Datei übernehmen …** spielt mehrere Formulare auf einmal aus einer JSON-Datei ein (`{"forms": [{"slug", "name", "description", "category", "sort", "definition"}], "templates": [...]}`). Die Vorschau zeigt je Formular „neu“, „neue Version“ oder „unverändert“. Formulare mit gleichem Kürzel bekommen eine neue Version, andere bleiben unangetastet. Mit **Direkt veröffentlichen** sind die Änderungen sofort aktiv (mit Vier-Augen-Prinzip gehen sie zur Freigabe), sonst bleiben sie Entwürfe zum Prüfen im Editor.
+**In Datei exportieren** lädt alle Formulare (jeweils die veröffentlichte Version) und Vorlagen des Ticketsystems als JSON-Datei herunter. **Aus Datei übernehmen …** spielt mehrere Formulare auf einmal aus so einer Datei ein – auch in ein anderes Ticketsystem oder ein anderes Portal (`{"forms": [{"slug", "name", "description", "category", "sort", "definition"}], "templates": [...]}`). Die Vorschau zeigt je Formular „neu“, „neue Version“ oder „unverändert“. Formulare mit gleichem Kürzel bekommen eine neue Version, andere bleiben unangetastet. Mit **Direkt veröffentlichen** sind die Änderungen sofort aktiv (mit Vier-Augen-Prinzip gehen sie zur Freigabe), sonst bleiben sie Entwürfe zum Prüfen im Editor.
 
 ![Formulare](screenshots/13-admin-formulare.png)
 
@@ -200,7 +200,7 @@ Ablauf: **Entwurf speichern** → **Veröffentlichen** (bzw. **Zur Freigabe send
 
 ### Vorlagen und Übersichten
 
-**Vorlagen** sind Textbausteine für Titel, Tickettext und den Text nach dem Absenden. Im Formular-Editor lassen sie sich mit einem Klick übernehmen.
+**Vorlagen** sind Textbausteine für Titel, Tickettext und den Text nach dem Absenden. Im Formular-Editor lassen sie sich mit einem Klick übernehmen. **In Datei exportieren** und **Aus Datei übernehmen …** gibt es auch hier: Vorlagen mit gleicher Art und gleichem Namen werden aktualisiert, neue angelegt.
 
 **Übersichten** sind die Reiter unter „Meine Tickets“: Name, welche Tickets (offen, erledigt, alle), Spalten und Sortierung.
 

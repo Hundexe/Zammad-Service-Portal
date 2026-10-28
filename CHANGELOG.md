@@ -1,5 +1,12 @@
 # Änderungen
 
+## 1.6.2 – 28.10.2026
+
+- **Formulare und Vorlagen exportieren:** **In Datei exportieren** unter **Formulare** und unter **Vorlagen** lädt alle Formulare (veröffentlichte Version) und Vorlagen des Ticketsystems als JSON herunter – im Format, das **Aus Datei übernehmen …** liest. So lassen sie sich zwischen Ticketsystemen und Portalen übertragen, ohne gleich alles zu ersetzen
+- **Vorlagen aus Datei übernehmen** auch auf der Seite **Vorlagen** (nur Vorlagen, Recht „Vorlagen bearbeiten“ genügt)
+- Ladekreis neu: runder Ring mit abgerundetem Bogen in der Farbe des Ticketsystems statt des kantigen Rahmen-Segments (sah beim Drehen wie ein Strich aus); auch beim ersten Laden der Seite
+- Tests: 2 neue, insgesamt 238
+
 ## 1.6.1 – 28.10.2026
 
 - **Formulare aus Datei übernehmen:** In der Verwaltung unter **Formulare** → **Aus Datei übernehmen …** eine JSON-Datei mit Formularen (und optional Vorlagen) einspielen. Gleiches Kürzel bekommt eine neue Version, neue Kürzel werden angelegt, gelöscht wird nichts. Vorschau mit „neu / neue Version / unverändert“, auf Wunsch direkt veröffentlichen (mit Vier-Augen-Prinzip: zur Freigabe). Jede Definition wird wie im Editor geprüft

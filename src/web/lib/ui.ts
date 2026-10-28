@@ -1,5 +1,5 @@
 // Wiederverwendbare Bausteine der Oberfläche.
-import { h, icon, mount, type Child } from './dom.ts';
+import { h, icon, mount, svg, type Child } from './dom.ts';
 import { ApiError } from './api.ts';
 
 let uid = 0;
@@ -140,8 +140,15 @@ export function emptyState(title: string, text?: string, action?: HTMLElement): 
   return h('div', { class: 'empty' }, h('p', { class: 'empty-title' }, title), text ? h('p', null, text) : null, action ?? null);
 }
 
+/** Ladekreis als SVG: ruhiger Ring mit abgerundetem Bogen (kein kantiges Rahmen-Segment). */
+export function spinner(): SVGElement {
+  return svg('svg', { class: 'spinner', viewBox: '0 0 24 24', width: 20, height: 20, 'aria-hidden': 'true' },
+    svg('circle', { class: 'spinner-track', cx: 12, cy: 12, r: 9, fill: 'none', 'stroke-width': 2.5 }),
+    svg('circle', { class: 'spinner-arc', cx: 12, cy: 12, r: 9, fill: 'none', 'stroke-width': 2.5, 'stroke-linecap': 'round', 'stroke-dasharray': '16 41' }));
+}
+
 export function loading(text = 'Wird geladen …'): HTMLElement {
-  return h('div', { class: 'loading', attrs: { role: 'status' } }, h('span', { class: 'spinner', attrs: { 'aria-hidden': 'true' } }), text);
+  return h('div', { class: 'loading', attrs: { role: 'status' } }, spinner(), h('span', null, text));
 }
 
 export function table<T>(rows: T[], cols: { label: string; render: (r: T) => Child; class?: string }[], opts: { onRow?: (r: T) => void; empty?: string } = {}): HTMLElement {

@@ -472,15 +472,31 @@ export function registerAdminRoutes(router: Router, app: App): void {
     return { status: 'published' };
   });
 
+  // Formulare und Vorlagen eines Ticketsystems als Datei – dasselbe Format, das „Aus Datei übernehmen“ liest.
+  // Je Formular die veröffentlichte Version (sonst der neueste Stand).
+  router.get('/api/admin/systems/:systemId/form-export', admin(['form.edit', 'template.edit']), (ctx: AppCtx) => {
+    const s = sysOr404(ctx.params.systemId);
+    const forms = can(ctx.user, 'form.edit', s.id) ? app.db.all<FormRow>('SELECT * FROM forms WHERE system_id = ? ORDER BY sort, name', s.id).flatMap((f) => {
+      const v = publishedVersion(app, f.id) ?? latestVersion(app, f.id);
+      return v ? [{ slug: f.slug, name: f.name, category: f.category, sort: f.sort, description: f.description, active: f.active === 1, visibleGroups: parseJson<string[]>(f.visible_groups, []), definition: parseJson(v.definition, null) }] : [];
+    }) : [];
+    const templates = can(ctx.user, 'template.edit', s.id) ? app.db.all<{ kind: string; name: string; content: string }>('SELECT kind, name, content FROM templates WHERE system_id = ? ORDER BY kind, name', s.id) : [];
+    return { system: { slug: s.slug, name: s.name }, exportedAt: new Date().toISOString(), forms, templates };
+  });
+
   // Formulare aus einer Datei übernehmen ({forms: [{slug, name, description, category, sort, definition}], templates?: [...]}).
   // Gleiches Kürzel → neue Version (Entwurf, auf Wunsch veröffentlicht); neues Kürzel → neues Formular. Nichts wird gelöscht.
-  router.post('/api/admin/systems/:systemId/forms/import', admin('form.edit', { bodyLimit: 5 * 1024 * 1024 }), (ctx: AppCtx) => {
+  router.post('/api/admin/systems/:systemId/forms/import', admin(['form.edit', 'template.edit'], { bodyLimit: 5 * 1024 * 1024 }), (ctx: AppCtx) => {
     const s = sysOr404(ctx.params.systemId);
     const b = ctx.body as Body;
+    if (Array.isArray(b.forms) && b.forms.length && !can(ctx.user, 'form.edit', s.id)) throw new HttpError(403, 'Zum Übernehmen von Formularen fehlt das Recht „Formulare bearbeiten“', 'forbidden');
+    if (Array.isArray(b.templates) && b.templates.length && !can(ctx.user, 'template.edit', s.id)) throw new HttpError(403, 'Zum Übernehmen von Vorlagen fehlt das Recht „Vorlagen bearbeiten“', 'forbidden');
     const dryRun = b.dryRun === true;
     const publish = b.publish === true;
     if (publish && !can(ctx.user, 'form.publish', s.id)) throw new HttpError(403, 'Zum Veröffentlichen fehlt das Recht „Formulare veröffentlichen“', 'forbidden');
-    if (!Array.isArray(b.forms) || b.forms.length === 0 || b.forms.length > 200) throw new HttpError(422, 'Die Datei enthält keine Formulare', 'validation');
+    if (b.forms === undefined) b.forms = [];
+    if (!Array.isArray(b.forms) || b.forms.length > 200) throw new HttpError(422, 'Formularliste ungültig', 'validation');
+    if (b.forms.length === 0 && (!Array.isArray(b.templates) || b.templates.length === 0)) throw new HttpError(422, 'Die Datei enthält weder Formulare noch Vorlagen', 'validation');
     const errors: string[] = [];
     const plan: { slug: string; name: string; action: 'create' | 'update' | 'unchanged'; id: string | null; meta: ReturnType<typeof readFormMeta>; def: FormDefinition | null }[] = [];
     const seen = new Set<string>();

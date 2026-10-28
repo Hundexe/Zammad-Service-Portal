@@ -4,6 +4,7 @@ import { fileToBase64, get, post, put, del } from '../lib/api.ts';
 import { badge, button, checkbox, confirmDialog, dialog, errorText, fieldWrap, input, notice, pageHead, select, statusBadge, table, textarea, toast } from '../lib/ui.ts';
 import { can, navigate, state, curPath, assetUrl, bandLogoId } from '../lib/app.ts';
 import { adminSystem, loadAdminSystems } from './common.ts';
+import { exportFormsFile, importFormsDialog } from './forms.ts';
 import { contrastWarnings, effectiveColors, PALETTES, THEMES, THEME_INFO, themeOf, type Branding, type Palette, type ThemeId } from '../../shared/branding.ts';
 
 const KIND: Record<string, string> = { title: 'Ticket-Titel', body: 'Tickettext', success: 'Text nach dem Absenden' };
@@ -30,7 +31,11 @@ export async function templatesPage(p: Record<string, string>) {
     ], { wide: true });
   };
   return h('div', null,
-    pageHead('Vorlagen', 'Textbausteine für Ticket-Titel, Tickettext und Bestätigung, die im Formular-Editor übernommen werden können', [button('Vorlage anlegen', () => edit(), { kind: 'primary', icon: 'plus' })]),
+    pageHead('Vorlagen', 'Textbausteine für Ticket-Titel, Tickettext und Bestätigung, die im Formular-Editor übernommen werden können', [
+      button('In Datei exportieren', () => void exportFormsFile(s.id), { icon: 'down' }),
+      button('Aus Datei übernehmen …', () => void importFormsDialog(s.id, s.name, true), { icon: 'file' }),
+      button('Vorlage anlegen', () => edit(), { kind: 'primary', icon: 'plus' }),
+    ]),
     table(r.templates, [
       { label: 'Name', class: 'grow', render: (t) => t.name },
       { label: 'Art', render: (t) => KIND[t.kind] ?? t.kind },

@@ -143,8 +143,10 @@ h1[tabindex="-1"]:focus { outline: none; }
 .row > input[type="search"] { flex: 1; width: auto; min-width: 200px; }
 .stack > * + * { margin-top: 1rem; }
 .spacer { flex: 1; }
-.boot, .loading { padding: 4rem 1rem; text-align: center; color: var(--ink-3); }
-.spinner { display: inline-block; width: 1em; height: 1em; margin-right: .55em; vertical-align: -.15em; border: 2px solid var(--fill-2); border-top-color: var(--ink-3); border-radius: 50%; animation: spin .8s linear infinite; }
+.boot, .loading { padding: 4rem 1rem; display: flex; align-items: center; justify-content: center; gap: .6rem; color: var(--ink-3); }
+.spinner { flex: none; display: block; animation: spin .9s linear infinite; transform-origin: 50% 50%; }
+.spinner-track { stroke: var(--fill-2); }
+.spinner-arc { stroke: var(--brand); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .skip { position: absolute; left: .75rem; top: -4rem; z-index: 100; background: var(--surface); padding: .6rem 1rem; border-radius: var(--pill); box-shadow: var(--pop); }

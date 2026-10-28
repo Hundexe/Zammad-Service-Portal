@@ -78,3 +78,25 @@ test('Rechte: ohne „Formulare bearbeiten“ nicht', async () => {
   await user.loginEntra(p, ENTRA_USERS[0].oid);
   assert.ok([403, 404].includes((await user.post(`/api/admin/systems/${systemId}/forms/import`, { forms: [softwareForm()] })).status));
 });
+
+test('In Datei exportieren und in ein anderes Ticketsystem übernehmen', async () => {
+  const exp = await admin.get(`/api/admin/systems/${systemId}/form-export`);
+  assert.equal(exp.status, 200, exp.text);
+  assert.ok(exp.json.forms.some((f: any) => f.slug === 'software-anfordern' && f.definition.fields.some((x: any) => x.type === 'approver')));
+  assert.ok(exp.json.templates.some((t: any) => t.name === 'Antrag eingegangen'));
+  const other = createSystem(p.app, p.zammad.url, { slug: 'zweites-system', name: 'Zweites System' });
+  const r = await admin.post(`/api/admin/systems/${other}/forms/import`, { forms: exp.json.forms, templates: exp.json.templates, publish: true });
+  assert.equal(r.status, 200, r.text);
+  const slugs = p.app.db.all<{ slug: string }>('SELECT slug FROM forms WHERE system_id = ? ORDER BY slug', other).map((x) => x.slug);
+  assert.deepEqual(slugs, exp.json.forms.map((f: any) => f.slug).sort());
+  assert.ok(p.app.db.get("SELECT 1 FROM templates WHERE system_id = ? AND name = 'Antrag eingegangen'", other));
+});
+
+test('Nur Vorlagen übernehmen: gleiche Art und gleicher Name werden aktualisiert', async () => {
+  const r = await call({ templates: [{ kind: 'success', name: 'Antrag eingegangen', content: 'Neu formuliert' }, { kind: 'title', name: 'Kurz', content: '{{formular.name}}' }] });
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual(r.json.imported.forms, []);
+  assert.equal(p.app.db.get<{ content: string }>("SELECT content FROM templates WHERE system_id = ? AND name = 'Antrag eingegangen'", systemId)!.content, 'Neu formuliert');
+  assert.equal(p.app.db.get<{ n: number }>("SELECT COUNT(*) n FROM templates WHERE system_id = ? AND name = 'Antrag eingegangen'", systemId)!.n, 1);
+  assert.ok(p.app.db.get("SELECT 1 FROM templates WHERE system_id = ? AND name = 'Kurz'", systemId));
+});
