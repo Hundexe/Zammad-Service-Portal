@@ -1,9 +1,10 @@
 // Portal für Mitarbeitende: Startseite, Formular, Tickets, Ticketverlauf, Anfragen, Konto.
 import { h, icon, mount, fmtDate, relTime, type Child } from '../lib/dom.ts';
 import { ApiError, fileToBase64, get, post } from '../lib/api.ts';
-import { button, emptyState, errorText, notice, pageHead, statusBadge, tabs, textarea, ticketState, toast, table, fieldWrap } from '../lib/ui.ts';
+import { button, confirmDialog, dialog, emptyState, errorText, notice, pageHead, statusBadge, tabs, textarea, ticketState, toast, table, fieldWrap } from '../lib/ui.ts';
 import { currentSystem, link, loadMe, loadSystems, navigate, selectSystem, state, systemSwitch, assetUrl, bandLogoId, curPath, setUrl } from '../lib/app.ts';
-import { renderForm } from '../lib/formrender.ts';
+import { renderForm, type Person } from '../lib/formrender.ts';
+import { refreshCounts } from '../lib/notify.ts';
 import type { FormDefinition } from '../../shared/form.ts';
 import { passwordForm, totpSetupBlock } from './login.ts';
 
@@ -102,7 +103,7 @@ export async function homePage(p: Record<string, string>) {
 export async function formPage(p: Record<string, string>) {
   const sys = await systemOrDefault(p.systemId);
   const data = await get<{ form: { id: string; name: string; description: string; version: number }; system: { id: string; name: string; status: string }; definition: FormDefinition }>(`/api/portal/forms/${p.formId}`);
-  const form = renderForm(data.definition);
+  const form = renderForm(data.definition, { searchPeople: (q) => get<{ people: Person[] }>(`/api/portal/people?q=${encodeURIComponent(q)}`).then((r) => r.people) });
   const msg = h('div', { attrs: { 'aria-live': 'polite' } });
   const host = h('div', { class: 'container narrow' });
   const submit = h('button', { class: ['btn', 'btn-primary'], attrs: { type: 'submit' } }, 'Anfrage senden');
@@ -119,7 +120,19 @@ export async function formPage(p: Record<string, string>) {
         files[fid] = await Promise.all(list.map(async (f) => ({ name: f.name, type: f.type, data: await fileToBase64(f) })));
       }
       const values = Object.fromEntries(Object.entries(form.values).filter(([k]) => !files[k] && !data.definition.fields.some((f) => f.id === k && f.type === 'file')));
-      const r = await post<{ id: string; title: string; successText: string }>(`/api/portal/forms/${p.formId}/submit`, { values, files, version: data.form.version });
+      const r = await post<{ id: string; title: string; successText: string; approval: { email: string; name: string | null; known: boolean } | null }>(`/api/portal/forms/${p.formId}/submit`, { values, files, version: data.form.version });
+      if (r.approval) {
+        const who = r.approval.name ? `${r.approval.name} (${r.approval.email})` : r.approval.email;
+        mount(host, h('div', { class: 'success' },
+          h('div', { class: 'success-mark wait', attrs: { 'aria-hidden': 'true' } }, icon('shield', 28)),
+          h('h1', null, 'Wartet auf Freigabe'),
+          h('p', null, 'Ihre Anfrage ist eingegangen.'),
+          h('p', { class: 'muted' }, `„${r.title}“ geht erst an ${data.system.name}, wenn ${who} sie freigegeben hat. Sie werden hier im Portal benachrichtigt.`),
+          !r.approval.known ? notice('warn', `${r.approval.email} hat sich noch nie im Portal angemeldet. Bitte geben Sie der Person Bescheid – sie findet die Anfrage nach der Anmeldung unter „Freigaben“.`) : null,
+          h('div', { class: 'row' }, link('/anfragen', 'Zu meinen Anfragen'), link(`/s/${data.system.id}`, 'Weitere Anfrage stellen'))));
+        window.scrollTo({ top: 0 });
+        return;
+      }
       mount(host, h('div', { class: 'success' },
         h('div', { class: 'success-mark', attrs: { 'aria-hidden': 'true' } }, icon('check', 28)),
         h('h1', null, 'Anfrage gesendet'),
@@ -229,17 +242,70 @@ export async function ticketDetailPage(p: Record<string, string>) {
   return host;
 }
 
+interface MyRequest {
+  id: string; systemName: string; system_id: string; title: string; status: string; ticket_number: string | null; ticket_id: number | null; created_at: number;
+  approval: { approverEmail: string; approverName: string | null; status: string; decidedAt: number | null; decidedByName: string | null; expiresAt: number; comment: string | null; known: boolean } | null;
+}
+
+function approvalLine(x: MyRequest): Child {
+  const a = x.approval;
+  if (!a) return null;
+  const who = a.approverName ?? a.approverEmail;
+  switch (x.status) {
+    case 'awaiting_approval': return h('span', { class: 'muted small' }, `bei ${who} · bis ${fmtDate(a.expiresAt, false)}`, !a.known ? ' · noch nie angemeldet' : '');
+    case 'rejected': return h('span', { class: 'small' }, `von ${a.decidedByName ?? who}`, a.comment ? h('span', { class: 'quote-inline' }, `„${a.comment}“`) : null);
+    case 'expired': return h('span', { class: 'muted small' }, `${who} hat nicht entschieden`);
+    case 'withdrawn': return null;
+    default: return a.status === 'approved' ? h('span', { class: 'muted small' }, `freigegeben von ${a.decidedByName ?? who}`) : null;
+  }
+}
+
+async function changeApprover(x: MyRequest, done: () => void) {
+  let email = '';
+  const msg = h('div');
+  const field = h('input', { attrs: { type: 'email', autocomplete: 'off', maxlength: 254, placeholder: 'vorname.nachname@…' } });
+  field.addEventListener('input', () => { email = field.value; });
+  await dialog('Andere Person um Freigabe bitten', h('form', { class: 'stack', on: { submit: (e) => e.preventDefault() } }, msg,
+    h('p', null, `Bisher: ${x.approval?.approverName ?? x.approval?.approverEmail ?? ''}. Die bisherige Person wird benachrichtigt, dass sie nichts mehr tun muss.`),
+    fieldWrap(field, { label: 'E-Mail-Adresse der freigebenden Person', required: true })),
+  (close) => [
+    button('Abbrechen', () => close(), { kind: 'ghost' }),
+    button('Ändern', async () => {
+      try {
+        await post(`/api/portal/requests/${x.id}/approver`, { email });
+        close();
+        toast('Freigebende Person geändert');
+        done();
+      } catch (err) { mount(msg, notice('error', errorText(err))); }
+    }, { kind: 'primary' }),
+  ]);
+}
+
 export async function requestsPage() {
-  const r = await get<{ requests: { id: string; systemName: string; system_id: string; title: string; status: string; ticket_number: string | null; ticket_id: number | null; created_at: number }[] }>('/api/portal/requests');
-  return h('div', { class: 'container' },
-    pageHead('Meine Anfragen', 'Alles, was Sie über das Portal gesendet haben'),
-    table(r.requests, [
-      { label: 'Gesendet', render: (x) => fmtDate(x.created_at) },
-      { label: 'Betreff', class: 'grow', render: (x) => x.ticket_id ? link(`/s/${x.system_id}/tickets/${x.ticket_id}`, x.title) : x.title },
-      { label: 'Ticketsystem', render: (x) => x.systemName },
-      { label: 'Ticket', class: 'num', render: (x) => x.ticket_number ? `#${x.ticket_number}` : '' },
-      { label: 'Status', render: (x) => statusBadge(x.status) },
-    ], { empty: 'Sie haben noch keine Anfragen gesendet.' }));
+  const host = h('div', { class: 'container' });
+  const load = async () => {
+    const r = await get<{ requests: MyRequest[] }>('/api/portal/requests');
+    const waiting = r.requests.filter((x) => x.status === 'awaiting_approval').length;
+    mount(host,
+      pageHead('Meine Anfragen', 'Alles, was Sie über das Portal gesendet haben'),
+      waiting ? notice('info', waiting === 1 ? 'Eine Anfrage wartet noch auf eine Freigabe. Sie geht erst danach an die IT.' : `${waiting} Anfragen warten noch auf eine Freigabe. Sie gehen erst danach an die IT.`) : null,
+      table(r.requests, [
+        { label: 'Gesendet', render: (x) => fmtDate(x.created_at) },
+        { label: 'Betreff', class: 'grow', render: (x) => x.ticket_id ? link(`/s/${x.system_id}/tickets/${x.ticket_id}`, x.title) : x.title },
+        { label: 'Ticketsystem', render: (x) => x.systemName },
+        { label: 'Ticket', class: 'num', render: (x) => x.ticket_number ? `#${x.ticket_number}` : '' },
+        { label: 'Status', render: (x) => h('span', { class: 'status-cell' }, statusBadge(x.status), approvalLine(x)) },
+        { label: '', render: (x) => x.status === 'awaiting_approval' ? h('span', { class: 'row' },
+          button('Andere Person', () => void changeApprover(x, () => void load()), { kind: 'ghost' }),
+          button('Zurückziehen', async () => {
+            if (!await confirmDialog('Anfrage zurückziehen?', `„${x.title}“ wird gelöscht und nicht an die IT übermittelt. Die freigebende Person wird benachrichtigt.`, 'Zurückziehen', true)) return;
+            try { await post(`/api/portal/requests/${x.id}/withdraw`); toast('Anfrage zurückgezogen'); await load(); } catch (err) { toast(errorText(err), 'error'); }
+          }, { kind: 'ghost' })) : null },
+      ], { empty: 'Sie haben noch keine Anfragen gesendet.' }));
+    void refreshCounts();
+  };
+  await load();
+  return host;
 }
 
 export async function accountPage() {

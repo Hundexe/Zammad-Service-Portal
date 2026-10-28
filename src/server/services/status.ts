@@ -29,7 +29,7 @@ export interface StatusReport {
   ok: boolean;
   problems: string[];
   warnings: string[];
-  outbox: { queued: number; sending: number; failed: number; deliveredLast24h: number; oldestQueuedMinutes: number | null };
+  outbox: { queued: number; sending: number; failed: number; deliveredLast24h: number; oldestQueuedMinutes: number | null; awaitingApproval: number };
   scanner: ScannerCheck;
   /** Microsoft-Anmeldung: Metadaten und Signaturschlüssel abrufbar? */
   entra: { status: 'ok' | 'off' | 'down'; message: string };
@@ -45,13 +45,15 @@ export interface StatusLimits { maxQueueAgeMinutes: number; maxFailed: number }
 
 export async function collectStatus(app: App, limits: StatusLimits = { maxQueueAgeMinutes: 30, maxFailed: 0 }): Promise<StatusReport> {
   const count = (status: string) => app.db.get<{ n: number }>('SELECT COUNT(*) n FROM requests WHERE status = ?', status)!.n;
-  const oldest = app.db.get<{ t: number | null }>("SELECT MIN(created_at) t FROM requests WHERE status IN ('queued','sending')")!.t;
+  const oldest = app.db.get<{ t: number | null }>("SELECT MIN(COALESCE(queued_at, created_at)) t FROM requests WHERE status IN ('queued','sending')")!.t;
   const outbox = {
     queued: count('queued'),
     sending: count('sending'),
     failed: count('failed'),
     deliveredLast24h: app.db.get<{ n: number }>("SELECT COUNT(*) n FROM requests WHERE status = 'delivered' AND delivered_at > ?", Date.now() - 86400_000)!.n,
     oldestQueuedMinutes: oldest ? Math.floor((Date.now() - oldest) / 60_000) : null,
+    // Warten auf Vorgesetzte – das ist kein Zustellproblem und zählt nicht zur Warteschlange
+    awaitingApproval: count('awaiting_approval'),
   };
   const problems: string[] = [];
   const warnings: string[] = [];

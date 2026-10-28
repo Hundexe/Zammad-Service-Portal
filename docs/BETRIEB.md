@@ -35,6 +35,8 @@ Sicherheitsrelevante Zahlen haben feste Grenzen, damit sich das Portal nicht ver
 | `RATE_LIMIT_API_BURST` / `RATE_LIMIT_WRITE_BURST` | `240` / `60` | ≥ 20 / ≥ 5 | Allgemeine Ratenbegrenzung je IP |
 | `CLAMAV_REQUIRED` | `true` | true/false | Uploads ablehnen, wenn der Virenscanner fehlt |
 | `RETENTION_DAYS` | `30` | 1–3650 | Wie lange Anfrage-Inhalte nach der Zustellung im Portal bleiben |
+| `APPROVAL_EXPIRE_DAYS` | `14` | 1–90 | Freigabe durch Vorgesetzte: ohne Entscheidung verfällt die Anfrage nach so vielen Tagen und wird gelöscht |
+| `APPROVAL_REMIND_DAYS` | `3` | 0–89 | Einmalige Erinnerung an die freigebende Person nach so vielen Tagen (0 = keine) |
 | `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_ALLOWED_TENANTS` | leer | | Microsoft-Anmeldung, siehe [Installation](INSTALLATION.md) |
 
 Fest vorgegeben und nicht über `.env` änderbar sind: Produktionsmodus, Pfade der Geheimnisse, der vertrauenswürdige Proxy (nur Caddy) und das Datenverzeichnis. Das steht in `deploy/docker-compose.yml` unter `environment` und hat Vorrang vor `.env`.
@@ -65,6 +67,10 @@ Wichtige Log-Meldungen:
 | `Signaturschlüssel von Microsoft zu alt` (`"event":"jwks_expired"`, Level error) | Die Grenze `ENTRA_JWKS_MAX_STALE_HOURS` (Standard 72 h) ist überschritten: Microsoft-Anmeldung gesperrt, bis die Schlüssel wieder abrufbar sind. Notfallkonto geht weiter |
 | `form.group_not_allowed` / `form.field_not_released` | Ein Formular will in eine nicht erlaubte Gruppe oder ein nicht freigegebenes Feld schreiben – Formular korrigieren |
 | `Anfrage war schon zugestellt – kein zweites Ticket` | Nach einer Zeitüberschreitung wurde das schon vorhandene Ticket übernommen (kein Duplikat) |
+| `Anfrage freigegeben` / `Anfrage abgelehnt` | Entscheidung einer bzw. eines Vorgesetzten; Details im Audit-Log (`approval.*`) |
+| `Freigaben: Fristen geprüft` | Stündlich vom Worker: wie viele Anfragen ohne Entscheidung abgelaufen sind bzw. eine Erinnerung bekommen haben |
+
+Anfragen, die auf eine Freigabe durch Vorgesetzte warten, zählen **nicht** zur Zustell-Warteschlange und lösen keinen Alarm aus. `cli.ts status` zeigt sie getrennt („warten auf Freigabe“). Erst nach der Freigabe zählt die Wartezeit für die Zustellung. In der Verwaltung unter **Zustellung** lassen sie sich mit dem Filter „Wartet auf Freigabe“ anzeigen; ein Ticketsystem mit wartenden Freigaben lässt sich nicht löschen.
 
 ## Kommandozeile
 

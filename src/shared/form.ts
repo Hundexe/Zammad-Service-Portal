@@ -4,7 +4,7 @@
 
 export const FIELD_TYPES = [
   'text', 'textarea', 'email', 'number', 'date', 'checkbox', 'select', 'multiselect',
-  'file', 'zammad', 'info',
+  'file', 'zammad', 'info', 'approver',
 ] as const;
 export type FieldType = (typeof FIELD_TYPES)[number];
 
@@ -67,6 +67,8 @@ export interface FormField {
   attribute?: string;
   /** Teilmenge der erlaubten Werte des Zammad-Attributs (leer = alle freigegebenen) */
   allowedValues?: string[];
+  /** Freigabe-Feld: nur Personen erlauben, die sich schon einmal im Portal angemeldet haben */
+  knownOnly?: boolean;
   /** Feld nur für Mitglieder dieser Entra-Gruppen anzeigen (leer = alle) */
   groups?: string[];
   visibleIf?: VisibleIf;
@@ -180,7 +182,8 @@ export function validateSubmission(def: FormDefinition, input: FormValues, _ctx:
     const raw = Object.prototype.hasOwnProperty.call(input, field.id) ? input[field.id] : undefined;
 
     if (isEmpty(raw)) {
-      if (field.required) errors[field.id] = 'Pflichtfeld';
+      // Ein sichtbares Freigabe-Feld ist immer Pflicht – sonst ließe sich die Freigabe einfach überspringen.
+      if (field.required || field.type === 'approver') errors[field.id] = field.type === 'approver' ? 'Bitte die freigebende Person angeben' : 'Pflichtfeld';
       continue;
     }
 
@@ -197,6 +200,13 @@ export function validateSubmission(def: FormDefinition, input: FormValues, _ctx:
           const re = safeRegex(field.pattern);
           if (!re || !re.test(v)) { errors[field.id] = field.patternMessage || 'Format ungültig'; break; }
         }
+        values[field.id] = v;
+        break;
+      }
+      case 'approver': {
+        if (typeof raw !== 'string') { errors[field.id] = 'Ungültiger Wert'; break; }
+        const v = raw.replace(/\s+/g, '').toLowerCase();
+        if (v.length > 254 || !EMAIL_RE.test(v)) { errors[field.id] = 'Bitte die E-Mail-Adresse der freigebenden Person angeben'; break; }
         values[field.id] = v;
         break;
       }
@@ -263,6 +273,8 @@ export function validateDefinition(def: unknown): string[] {
   if (!Array.isArray(d.fields)) return ['Feldliste fehlt'];
   if (d.fields.length > LIMITS.maxFields) problems.push(`Höchstens ${LIMITS.maxFields} Felder`);
   const ids = new Set<string>();
+  const approvers = d.fields.filter((f) => f?.type === 'approver').length;
+  if (approvers > 1) problems.push('Ein Formular kann nur ein Feld „Freigabe durch Vorgesetzte(n)“ haben');
   for (const [i, f] of d.fields.entries()) {
     const where = `Feld ${i + 1}`;
     if (!f || typeof f !== 'object') { problems.push(`${where}: ungültig`); continue; }
@@ -290,6 +302,10 @@ export function validateDefinition(def: unknown): string[] {
       if (f.mapping.target === 'zammad_field' && !/^[a-z][a-z0-9_]{0,60}$/.test(f.mapping.name ?? '')) problems.push(`${where}: Zammad-Feldname ungültig`);
       else if (f.mapping.target === 'zammad_field' && isProtectedZammadField(f.mapping.name!)) problems.push(`${where}: Das Zammad-Feld „${f.mapping.name}“ setzt das Portal selbst – es darf nicht aus einem Formular kommen`);
     }
+    if (f.type === 'approver') {
+      if (f.mapping && !['article', 'none'].includes(f.mapping.target)) problems.push(`${where}: Die freigebende Person kann nur in den Tickettext übernommen werden`);
+    }
+    if (f.knownOnly !== undefined && typeof f.knownOnly !== 'boolean') problems.push(`${where}: Einstellung „nur bekannte Personen“ ungültig`);
     if (f.visibleIf) {
       if (!d.fields.some((o) => o?.id === f.visibleIf!.field && o !== f)) problems.push(`${where}: Sichtbarkeitsregel verweist auf unbekanntes Feld`);
       if (!['eq', 'neq', 'in', 'notEmpty'].includes(f.visibleIf.op)) problems.push(`${where}: Sichtbarkeitsregel ungültig`);
@@ -303,6 +319,11 @@ export function validateDefinition(def: unknown): string[] {
     if (s.tags !== undefined && (!Array.isArray(s.tags) || s.tags.some((t) => typeof t !== 'string' || t.length > 60))) problems.push('Tags ungültig');
   }
   return problems;
+}
+
+/** Das Freigabe-Feld eines Formulars, wenn es für diese Eingaben sichtbar ist. */
+export function activeApproverField(def: FormDefinition, values: FormValues): FormField | undefined {
+  return def.fields.find((f) => f.type === 'approver' && isVisible(f, values, def.fields));
 }
 
 /** Lesbarer Wert eines Feldes (z. B. Bezeichnung statt Optionswert). */

@@ -311,6 +311,7 @@ export function userMenu(): HTMLElement {
     h('div', { class: 'menu' },
       h('p', { class: 'menu-who' }, me.user.displayName, h('br'), h('span', { class: 'muted small' }, me.user.email ?? me.user.username ?? '')),
       link('/anfragen', 'Meine Anfragen'),
+      link('/freigaben', 'Freigaben'),
       link('/konto', 'Konto und Sicherheit'),
       me.isAdmin ? link('/admin', 'Verwaltung') : null,
       h('button', { class: 'menu-item', attrs: { type: 'button' }, on: { click: () => void logout() } }, icon('out', 16), 'Abmelden'),

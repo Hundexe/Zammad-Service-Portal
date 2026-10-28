@@ -74,8 +74,18 @@ const forms = demo.forms as Record<string, string>;
   await page.fill('#ff-bis_wann', '2026-11-15');
   await page.selectOption('#ff-standort', 'nord');
   await page.fill('#ff-begruendung', 'Der alte Laptop (NB-0042) ist sieben Jahre alt und startet nur noch mit Netzteil.');
-  await page.check('#ff-freigabe');
+  await page.fill('#ff-vorgesetzt', 'anna.becker@example.org');
   await shot(page, '04-formular-ausgefuellt', { full: true });
+  await page.click('button[type=submit]');
+  await page.waitForSelector('.success');
+  await shot(page, '41-freigabe-wartet');
+  // Anfrage ohne Freigabe
+  await page.goto(`${BASE}/s/${sys.zentral}/formular/${forms.stoerung}`);
+  await page.waitForSelector('.portal-form');
+  await page.selectOption('#ff-was', 'drucker');
+  await page.fill('#ff-betreff', 'Drucker zieht kein Papier ein');
+  await page.fill('#ff-beschreibung', 'Seit heute früh, Papier ist eingelegt.');
+  await page.selectOption('#ff-standort', 'nord');
   await page.click('button[type=submit]');
   await page.waitForSelector('.success');
   await shot(page, '06-anfrage-gesendet');
@@ -231,6 +241,49 @@ if (firstPassword) {
   await page.goto(`${BASE}/admin`);
   await page.waitForSelector('.stats');
   await shot(page, '26-dunkel-verwaltung');
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------- Freigabe durch Vorgesetzte
+{
+  const ctx = await browser.newContext(ctxOpts);
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/login`);
+  await page.click('a.btn-ms');
+  await page.waitForSelector('.form-list');
+  // Formular mit bedingtem Freigabe-Feld und Personenvorschlägen
+  await page.goto(`${BASE}/s/${sys.zentral}/formular/${forms.software}`);
+  await page.waitForSelector('.portal-form');
+  await page.fill('#ff-programm', 'Bildbearbeitung');
+  await page.fill('#ff-grund', 'Fotos für Website und Prospekte bearbeiten.');
+  await page.selectOption('#ff-lizenz', 'kostenpflichtig');
+  await page.fill('#ff-vorgesetzt', 'anna.becker@example.org');
+  await page.waitForTimeout(600);
+  await shot(page, '40-freigabe-formular', { full: true });
+  // Glocke
+  await page.goto(`${BASE}/s/${sys.zentral}`);
+  await page.waitForSelector('.form-list');
+  await page.click('.notif-menu summary');
+  await page.waitForSelector('.notif-list, .notif-empty');
+  await shot(page, '45-freigabe-benachrichtigungen');
+  // Liste und Entscheidung
+  await page.goto(`${BASE}/freigaben`);
+  await page.waitForSelector('.approval-list, .empty');
+  await shot(page, '42-freigabe-liste');
+  await page.click('.approval-list a');
+  await page.waitForSelector('.decide');
+  await page.fill('.decide textarea', 'Kostenstelle 4711');
+  await shot(page, '43-freigabe-entscheiden', { full: true });
+  // Sicht der anfragenden Person
+  await page.goto(`${BASE}/anfragen`);
+  await page.waitForSelector('.table');
+  await shot(page, '44-freigabe-meine-anfragen');
+  // Editor: Feldtyp und Eigenschaften
+  await page.goto(`${BASE}/admin/systeme/${sys.zentral}/formulare/${forms.software}`);
+  await page.waitForSelector('.field-list');
+  await page.click('.field-row:has-text("Wer gibt die Lizenz frei")');
+  await page.waitForTimeout(300);
+  await shot(page, '46-freigabe-editor', { full: true });
   await ctx.close();
 }
 

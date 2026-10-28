@@ -129,7 +129,7 @@ a, button, .btn, .icon-btn, summary, label, .tab, .switch, .switch-item, .badge,
   -webkit-user-select: none; user-select: none; -webkit-user-drag: none; -webkit-tap-highlight-color: transparent;
 }
 /* Was man kopieren können soll, auch wenn es in einem der Bereiche oben steht */
-.user-menu .menu-who, .secret code, .secret-pw, .mono-ish, .msg-body, .facts dd, .num, input, textarea, select, [contenteditable] { -webkit-user-select: text; user-select: text; }
+.user-menu .menu-who, .notif-title, .notif-body, .quote, .secret code, .secret-pw, .mono-ish, .msg-body, .facts dd, .num, input, textarea, select, [contenteditable] { -webkit-user-select: text; user-select: text; }
 [hidden] { display: none !important; }
 ::selection { background: color-mix(in srgb, var(--brand) 22%, transparent); }
 .visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -183,6 +183,46 @@ h1[tabindex="-1"]:focus { outline: none; }
 .user-menu .menu a:hover, .menu-item:hover { background: var(--fill); text-decoration: none; }
 .menu-who { padding: .55rem .7rem .7rem; margin: 0 0 .3rem; border-bottom: 1px solid var(--line); font-weight: 600; }
 .menu-who .muted { font-weight: 400; }
+
+/* Benachrichtigungen (Glocke) und Zähler */
+.count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--error); color: #fff; font-size: .6875rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.main-nav a .count { margin-left: .4rem; vertical-align: 1px; background: var(--brand); }
+.notif-menu summary { position: relative; width: 36px; height: 36px; padding: 0; justify-content: center; }
+.notif-menu summary .count { position: absolute; top: 1px; right: -2px; box-shadow: 0 0 0 2px var(--nav-bg); }
+.band-inner > .notif-menu { margin-right: -.75rem; }
+.notif-menu .notif-panel { background: var(--option-bg, var(--surface)); width: min(380px, calc(100vw - 24px)); max-height: min(70vh, 560px); overflow-y: auto; padding: .375rem .375rem .5rem; }
+.notif-head { display: flex; justify-content: space-between; align-items: center; padding: .5rem .7rem .6rem; border-bottom: 1px solid var(--line); margin-bottom: .3rem; }
+.link-btn { background: none; border: 0; padding: 0; font: inherit; font-size: .875rem; color: var(--link); cursor: pointer; }
+.link-btn:hover { text-decoration: underline; }
+.notif-cta a { display: flex; gap: .5rem; align-items: center; margin: 0 0 .3rem; padding: .6rem .7rem; border-radius: 9px; background: var(--warn-bg); color: var(--ink); font-weight: 500; }
+.notif-cta a:hover { text-decoration: none; filter: brightness(.98); }
+.notif-list { list-style: none; margin: 0; padding: 0; }
+.notif { display: grid; gap: .15rem; width: 100%; text-align: left; padding: .6rem .7rem .6rem 1.35rem; border: 0; border-radius: 9px; background: none; font: inherit; color: var(--ink); cursor: pointer; position: relative; }
+.notif:hover { background: var(--fill); }
+.notif.unread::before { content: ""; position: absolute; left: .55rem; top: 1.05rem; width: 7px; height: 7px; border-radius: 50%; background: var(--brand); }
+.notif-title { font-size: .9375rem; font-weight: 500; overflow-wrap: anywhere; }
+.notif:not(.unread) .notif-title { font-weight: 400; color: var(--ink-2); }
+.notif-body { font-size: .875rem; color: var(--ink-3); line-height: 1.4; overflow-wrap: anywhere; }
+.notif-time { font-size: .75rem; color: var(--ink-4); }
+.notif-empty { padding: .9rem .7rem; margin: 0; }
+
+/* Freigabe durch Vorgesetzte */
+.approval-box { border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: var(--r-sm); padding: .9rem 1.1rem 1rem; background: var(--surface); }
+.approval-box-head { display: flex; gap: .5rem; align-items: center; margin: 0 0 .65rem; font-weight: 600; color: var(--ink-2); font-size: .9375rem; }
+.approval-box-head .icon { color: var(--warn); }
+.approval-box input[list]::-webkit-calendar-picker-indicator { display: none !important; }
+.approval-list a { grid-template-columns: 40px minmax(0, 1fr) auto; }
+.approval-list .form-icon { background: var(--warn-bg); color: var(--warn); }
+.success-mark.wait { background: var(--warn); }
+.status-cell { display: inline-grid; gap: .25rem; justify-items: start; }
+.quote, .quote-inline { white-space: pre-wrap; overflow-wrap: anywhere; }
+.quote { margin: .5rem 0 0; padding-left: .8rem; border-left: 3px solid currentColor; opacity: .9; }
+.quote-inline { display: block; color: var(--ink-2); }
+.notice .quote + .small { margin-top: .6rem; }
+.facts dd.pre { white-space: pre-wrap; }
+.facts-wide { grid-template-columns: minmax(140px, max-content) 1fr; }
+.panel h3 { font-size: 1rem; margin: 1.25rem 0 .25rem; }
+.decide .form-actions { margin-top: 1rem; }
 
 .foot { color: var(--ink-4); font-size: .8125rem; margin-top: 4rem; }
 .foot .band-inner { min-height: 64px; gap: 1.25rem; border-top: 1px solid var(--line); }
@@ -568,6 +608,10 @@ details.more > * + * { margin-top: .85rem; }
   .brand-name, .user-name { display: none; }
   .main-nav { margin-left: auto; }
   .main-nav a { padding: .4rem .65rem; font-size: .875rem; }
+  /* Mit Glocke: oben Marke und Symbole, darunter die Navigation über die ganze Breite */
+  .band-inner:has(> .notif-menu) { padding-bottom: .4rem; }
+  .band-inner:has(> .notif-menu) > .main-nav { order: 10; width: 100%; margin-left: 0; overflow-x: auto; scrollbar-width: none; }
+  .band-inner > .notif-menu { margin-left: auto; margin-right: 0; }
   .hero { margin: 8px 8px 0; border-radius: 22px; padding: 2.75rem 1.25rem 2.25rem; }
   .switch-item { padding: .45rem .85rem; font-size: .875rem; }
   .container { padding: 2rem 16px 1.5rem; }

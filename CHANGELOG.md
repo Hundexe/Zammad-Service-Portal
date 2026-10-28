@@ -1,5 +1,24 @@
 # Änderungen
 
+## 1.5.0 – 28.10.2026
+
+**Freigabe durch Vorgesetzte**
+
+- Neuer Feldtyp **„Freigabe durch Vorgesetzte(n)“** im Formular-Editor, z. B. für Hardware oder kostenpflichtige Software. Mit „Nur anzeigen, wenn …“ auch bedingt (etwa nur bei „Ja, Lizenz nötig“). Eins pro Formular; sichtbar immer Pflicht
+- Die anfragende Person trägt die freigebende Person selbst ein – mit Vorschlägen aus den Personen, die sich schon angemeldet haben. Die eigene Adresse geht nicht. Optional pro Feld: nur Personen, die das Portal schon kennt
+- Die Anfrage wird wie jede andere geprüft und verschlüsselt gespeichert, geht aber **erst nach der Freigabe** an Zammad. Im Ticket stehen Name, Adresse, Zeitpunkt und Hinweis der freigebenden Person, dazu der Tag `freigegeben`
+- Neue Seite **Freigaben** (Offen/Erledigt): Inhalt und Anhänge ansehen, **Freigeben** (Hinweis freiwillig) oder **Ablehnen** (Begründung Pflicht)
+- **Meine Anfragen** zeigt, bei wem eine Anfrage liegt und bis wann; Anfragen lassen sich **zurückziehen** oder an eine **andere Person** geben
+- Fristen: einmalige Erinnerung nach `APPROVAL_REMIND_DAYS` (Standard 3), Ablauf nach `APPROVAL_EXPIRE_DAYS` (Standard 14). Bei Ablehnung, Rückzug oder Ablauf werden Inhalt und Anhänge sofort gelöscht
+- **Benachrichtigungen im Portal:** Glocke mit Zähler in der Navigation, „Freigaben“ mit Zahl offener Entscheidungen. Das Portal verschickt weiterhin keine E-Mails; weitere Kanäle (z. B. später E-Mail) lassen sich anhängen, ohne den Ablauf zu ändern
+- Sicherheit: Freigaben, Anhänge und Entscheidungen nur für die eingetragene Person (sonst 404), keine Selbstfreigabe, lokale Konten mit der Adresse eines Microsoft-Kontos bekommen nichts, Entscheidung nur einmal und nur vor Fristende. Alles im Audit-Log (`approval.*`)
+- Betrieb: wartende Freigaben zählen nicht als Zustellstau (`cli.ts status` zeigt sie getrennt), Filter in **Zustellung**, Zahl auf der Übersicht; Ticketsysteme mit offenen Freigaben lassen sich nicht löschen
+- Datenbank-Migration 004 (neue Status, Tabellen `approvals` und `notifications`); bestehende Anfragen und Anhänge bleiben erhalten
+- Demo: „Hardware anfordern“ mit Freigabe, „Software installieren“ mit bedingter Freigabe, Beispiel-Freigaben
+- Doku: BEDIENUNG (neue Abschnitte und Screenshots 40–46), SICHERHEIT, ARCHITEKTUR, BETRIEB, GO-LIVE
+
+Tests: 14 neue (Ablauf, Rechte, Fristen, Benachrichtigungen, Migration), insgesamt 216.
+
 ## 1.4.3 – 28.10.2026
 
 - „Abbrechen“ im Anfrageformular ist jetzt eine Schaltfläche in gleicher Größe neben „Anfrage senden“ statt eines Links

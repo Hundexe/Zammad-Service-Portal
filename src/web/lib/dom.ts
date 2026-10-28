@@ -121,6 +121,7 @@ const ICONS: Record<string, string> = {
   person: 'M10 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM3.5 17.5c.8-3.2 3.4-5 6.5-5s5.7 1.8 6.5 5',
   mail: 'M3 5h14v10H3zM3.5 5.5L10 11l6.5-5.5',
   chat: 'M4 4h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H9l-4 3v-3H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z',
+  bell: 'M5 13.5V9a5 5 0 0 1 10 0v4.5l1.5 2h-13zM8.25 17.5a1.9 1.9 0 0 0 3.5 0',
 };
 
 export function icon(name: keyof typeof ICONS | string, size = 18): SVGElement {

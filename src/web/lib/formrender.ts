@@ -18,11 +18,13 @@ export interface RenderedForm {
   setErrors: (errors: Record<string, string>) => void;
 }
 
+export interface Person { name: string; email: string; department: string }
+
 function formatSize(n: number): string {
   return n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
 }
 
-export function renderForm(def: FormDefinition, opts: { preview?: boolean } = {}): RenderedForm {
+export function renderForm(def: FormDefinition, opts: { preview?: boolean; searchPeople?: (q: string) => Promise<Person[]> } = {}): RenderedForm {
   const values: FormValues = {};
   const files: Record<string, File[]> = {};
   let errors: Record<string, string> = {};
@@ -30,6 +32,7 @@ export function renderForm(def: FormDefinition, opts: { preview?: boolean } = {}
 
   const root = h('div', { class: 'form-fields' });
   const slots = new Map<string, HTMLElement>();
+  const datalists = new WeakMap<HTMLElement, HTMLElement>();
 
   function control(f: FormField): HTMLElement {
     const id = `ff-${f.id}`;
@@ -92,6 +95,29 @@ export function renderForm(def: FormDefinition, opts: { preview?: boolean } = {}
         drawList();
         return h('div', { class: 'file-field' }, inputEl, zone, list);
       }
+      case 'approver': {
+        // E-Mail-Adresse mit Vorschlägen aus den Personen, die das Portal schon kennt
+        const listId = `${id}-people`;
+        const list = h('datalist', { id: listId });
+        const el = h('input', { attrs: { ...common, type: 'email', list: listId, autocomplete: 'off', spellcheck: 'false', maxlength: 254 } });
+        el.value = values[f.id] === undefined ? '' : String(values[f.id]);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let lastQ = '';
+        el.addEventListener('input', () => {
+          set(el.value.trim() === '' ? undefined : el.value.trim());
+          const q = el.value.trim();
+          if (!opts.searchPeople || q.length < 2 || q === lastQ || q.includes('@') && list.querySelector(`option[value="${CSS.escape(q.toLowerCase())}"]`)) return;
+          clearTimeout(timer);
+          timer = setTimeout(() => {
+            lastQ = q;
+            opts.searchPeople!(q).then((people) => {
+              list.replaceChildren(...people.map((p) => h('option', { attrs: { value: p.email, label: p.department ? `${p.name} · ${p.department}` : p.name } })));
+            }).catch(() => undefined);
+          }, 250);
+        });
+        datalists.set(el, list);
+        return el;
+      }
       default: {
         const type = f.type === 'email' ? 'email' : f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text';
         const el = h('input', { attrs: { ...common, type, min: f.min, max: f.max, maxlength: f.type === 'text' ? (f.maxLength ?? LIMITS.defaultTextLength) : undefined, autocomplete: f.type === 'email' ? 'email' : 'off' } });
@@ -117,6 +143,12 @@ export function renderForm(def: FormDefinition, opts: { preview?: boolean } = {}
         h(f.type === 'file' ? 'label' : 'p', { class: 'label', attrs: f.type === 'file' ? { for: `ff-${f.id}` } : {} }, f.label, f.required ? h('span', { class: 'req' }, ' *') : null),
         f.help ? h('p', { class: 'help' }, f.help) : null, el,
         errors[f.id] ? h('p', { class: 'error', attrs: { role: 'alert' } }, errors[f.id]) : null);
+    }
+    if (f.type === 'approver') {
+      return h('div', { class: 'approval-box' },
+        h('p', { class: 'approval-box-head' }, icon('shield', 18), h('span', null, 'Diese Anfrage braucht eine Freigabe')),
+        fieldWrap(el, { label: f.label, help: f.help, error: errors[f.id], required: true, id: `ff-${f.id}` }),
+        datalists.get(el));
     }
     return fieldWrap(el, { label: f.label, help: f.help, error: errors[f.id], required: f.required, id: `ff-${f.id}` });
   }

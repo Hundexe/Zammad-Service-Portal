@@ -6,6 +6,8 @@ import { notice } from './lib/ui.ts';
 import { DEMO, setDemoBackend } from './lib/env.ts';
 import { loginPage } from './pages/login.ts';
 import { accountPage, formPage, homePage, requestsPage, ticketDetailPage, ticketsPage } from './pages/portal.ts';
+import { approvalDetailPage, approvalsPage } from './pages/approvals.ts';
+import { approvalsNavLink, bell, refreshCounts, startPolling } from './lib/notify.ts';
 import { sidebar, loadAdminSystems, admin } from './admin/common.ts';
 import { objectsPage, systemEditPage, systemsListPage } from './admin/systems.ts';
 import { formEditorPage, formsListPage } from './admin/forms.ts';
@@ -24,7 +26,9 @@ function portalLayout(content: Child, path: string): Child {
   document.body.dataset.layout = 'portal';
   const base = sys ? `/s/${sys.id}` : '/';
   const onTickets = path.includes('/tickets');
-  const onOther = path === '/anfragen' || path === '/konto';
+  const onApprovals = path.startsWith('/freigaben');
+  const onOther = path === '/anfragen' || path === '/konto' || onApprovals;
+  void refreshCounts();
   return [
     skipLink(),
     h('header', { class: 'band' },
@@ -32,7 +36,9 @@ function portalLayout(content: Child, path: string): Child {
         h('a', { class: 'brand', attrs: { href: base, 'data-link': '', 'aria-label': `${b.displayName} – Startseite` } }, ...navBrand(b)),
         h('nav', { class: 'main-nav', attrs: { 'aria-label': 'Hauptnavigation' } },
           h('a', { class: !onTickets && !onOther ? 'active' : undefined, attrs: { href: base, 'data-link': '' } }, 'Anfrage stellen'),
-          sys ? h('a', { class: onTickets ? 'active' : undefined, attrs: { href: `${base}/tickets`, 'data-link': '' } }, 'Meine Tickets') : null),
+          sys ? h('a', { class: onTickets ? 'active' : undefined, attrs: { href: `${base}/tickets`, 'data-link': '' } }, 'Meine Tickets') : null,
+          approvalsNavLink(onApprovals)),
+        bell(),
         themeToggle(),
         userMenu())),
     h('main', { id: 'main', class: 'portal-main' }, content),
@@ -96,6 +102,8 @@ route('/s/:systemId/formular/:formId', 'portal', formPage);
 route('/s/:systemId/tickets', 'portal', ticketsPage);
 route('/s/:systemId/tickets/:ticketId', 'portal', ticketDetailPage);
 route('/anfragen', 'portal', requestsPage);
+route('/freigaben', 'portal', approvalsPage);
+route('/freigaben/:approvalId', 'portal', approvalDetailPage);
 route('/konto', 'portal', accountPage);
 
 adminRoute('/admin', dashboardPage);
@@ -139,6 +147,7 @@ async function boot() {
     applyBranding(state.config!.branding);
     const me = await loadMe();
     if (me?.state === 'active') await loadSystems().catch(() => undefined);
+    startPolling();
     await render();
   } catch {
     mount(document.getElementById('app')!, h('main', { class: 'center-page' }, h('h1', null, 'Portal nicht erreichbar'), h('p', null, 'Bitte später erneut versuchen.')));

@@ -56,6 +56,11 @@ export async function createDemoBackend(): Promise<DemoBackend> {
   const pending: Record<string, Json[]> = {};
   const requests: Json[] = [];
   const replies: Record<string, Json[]> = {};
+  const decided = new Map<string, Json>();
+  const withdrawn = new Set<string>();
+  const readIds = new Set<string>();
+  let readAll = false;
+  let readCount = 0;
 
   const ok = (data: Json = { ok: true }, status = 200) => ({ status, data });
   const fail = (status: number, error: string, code: string) => ({ status, data: { error, code } });
@@ -74,6 +79,16 @@ export async function createDemoBackend(): Promise<DemoBackend> {
     if (p === '/api/auth/stepup') return ok({ ok: true, stepupValidUntil: Date.now() + 3600_000 });
     if (!loggedIn && !p.startsWith('/api/public/')) return fail(401, 'Bitte anmelden', 'unauthenticated');
 
+    if (m === 'GET' && p === '/api/portal/people') {
+      // Vorschläge aus einer Aufzeichnung, hier im Browser gefiltert
+      const q = (new URL(path, 'http://demo').searchParams.get('q') ?? '').toLowerCase();
+      const all = (recorded('GET /api/portal/people?q=example')?.data as Json)?.people ?? [];
+      return ok({ people: q.length < 2 ? [] : all.filter((x: Json) => `${x.name} ${x.email}`.toLowerCase().includes(q)) });
+    }
+    if (m === 'GET' && p === '/api/portal/notifications/count') {
+      const r = recorded(key)?.data as Json;
+      return ok({ unread: readAll ? 0 : Math.max(0, (r?.unread ?? 0) - readCount), approvalsOpen: Math.max(0, (r?.approvalsOpen ?? 0) - decided.size) });
+    }
     if (m === 'GET') {
       const r = recorded(key);
       if (!r) return fail(404, 'Diese Ansicht ist in der Demo nicht enthalten.', 'not_found');
@@ -81,7 +96,18 @@ export async function createDemoBackend(): Promise<DemoBackend> {
       if (p === '/api/me') data = { ...data, stepupValidUntil: Date.now() + 365 * 86400_000, sessionExpiresAt: Date.now() + 8 * 3600_000 };
       const tickets = /^\/api\/portal\/systems\/([^/]+)\/tickets$/.exec(p);
       if (tickets && data && Array.isArray(data.pending)) data = { ...data, pending: [...(pending[tickets[1]] ?? []), ...data.pending] };
-      if (p === '/api/portal/requests' && data && Array.isArray(data.requests)) data = { ...data, requests: [...requests, ...data.requests] };
+      if (p === '/api/portal/requests' && data && Array.isArray(data.requests)) {
+        data = { ...data, requests: [...requests, ...data.requests].map((x: Json) => withdrawn.has(x.id) ? { ...x, status: 'withdrawn' } : x) };
+      }
+      if (p === '/api/portal/approvals' && data && Array.isArray(data.approvals)) {
+        const open = new URL(path, 'http://demo').searchParams.get('status') !== 'done';
+        data = { ...data, open: Math.max(0, data.open - decided.size), approvals: open ? data.approvals.filter((a: Json) => !decided.has(a.id)) : [...[...decided.values()], ...data.approvals] };
+      }
+      const appr = /^\/api\/portal\/approvals\/([^/]+)$/.exec(p);
+      if (appr && decided.has(appr[1])) data = { ...data, approval: decided.get(appr[1]), summary: null, files: [] };
+      if (p === '/api/portal/notifications' && data && Array.isArray(data.notifications)) {
+        data = { ...data, unread: readAll ? 0 : Math.max(0, data.unread - readCount), approvalsOpen: Math.max(0, data.approvalsOpen - decided.size), notifications: data.notifications.map((n: Json) => readAll || readIds.has(n.id) ? { ...n, read: true } : n) };
+      }
       const detail = /^\/api\/portal\/systems\/[^/]+\/tickets\/[^/]+$/.exec(p);
       if (detail && data && Array.isArray(data.articles)) data = { ...data, articles: [...data.articles, ...(replies[p] ?? [])] };
       return { status: r.status, data };
@@ -94,9 +120,27 @@ export async function createDemoBackend(): Promise<DemoBackend> {
       const sys = form?.system ?? {};
       const title = `${form?.form?.name ?? 'Anfrage'}: ${String(body?.values?.betreff ?? body?.values?.beschreibung ?? 'Demo-Anfrage').slice(0, 60)}`;
       const id = `demo-${++counter}`;
-      (pending[sys.id] ??= []).unshift({ id, title, status: 'queued', created_at: Date.now() });
-      requests.unshift({ id, systemName: sys.name, system_id: sys.id, title, status: 'queued', ticket_number: null, ticket_id: null, created_at: Date.now() });
-      return ok({ id, title, successText: form?.definition?.settings?.successText || 'Danke! In der Demo wird nichts an Zammad gesendet.' }, 201);
+      const fields: Json[] = form?.definition?.fields ?? [];
+      const approverField = fields.find((f) => f.type === 'approver' && (!f.visibleIf || String(body?.values?.[f.visibleIf.field] ?? '') === String(f.visibleIf.value ?? '')));
+      const approverEmail = approverField ? String(body?.values?.[approverField.id] ?? '').trim().toLowerCase() : '';
+      const status = approverEmail ? 'awaiting_approval' : 'queued';
+      const approval = approverEmail ? { approverEmail, approverName: null, status: 'pending', decidedAt: null, decidedByName: null, expiresAt: Date.now() + 14 * 86400_000, comment: null, known: true } : null;
+      (pending[sys.id] ??= []).unshift({ id, title, status, created_at: Date.now() });
+      requests.unshift({ id, systemName: sys.name, system_id: sys.id, title, status, ticket_number: null, ticket_id: null, created_at: Date.now(), approval });
+      return ok({ id, title, successText: form?.definition?.settings?.successText || 'Danke! In der Demo wird nichts an Zammad gesendet.', approval: approverEmail ? { email: approverEmail, name: null, known: true } : null }, 201);
+    }
+    const decision = /^\/api\/portal\/approvals\/([^/]+)\/(approve|reject)$/.exec(p);
+    if (decision) {
+      const d = recorded(requestKey('GET', `/api/portal/approvals/${decision[1]}`))?.data as Json;
+      if (decision[2] === 'reject' && !String(body?.comment ?? '').trim()) return fail(422, 'Bitte kurz begründen, warum Sie ablehnen', 'validation');
+      if (d?.approval) decided.set(decision[1], { ...d.approval, status: decision[2] === 'approve' ? 'approved' : 'rejected', decidedAt: Date.now(), decidedByName: 'Alex Berger', comment: String(body?.comment ?? '') || null });
+      return ok({ status: decision[2] === 'approve' ? 'approved' : 'rejected' });
+    }
+    const wd = /^\/api\/portal\/requests\/([^/]+)\/withdraw$/.exec(p);
+    if (wd) { withdrawn.add(wd[1]); return ok(); }
+    if (p === '/api/portal/notifications/read') {
+      if (Array.isArray(body?.ids)) for (const i of body.ids) { if (!readIds.has(i)) { readIds.add(i); readCount++; } } else readAll = true;
+      return ok({ marked: 1, unread: 0 });
     }
     const reply = /^(\/api\/portal\/systems\/[^/]+\/tickets\/[^/]+)\/reply$/.exec(p);
     if (reply) {

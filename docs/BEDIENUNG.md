@@ -36,7 +36,55 @@ Portal öffnen und **Mit Microsoft anmelden** wählen. Es gilt dasselbe Konto wi
 
    ![Gesendet](screenshots/06-anfrage-gesendet.png)
 
+   Braucht die Anfrage eine Freigabe, steht stattdessen **Wartet auf Freigabe** – siehe nächster Abschnitt.
+
 **Dateien:** Screenshots, PDFs, Office-Dokumente oder Textdateien lassen sich anhängen (je Formular festgelegt, meist bis 10 MB). Jede Datei wird auf Viren geprüft. Programme, Skripte und HTML-Dateien werden abgelehnt.
+
+### Anfragen mit Freigabe durch Vorgesetzte
+
+Manche Formulare – z. B. **Hardware anfordern** oder kostenpflichtige Software – brauchen eine Freigabe. Dann gibt es im Formular einen eigenen Kasten **Diese Anfrage braucht eine Freigabe**. Er kann auch erst erscheinen, wenn er gebraucht wird (z. B. erst bei „Ja, Lizenz nötig“).
+
+1. Die E-Mail-Adresse der bzw. des Vorgesetzten eintragen. Ab zwei Buchstaben schlägt das Portal Personen vor, die sich schon einmal angemeldet haben. Die eigene Adresse geht nicht.
+
+   ![Formular mit Freigabe](screenshots/40-freigabe-formular.png)
+
+2. **Anfrage senden.** Die Anfrage geht jetzt **noch nicht** an die IT, sondern wartet im Portal. Die freigebende Person sieht sie unter **Freigaben** und an der Glocke.
+
+   ![Wartet auf Freigabe](screenshots/41-freigabe-wartet.png)
+
+   Hat sich die Person noch nie im Portal angemeldet, weist das Portal darauf hin – dann am besten kurz Bescheid geben.
+
+3. Unter **Meine Anfragen** steht, bei wem die Anfrage liegt und bis wann entschieden werden muss. Dort lässt sie sich **zurückziehen** oder an eine **andere Person** geben (z. B. bei Urlaub).
+
+   ![Meine Anfragen](screenshots/44-freigabe-meine-anfragen.png)
+
+4. Nach der Entscheidung meldet sich die Glocke:
+   - **Freigegeben:** Die Anfrage geht automatisch an die IT. Im Ticket steht, wer wann freigegeben hat.
+   - **Abgelehnt:** Die Begründung steht in der Benachrichtigung und unter „Meine Anfragen“. Inhalt und Anhänge werden gelöscht, nichts geht an die IT.
+   - **Abgelaufen:** Ohne Entscheidung verfällt die Anfrage nach 14 Tagen (Einstellung der IT) und wird gelöscht. Bei Bedarf neu stellen.
+
+### Freigaben erteilen (für Vorgesetzte)
+
+Wartet etwas auf Ihre Entscheidung, zeigt die Navigation **Freigaben** mit einer Zahl, und die Glocke meldet „Freigabe erbeten“. Nach drei Tagen kommt einmal eine Erinnerung.
+
+![Freigaben](screenshots/42-freigabe-liste.png)
+
+Ein Klick öffnet die Anfrage: wer sie gestellt hat, wohin sie geht, alle Angaben und Anhänge (Anhänge zum Herunterladen).
+
+![Freigabe entscheiden](screenshots/43-freigabe-entscheiden.png)
+
+- **Freigeben** – die Anfrage geht sofort an die IT. Ein Hinweis ist freiwillig (z. B. die Kostenstelle) und steht mit Ihrem Namen und der Uhrzeit im Ticket.
+- **Ablehnen** – nur mit kurzer Begründung. Die anfragende Person wird benachrichtigt, die Anfrage gelöscht.
+
+Unter **Erledigt** stehen Ihre Entscheidungen. Den Inhalt zeigt das Portal danach nicht mehr an – er liegt dann im Ticket bzw. ist gelöscht.
+
+### Benachrichtigungen
+
+Die Glocke oben rechts zeigt neue Nachrichten mit einer Zahl: Freigabe erbeten, Erinnerung, freigegeben, abgelehnt, abgelaufen, zurückgezogen. Ein Klick auf eine Nachricht öffnet die passende Seite; **Alle gelesen** setzt den Zähler zurück. Nachrichten werden nach 90 Tagen gelöscht.
+
+![Benachrichtigungen](screenshots/45-freigabe-benachrichtigungen.png)
+
+Das Portal verschickt keine E-Mails. Über die Eingangsbestätigung und Antworten der IT informiert wie bisher Zammad.
 
 ### Meine Tickets
 
@@ -62,7 +110,7 @@ Das Mond-Symbol oben rechts schaltet auf das dunkle Design um, die Sonne zurück
 
 ### Konto
 
-Unter dem Namen oben rechts: **Meine Anfragen** (alles, was über das Portal gesendet wurde), **Konto und Sicherheit** und **Abmelden**.
+Unter dem Namen oben rechts: **Meine Anfragen** (alles, was über das Portal gesendet wurde, mit dem Stand der Freigaben), **Freigaben**, **Konto und Sicherheit** und **Abmelden**.
 
 ![Konto](screenshots/22-konto.png)
 
@@ -74,7 +122,7 @@ Die Verwaltung erreichen alle mit einer Admin-Rolle über das Menü oben rechts 
 
 ### Übersicht
 
-Zeigt offene Aufgaben (z. B. Sicherheitshinweise zur Konfiguration), Zahlen zur Zustellung und Versionen, die auf Freigabe warten.
+Zeigt offene Aufgaben (z. B. Sicherheitshinweise zur Konfiguration), Zahlen zur Zustellung (auch wie viele Anfragen noch bei Vorgesetzten liegen) und Formular- oder Stil-Versionen, die auf Freigabe warten.
 
 ![Übersicht](screenshots/10-admin-uebersicht.png)
 
@@ -120,7 +168,7 @@ Der Editor hat vier Reiter:
 
 | Eigenschaft | Zweck |
 | --- | --- |
-| Feldtyp | Text, Mehrzeiliger Text, E-Mail, Zahl, Datum, Kästchen, Auswahl, Mehrfachauswahl, Datei, Hinweistext oder ein freigegebenes **Zammad-Objekt** |
+| Feldtyp | Text, Mehrzeiliger Text, E-Mail, Zahl, Datum, Kästchen, Auswahl, Mehrfachauswahl, Datei, Hinweistext, **Freigabe durch Vorgesetzte(n)** oder ein freigegebenes **Zammad-Objekt** |
 | Feld-ID | Name für Vorlagen, z. B. `{{betreff}}` |
 | Pflichtfeld, Platzhalter, Standardwert | Standardwert auch aus dem Profil (Name, E-Mail, Abteilung) |
 | Prüfmuster | regulärer Ausdruck, z. B. `\d{4}` für Kostenstellen |
@@ -137,6 +185,16 @@ Der Editor hat vier Reiter:
 **Versionen** – jede Veröffentlichung ist eine Version. Ältere Versionen lassen sich als neuer Entwurf wiederherstellen. Mit Vier-Augen-Prinzip steht hier **Freigeben/Ablehnen** für die zweite Person.
 
 Ablauf: **Entwurf speichern** → **Veröffentlichen** (bzw. **Zur Freigabe senden**). Bis zur Veröffentlichung sehen Mitarbeitende die alte Version.
+
+**Freigabe durch Vorgesetzte:** Feldtyp **Freigabe durch Vorgesetzte(n)** wählen und **Hinzufügen** – das Feld kommt wie jedes andere ins Formular (eines pro Formular). Mitarbeitende tragen dort die freigebende Person ein; die Anfrage landet erst nach deren Freigabe in Zammad.
+
+![Freigabe-Feld im Editor](screenshots/46-freigabe-editor.png)
+
+- Das Feld ist immer Pflicht, sobald es sichtbar ist. Mit **Nur anzeigen, wenn …** wird die Freigabe bedingt, z. B. nur bei „Ja, Lizenz nötig“ oder bei einer bestimmten Hardware.
+- **Nur Personen, die sich schon im Portal angemeldet haben:** schützt vor Tippfehlern und erfundenen Adressen.
+- **Übernahme ins Ticket:** „Nur im Tickettext“ (Standard) oder „Nicht übernehmen“. Den Vermerk „Freigegeben von … am …“ und den Tag `freigegeben` setzt das Portal immer.
+- Fristen (Erinnerung nach 3, Ablauf nach 14 Tagen) stellt die IT in `deploy/.env` ein ([Betrieb](BETRIEB.md#einstellungen-ändern-deployenv)).
+- Nicht zu verwechseln mit dem **Vier-Augen-Prinzip** für Formulare: Das betrifft die Veröffentlichung eines Formulars durch Admins, nicht einzelne Anfragen.
 
 ### Vorlagen und Übersichten
 
@@ -212,7 +270,7 @@ Für Rollen, Benutzer, Ticketsystem-Zugangsdaten und Updates verlangt das Portal
 
 ### Zustellung
 
-Alle Anfragen auf dem Weg nach Zammad. Fehlgeschlagene Anfragen (z. B. weil eine Gruppe in Zammad umbenannt wurde) lassen sich nach der Korrektur **erneut senden**.
+Alle Anfragen auf dem Weg nach Zammad. Fehlgeschlagene Anfragen (z. B. weil eine Gruppe in Zammad umbenannt wurde) lassen sich nach der Korrektur **erneut senden**. Der Filter zeigt auch Anfragen, die noch bei Vorgesetzten liegen (**Wartet auf Freigabe**) oder nie übermittelt wurden (**Abgelehnt**, **Zurückgezogen**, **Abgelaufen**). Entscheiden kann darüber nur die eingetragene Person, nicht die Verwaltung.
 
 ![Zustellung](screenshots/21-admin-zustellung.png)
 

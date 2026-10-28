@@ -14,7 +14,11 @@ import { setLogLevel } from '../src/server/log.ts';
 import { hashPassword, sha256 } from '../src/server/crypto.ts';
 import { uuid } from '../src/server/db/db.ts';
 import { startWorker } from '../src/server/worker.ts';
-import { saveDraft, publishVersion } from '../src/server/services/forms.ts';
+import { saveDraft, publishVersion, getForm, publishedVersion } from '../src/server/services/forms.ts';
+import { getSystem } from '../src/server/services/systems.ts';
+import { toAuthUser, upsertEntraUser } from '../src/server/services/users.ts';
+import { submitRequest } from '../src/server/services/requests.ts';
+import { decide } from '../src/server/services/approvals.ts';
 import { DEFAULT_BRANDING, type Branding } from '../src/shared/branding.ts';
 import type { FormDefinition } from '../src/shared/form.ts';
 import { startMockZammad } from './mock-zammad.ts';
@@ -128,7 +132,7 @@ export async function seedDemo(app: App, urls: { zentral: string; nord: string }
       { id: 'bis_wann', type: 'date', label: 'Benötigt bis' },
       { id: 'standort', type: 'zammad', label: 'Standort', attribute: 'standort', required: true },
       { id: 'begruendung', type: 'textarea', label: 'Begründung', required: true },
-      { id: 'freigabe', type: 'checkbox', label: 'Die Anschaffung ist mit meiner Führungskraft abgesprochen', required: true },
+      { id: 'vorgesetzt', type: 'approver', label: 'Wer gibt die Anschaffung frei?', help: 'E-Mail-Adresse Ihrer bzw. Ihres Vorgesetzten. Die Bestellung geht erst nach der Freigabe an die IT.', placeholder: 'vorname.nachname@…', mapping: { target: 'article' } },
     ],
     settings: settings('Hardware: {{art}} für {{fuer}}', 'IT-Support::Hardware', ['hardware', 'bestellung']),
   }, 2);
@@ -150,6 +154,8 @@ export async function seedDemo(app: App, urls: { zentral: string; nord: string }
       { id: 'version', type: 'text', label: 'Version (falls wichtig)' },
       { id: 'geraet', type: 'text', label: 'Rechnername', help: 'Steht auf dem Aufkleber am Gerät, z. B. NB-0042', pattern: '[A-Za-z]{2}-\\d{4}', patternMessage: 'Format: zwei Buchstaben, Bindestrich, vier Ziffern' },
       { id: 'grund', type: 'textarea', label: 'Wofür wird es gebraucht?', required: true },
+      { id: 'lizenz', type: 'select', label: 'Kostet das Programm Geld?', required: true, options: [{ value: 'kostenlos', label: 'Nein, kostenlos' }, { value: 'kostenpflichtig', label: 'Ja, Lizenz nötig' }, { value: 'unklar', label: 'Weiß ich nicht' }] },
+      { id: 'vorgesetzt', type: 'approver', label: 'Wer gibt die Lizenz frei?', help: 'Kostenpflichtige Programme braucht eine Freigabe. Die Anfrage geht erst danach an die IT.', placeholder: 'vorname.nachname@…', visibleIf: { field: 'lizenz', op: 'eq', value: 'kostenpflichtig' }, mapping: { target: 'article' } },
     ],
     settings: settings('Software: {{programm}} für {{benutzer.name}}', 'IT-Support', ['software']),
   }, 4);
@@ -191,6 +197,26 @@ export async function seedDemo(app: App, urls: { zentral: string; nord: string }
   return { systems: { zentral, nord }, forms };
 }
 
+/** Beispiele für Freigaben durch Vorgesetzte: Anna bittet Alex (den Demo-Admin) um Freigabe und umgekehrt. */
+async function seedApprovals(app: App, softwareFormId: string): Promise<void> {
+  const anna = toAuthUser(app.db, upsertEntraUser(app.db, { oid: '7e5c1d40-0000-4000-8000-000000000002', tid: TENANT_A, name: 'Anna Becker', email: 'anna.becker@example.org', groups: ['grp-mitarbeiter'] }, { department: 'Vertrieb' }));
+  const alex = toAuthUser(app.db, upsertEntraUser(app.db, { oid: '7e5c1d40-0000-4000-8000-000000000001', tid: TENANT_B, name: 'Alex Berger', email: 'alex.berger@example.org', groups: ['grp-mitarbeiter', 'grp-nord', 'it-admins'] }, { department: 'IT' }));
+  const form = getForm(app, softwareFormId)!;
+  const sys = getSystem(app, form.system_id)!;
+  const version = publishedVersion(app, form.id)!;
+  const def = JSON.parse(version.definition) as FormDefinition;
+  const ask = (who: typeof anna, programm: string, grund: string, approver: string) =>
+    submitRequest(app, who, sys, form, version, def, { values: { programm, grund, lizenz: 'kostenpflichtig', vorgesetzt: approver, geraet: 'NB-0042' }, files: {} });
+  const actor = (u: typeof anna) => ({ id: u.id, name: u.displayName, ip: '127.0.0.1' });
+  const ok = await ask(anna, 'Grafikprogramm', 'Flyer und Plakate für die Messe gestalten.', alex.email!);
+  const no = await ask(anna, 'Projektplanung Pro', 'Zeitpläne für zwei Kundenprojekte.', alex.email!);
+  await ask(anna, 'PDF-Editor', 'Verträge bearbeiten und unterschreiben, ohne sie auszudrucken.', alex.email!);
+  await ask(alex, 'Diagramm-Werkzeug', 'Netzwerkpläne zeichnen.', anna.email!);
+  const idOf = (requestId: string) => app.db.get<{ id: string }>('SELECT id FROM approvals WHERE request_id = ?', requestId)!.id;
+  decide(app, alex, actor(alex), idOf(ok.id), 'approve', 'Kostenstelle 4711');
+  decide(app, alex, actor(alex), idOf(no.id), 'reject', 'Bitte erst mit dem Projektbüro klären – dort gibt es schon Lizenzen.');
+}
+
 export async function startDemo(opts: { port?: number; publicUrl?: string; host?: string; dataDir?: string; quiet?: boolean } = {}) {
   const port = opts.port ?? 3000;
   const publicUrl = opts.publicUrl ?? `http://localhost:${port}`;
@@ -222,6 +248,7 @@ export async function startDemo(opts: { port?: number; publicUrl?: string; host?
   });
   const app = createApp(cfg);
   const seeded = await seedDemo(app, { zentral: z1.url, nord: z2.url });
+  await seedApprovals(app, seeded.forms.software);
   app.db.run("UPDATE update_state SET current_version = ?, latest_version = '1.1.0', available = '[\"1.0.0\",\"1.1.0\"]', changelog = ?, checked_at = ?, updater_seen_at = ? WHERE id = 1",
     cfg.version, '1.1.0\n- Beispiel-Eintrag aus dem Changelog\n- Verbesserte Übersichten', Date.now() - 3600_000, Date.now());
   const { server } = createServer(app, { entra: new EntraClient(cfg) });

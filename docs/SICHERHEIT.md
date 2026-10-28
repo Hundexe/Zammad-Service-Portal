@@ -35,6 +35,7 @@ Dieses Dokument beschreibt, wie das Portal geschützt ist, gegen welche Angriffe
 - Ein automatischer Test ruft **jede** Route ohne Anmeldung (erwartet 401) und jede Admin-Route als normaler Benutzer (erwartet 403/404) auf. Neue Routen werden so automatisch mitgeprüft.
 - Tickets: Das Portal fragt Zammad im Namen des angemeldeten Kunden; Zammad und das Portal prüfen die Kunden-ID. Fremde oder nicht existierende Tickets liefern dieselbe Antwort (404), damit sich Ticket-IDs nicht erraten lassen. Liste der Tests: [Autorisierungstests](#autorisierungstests).
 - **Vier-Augen-Prinzip** (optional pro System) für Formulare und Branding.
+- **Freigabe durch Vorgesetzte** (Formularfeld): siehe [eigener Abschnitt](#freigabe-durch-vorgesetzte).
 - Optional: Admin-Bereich nur aus bestimmten Netzen (`ADMIN_ALLOWED_CIDRS`).
 
 ### Eingaben und Ausgaben (ASVS V5)
@@ -129,6 +130,11 @@ Code: `src/server/auth/oidc.ts`, Tests: `test/review-oidc.test.ts` (Einzelprüfu
 | Anhang: fremdes Ticket, fremder Artikel unter eigenem Ticket, interne Notiz | 404 | review `#3` |
 | Absender in Antworten | keine E-Mail-Adressen; optional Systemname statt Agentenname | review `#6` |
 | Formular schreibt in geschützte Zammad-Felder (`owner_id`, `state_id`, …) oder fremde Gruppe | Editor lehnt ab; beim Ticket-Anlegen zusätzlich herausgefiltert | review `#4` |
+| Freigabe einer fremden Person ansehen, entscheiden, Anhang laden; fremde Anfrage zurückziehen oder umleiten | 404 | approvals: `Sicherheit: nur die eingetragene Person …` |
+| sich selbst als freigebende Person eintragen (auch andere Schreibweise) | 422 | approvals |
+| lokales Konto mit der Adresse eines Microsoft-Kontos | sieht weder Freigaben noch Benachrichtigungen dieser Adresse | approvals |
+| Entscheidung nach Fristende oder ein zweites Mal | 409, nichts wird zugestellt | approvals |
+| fremde Benachrichtigungen als gelesen markieren | wirkungslos | approvals |
 
 ## Zammad: was das Portal setzen darf
 
@@ -138,6 +144,25 @@ Code: `src/server/auth/oidc.ts`, Tests: `test/review-oidc.test.ts` (Einzelprüfu
 - **Kundenzuordnung:** Beim ersten Kontakt sucht das Portal den Zammad-Kunden über die E-Mail-Adresse (exakter Vergleich, ohne Groß-/Kleinschreibung) und legt ihn nur an, wenn es ihn nicht gibt. Die gefundene **Zammad-ID** wird je Portal-Benutzer gespeichert; danach läuft alles über diese ID (`X-On-Behalf-Of: <ID>`), auch wenn sich Name oder Adresse ändern. Microsoft-Konten werden im Portal über die unveränderliche `oid` erkannt. Ein lokales Konto mit derselben Adresse wie ein Microsoft-Konto bekommt keinen Zugriff auf dessen Tickets. Bei Wechsel von Adresse oder Token des Ticketsystems wird die Zuordnung neu aufgebaut.
 - **Absender** in der Ticketansicht ohne E-Mail-Adressen; mit „Namen der Bearbeiter ausblenden“ erscheinen alle Antworten als Name des Ticketsystems.
 - **Doppelte Tickets** nach Zeitüberschreitung oder Absturz: Vor jedem Wiederholungsversuch sucht das Portal unter den Tickets des Kunden eines mit gleichem Titel, dessen erster Artikel die Anfrage-ID enthält, und übernimmt es statt ein zweites anzulegen.
+
+## Freigabe durch Vorgesetzte
+
+Formulare können ein Feld „Freigabe durch Vorgesetzte(n)“ enthalten. Die anfragende Person trägt die E-Mail-Adresse der freigebenden Person selbst ein (keine Abfrage des Vorgesetzten in Entra). Die Anfrage wird wie jede andere geprüft und verschlüsselt gespeichert, bleibt aber im Portal, bis entschieden ist.
+
+| Regel | Umsetzung |
+| --- | --- |
+| Nichts erreicht Zammad ohne Freigabe | Status `awaiting_approval`; der Worker holt nur `queued`. Erst die Freigabe setzt `queued` – in derselben Transaktion wie die Entscheidung, nur wenn die Freigabe noch offen und nicht abgelaufen ist (`UPDATE … WHERE status = 'pending' AND expires_at > now`). Zweimal entscheiden ist nicht möglich (409) |
+| Wer entscheiden darf | Nur das Konto, dem die eingetragene Adresse gehört (Vergleich ohne Groß-/Kleinschreibung). Für alle anderen gibt es die Freigabe nicht: Liste leer, Detail, Datei, Entscheidung → **404** (keine erratbaren IDs) |
+| Keine Selbstfreigabe | Die eigene Adresse wird abgelehnt (422) – auch in anderer Schreibweise und auch, wenn die Adresse zu einem anderen eigenen Konto gehört. Die Anfrage selbst kann die anfragende Person nie entscheiden (404) |
+| Lokale Konten | Ein lokales Konto mit der Adresse eines Microsoft-Kontos sieht weder Freigaben noch Benachrichtigungen dieser Adresse – dieselbe Regel wie bei Tickets |
+| Erfundene Adressen | Optional pro Feld „Nur Personen, die sich schon im Portal angemeldet haben“. Ohne die Einstellung bleibt eine Anfrage an eine unbekannte Adresse liegen, bis sich die Person anmeldet, und verfällt sonst nach der Frist |
+| Bedingte Freigabe | Mit „Nur anzeigen, wenn …“ lässt sich die Freigabe auf bestimmte Antworten beschränken. Das ist eine bewusste Einstellung der Verwaltung: wer die Bedingung anders beantwortet, braucht keine Freigabe. Sichtbar ist das Feld immer Pflicht |
+| Nachvollziehbarkeit | Name, Adresse, Zeitpunkt und Hinweis der freigebenden Person stehen im Ticket (HTML-escaped), das Ticket bekommt den Tag `freigegeben`. Audit-Log: `approval.requested`, `approved`, `rejected`, `withdrawn`, `reassigned`, `expired` |
+| Datensparsamkeit | Die freigebende Person sieht dieselben Felder, die ins Ticket gehen, und kann Anhänge herunterladen (immer als Download, `application/octet-stream`). Nach der Entscheidung wird diese Ansicht gelöscht. Bei Ablehnung, Rückzug oder Ablauf (`APPROVAL_EXPIRE_DAYS`, Standard 14 Tage) werden Inhalt und Anhänge sofort gelöscht |
+| Benachrichtigungen | nur im Portal (Glocke). Das Portal verschickt weiterhin keine E-Mails; ein späterer Kanal (z. B. E-Mail) hängt sich über `registerChannel()` an, ohne die Regeln oben zu ändern. Gespeichert werden nur Titel und kurzer Text, keine Formularinhalte; Löschung nach 90 Tagen |
+| Personensuche | Vorschläge beim Eintippen nur aus Microsoft-Konten, die sich schon angemeldet haben (Name, Adresse, Abteilung), ab 2 Zeichen, höchstens 8 Treffer, ohne Platzhalter-Tricks (`%`, `_` werden maskiert) |
+
+Bekannte Grenze: Das Portal kann nicht prüfen, ob die eingetragene Person wirklich die oder der Vorgesetzte ist. Wer eine befreundete Kollegin einträgt, bekommt deren Freigabe – sichtbar im Ticket mit Name und Adresse. Wo das nicht reicht, prüft die IT beim Bearbeiten des Tickets die Person im Vermerk.
 
 ## Lokale Anmeldung im Detail
 
@@ -215,6 +240,7 @@ active
 | Eigenentwicklung | OIDC, Sitzungen, CSRF, TOTP, Verschlüsselung sind selbst geschrieben (nur Node-Bordmittel, keine Laufzeit-Pakete) und bisher nur projektintern geprüft | vor dem breiten Einsatz unabhängigen Web-Pentest einplanen; Prüfliste in [GO-LIVE.md](GO-LIVE.md) |
 | Projektgröße | kleines Projekt, wenige Maintainer | eigenen Fork intern spiegeln, Verantwortlichen benennen, nur geprüfte signierte Tags installieren |
 | `node:sqlite` | in Node 22/24 noch als „experimentell“ markiert, aber stabil im Einsatz | bei Node-Updates die Testsuite laufen lassen (`tools/release.sh` macht das vor jedem Release) |
+| Freigabe durch Vorgesetzte | Die anfragende Person wählt die freigebende Person selbst; das Portal prüft nicht die Hierarchie in Entra | Vermerk im Ticket prüfen; für heikle Formulare „nur bekannte Personen“ einschalten; Liste der Freigaben im Audit-Log |
 | Interne CA von Caddy | Clients müssen dem Stammzertifikat vertrauen | Firmen-CA verwenden |
 
 ## Sicherheitsprobleme melden

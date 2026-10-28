@@ -17,6 +17,7 @@ Self-Service-Portal für IT-Abteilungen mit einem oder mehreren Zammad-Systemen:
 | Anmeldung | Microsoft Entra ID (SSO, mehrere Tenants mit Vertrauensstellung), lokale Konten mit generiertem Passwort für Start und Notfall, Zwei-Faktor-Anmeldung (Authenticator-App) für lokale Admins |
 | Mehrere Ticketsysteme | Beliebig viele Zammad-Instanzen; Benutzer wählen, wohin die Anfrage geht. Pro System eigene Formulare, Vorlagen, Übersichten, Farben und Logos |
 | Formulare | Editor mit Drag-and-Drop, Live-Vorschau, Pflichtfeldern, Prüfmustern, Sichtbarkeitsregeln, Feldern nur für bestimmte Gruppen, Datei-Uploads, Versionierung und optionalem Vier-Augen-Prinzip |
+| Freigabe durch Vorgesetzte | Formularfeld „Freigabe durch Vorgesetzte(n)“, z. B. für Hardware oder kostenpflichtige Software – auch nur unter Bedingungen. Die anfragende Person trägt die freigebende Person ein (mit Vorschlägen), die Anfrage wartet im Portal und geht erst nach der Freigabe ins Ticketsystem, mit Vermerk im Ticket. Ablehnen mit Begründung, Zurückziehen, andere Person wählen, Erinnerung und Ablauf nach Frist. Benachrichtigungen im Portal (Glocke) |
 | Zammad-Objekte | Ticket-Attribute aus dem Zammad-Objekt-Manager (z. B. `sec_status` als tree_select) werden gezielt freigegeben – inklusive Auswahl der erlaubten Werte – und erscheinen als Auswahlfelder |
 | Tickets | Ticket wird im Namen des Benutzers angelegt (`X-On-Behalf-Of` mit der Zammad-Kunden-ID), bekommt einen Portal-Tag, Gruppe, Priorität, Tags und freigegebene Attribute aus dem Formular – nur in **erlaubte Zammad-Gruppen**, Kernfelder wie Besitzer oder Status setzt nie ein Formular. Mitarbeitende sehen ihre Tickets in konfigurierbaren Übersichten, lesen den Verlauf ohne interne Notizen und ohne E-Mail-Adressen der Bearbeiter (auf Wunsch ganz ohne Namen) und können antworten |
 | Verwaltung | Rollen und Rechte global oder pro Ticketsystem (Entra-Gruppen, App-Rollen, Personen), Benutzerverwaltung, Audit-Log mit Hash-Kette, Zustellungsübersicht, Updates per Klick mit automatischem Rollback |
@@ -94,7 +95,7 @@ TypeScript auf Node.js 24 ohne externe Laufzeitpakete (HTTP, Krypto, SQLite und 
 ## Tests
 
 ```bash
-npm test                        # 202 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
+npm test                        # 216 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
 npm run typecheck
 node tools/loadtest.ts          # Lasttest: 50 Logins, 50 Ticketansichten, 20 Anfragen mit Anhang
 bash tools/secret-scan.sh       # vor jeder Veröffentlichung: keine Geheimnisse im Repository
@@ -107,6 +108,7 @@ bash tools/secret-scan.sh       # vor jeder Veröffentlichung: keine Geheimnisse
 | Sicherheit: lokale Anmeldung, Sperre, 2FA | 20 |
 | Review: Token-Prüfung im Detail, Schlüsselwechsel, JWKS-Erneuerung und Höchstalter | 33 |
 | Review: Zugriffe, Zammad-Felder und -Gruppen, Kundenzuordnung, SSRF-Schutz (inkl. IPv6 und TLS), Uploads, Backup/Restore, Zustellung, Step-up, Monitoring | 40 |
+| Freigabe durch Vorgesetzte: Ablauf, Rechte (404 für Fremde, keine Selbstfreigabe), Fristen, Benachrichtigungen, Migration | 14 |
 | Grundfunktionen, Ende-zu-Ende, Verwaltung, Stile, Updater | 45 |
 
 Die Tests starten Portal, Zammad- und Microsoft-Simulator im selben Prozess – es wird nichts weiter benötigt. Lasttest-Ergebnisse: [docs/LASTTEST.md](docs/LASTTEST.md).

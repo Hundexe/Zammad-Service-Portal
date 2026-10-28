@@ -13,6 +13,8 @@ import { ConnectorError, type TicketSummary } from '../connectors/types.ts';
 import type { FormDefinition } from '../../shared/form.ts';
 import { textToHtml } from '../../shared/template.ts';
 import { audit } from '../services/audit.ts';
+import { approvalDetail, approvalFile, approvalsOfRequests, decide, listForApprover, openCountForApprover, reassign, withdraw } from '../services/approvals.ts';
+import { listNotifications, markRead, markReadByLink, unreadCount } from '../services/notifications.ts';
 import { log } from '../log.ts';
 
 export const OVERVIEW_COLUMNS = ['number', 'title', 'state', 'priority', 'group', 'created_at', 'updated_at'] as const;
@@ -39,6 +41,19 @@ export function htmlToText(html: string): string {
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+/** Datei immer als Download senden, nie im Browser anzeigen; harmloser Typ verhindert Skriptausführung. */
+function sendDownload(ctx: AppCtx, filename: string, data: Buffer | Uint8Array): void {
+  const res = ctx.res;
+  res.statusCode = 200;
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="download"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+  res.setHeader('Content-Security-Policy', ASSET_CSP);
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Content-Length', data.length);
+  res.end(data);
+  ctx.responded = true;
 }
 
 export function registerPortalRoutes(router: Router, app: App): void {
@@ -108,13 +123,80 @@ export function registerPortalRoutes(router: Router, app: App): void {
     const def = resolveDefinition(parseJson<FormDefinition>(version.definition, { fields: [], settings: {} as any }), sys, meta, ctx.user!);
     const r = await submitRequest(app, ctx.user!, sys, form, version, def, { values, files });
     ticketCache.delete(`${sys.id}:${ctx.user!.id}`);
-    audit(app.db, { id: ctx.user!.id, name: ctx.user!.displayName, ip: ctx.ip }, { action: 'request.created', targetType: 'request', targetId: r.id, systemId: sys.id, details: { form: form.slug } });
-    return { created: true, id: r.id, title: r.title, successText: def.settings.successText ?? '' };
+    audit(app.db, actorOf(ctx), { action: 'request.created', targetType: 'request', targetId: r.id, systemId: sys.id, details: { form: form.slug } });
+    if (r.approval) audit(app.db, actorOf(ctx), { action: 'approval.requested', targetType: 'request', targetId: r.id, systemId: sys.id, details: { approver: r.approval.email } });
+    return {
+      created: true, id: r.id, title: r.title, successText: def.settings.successText ?? '',
+      approval: r.approval ? { email: r.approval.email, name: r.approval.name, known: r.approval.known } : null,
+    };
   });
+
+  const actorOf = (ctx: AppCtx) => ({ id: ctx.user!.id, name: ctx.user!.displayName, ip: ctx.ip });
 
   router.get('/api/portal/requests', user, (ctx: AppCtx) => {
     const names = new Map(listSystems(app).map((s) => [s.id, s.name]));
-    return { requests: requestsOfUser(app, ctx.user!.id).map((r) => ({ ...r, systemName: names.get(r.system_id) ?? '' })) };
+    const list = requestsOfUser(app, ctx.user!.id);
+    const approvals = approvalsOfRequests(app, list.map((r) => r.id));
+    return { requests: list.map((r) => ({ ...r, systemName: names.get(r.system_id) ?? '', approval: approvals.get(r.id) ?? null })) };
+  });
+
+  router.post('/api/portal/requests/:requestId/withdraw', user, (ctx: AppCtx) => {
+    withdraw(app, ctx.user!, actorOf(ctx), ctx.params.requestId);
+    ticketCache.clear();
+    return { ok: true };
+  });
+
+  router.post('/api/portal/requests/:requestId/approver', user, (ctx: AppCtx) => {
+    const c = reassign(app, ctx.user!, actorOf(ctx), ctx.params.requestId, (ctx.body as { email?: unknown })?.email);
+    return { ok: true, approval: { email: c.email, name: c.name, known: c.known } };
+  });
+
+  // ---------------------------------------------------------------- Freigaben durch Vorgesetzte
+  router.get('/api/portal/approvals', user, (ctx: AppCtx) => {
+    const which = ctx.query.get('status') === 'done' ? 'done' : 'open';
+    return { approvals: listForApprover(app, ctx.user!, which), open: openCountForApprover(app, ctx.user!) };
+  });
+
+  router.get('/api/portal/approvals/:approvalId', user, (ctx: AppCtx) => {
+    const d = approvalDetail(app, ctx.user!, ctx.params.approvalId);
+    markReadByLink(app, ctx.user!, `/freigaben/${d.approval.id}`);
+    return d;
+  });
+
+  router.post('/api/portal/approvals/:approvalId/approve', user, (ctx: AppCtx) => decide(app, ctx.user!, actorOf(ctx), ctx.params.approvalId, 'approve', (ctx.body as { comment?: unknown })?.comment));
+  router.post('/api/portal/approvals/:approvalId/reject', user, (ctx: AppCtx) => decide(app, ctx.user!, actorOf(ctx), ctx.params.approvalId, 'reject', (ctx.body as { comment?: unknown })?.comment));
+
+  router.get('/api/portal/approvals/:approvalId/files/:fileId', user, (ctx: AppCtx) => {
+    const file = approvalFile(app, ctx.user!, ctx.params.approvalId, ctx.params.fileId);
+    sendDownload(ctx, file.filename, file.data);
+  });
+
+  // Personen, die sich schon einmal mit Microsoft angemeldet haben – Vorschläge beim Eintippen
+  router.get('/api/portal/people', user, (ctx: AppCtx) => {
+    const q = (ctx.query.get('q') ?? '').trim().slice(0, 100);
+    if (q.length < 2) return { people: [] };
+    const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    const rows = app.db.all<{ display_name: string; email: string; department: string | null }>(
+      `SELECT display_name, email, department FROM users
+        WHERE kind = 'entra' AND disabled = 0 AND email IS NOT NULL AND id <> ?
+          AND (display_name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\')
+        ORDER BY display_name LIMIT 8`,
+      ctx.user!.id, like, like,
+    );
+    return { people: rows.map((r) => ({ name: r.display_name, email: r.email.toLowerCase(), department: r.department ?? '' })) };
+  });
+
+  // ---------------------------------------------------------------- Benachrichtigungen
+  router.get('/api/portal/notifications', user, (ctx: AppCtx) => ({
+    notifications: listNotifications(app, ctx.user!), unread: unreadCount(app, ctx.user!), approvalsOpen: openCountForApprover(app, ctx.user!),
+  }));
+
+  router.get('/api/portal/notifications/count', user, (ctx: AppCtx) => ({ unread: unreadCount(app, ctx.user!), approvalsOpen: openCountForApprover(app, ctx.user!) }));
+
+  router.post('/api/portal/notifications/read', user, (ctx: AppCtx) => {
+    const b = ctx.body as { ids?: unknown };
+    const ids = Array.isArray(b?.ids) ? b.ids.filter((x): x is string => typeof x === 'string') : undefined;
+    return { marked: markRead(app, ctx.user!, ids), unread: unreadCount(app, ctx.user!) };
   });
 
   router.get('/api/portal/systems/:systemId/overviews', user, (ctx: AppCtx) => {
@@ -177,7 +259,7 @@ export function registerPortalRoutes(router: Router, app: App): void {
     const keyMap: Record<string, keyof TicketSummary> = { created_at: 'createdAt', updated_at: 'updatedAt' };
     const k = keyMap[key] ?? key;
     filtered.sort((a, b) => String(a[k] ?? '').localeCompare(String(b[k] ?? ''), 'de', { numeric: true }) * (ov.sortDir === 'asc' ? 1 : -1));
-    const pending = requestsOfUser(app, ctx.user!.id, sys.id).filter((r) => r.status !== 'delivered');
+    const pending = requestsOfUser(app, ctx.user!.id, sys.id).filter((r) => ['awaiting_approval', 'queued', 'sending', 'failed'].includes(r.status));
     return { overview: ov, overviews, tickets: filtered, pending, unavailable };
   });
 
@@ -246,16 +328,7 @@ export function registerPortalRoutes(router: Router, app: App): void {
       return connectorError(err);
     }
     if (!file) throw new HttpError(404, 'Anhang nicht gefunden', 'not_found');
-    const res = ctx.res;
-    res.statusCode = 200;
-    // Immer als Download, nie im Browser anzeigen; harmloser Typ verhindert Skriptausführung.
-    res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="download"; filename*=UTF-8''${encodeURIComponent(file.filename)}`);
-    res.setHeader('Content-Security-Policy', ASSET_CSP);
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Length', file.data.length);
-    res.end(file.data);
-    ctx.responded = true;
+    sendDownload(ctx, file.filename, file.data);
   });
 
   // Logos und Favicons (öffentlich, auch für die Anmeldeseite)

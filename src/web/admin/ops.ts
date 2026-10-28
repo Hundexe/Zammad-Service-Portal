@@ -8,7 +8,7 @@ import { admin, loadAdminSystems } from './common.ts';
 export async function dashboardPage() {
   await loadAdminSystems();
   const d = await get<{
-    version: string; systems: { id: string; name: string; status: string }[]; requests7d: Record<string, number>; failed: number;
+    version: string; systems: { id: string; name: string; status: string }[]; requests7d: Record<string, number>; failed: number; awaitingApproval: number;
     pendingApprovals: { forms: { id: string; form_id: string; version: number; name: string; system_id: string }[]; branding: { id: string; system_id: string; version: number }[] };
     warnings: string[]; update: { latest_version: string | null; current_version: string | null; updater_seen_at: number | null } | null;
   }>('/api/admin/overview');
@@ -22,7 +22,8 @@ export async function dashboardPage() {
     d.warnings.length ? h('section', { class: 'panel' }, h('h2', null, 'Zu erledigen'), h('ul', { class: 'todo' }, ...d.warnings.map((w) => h('li', null, w)))) : null,
     h('div', { class: 'stats' },
       h('div', { class: 'stat' }, h('span', { class: 'stat-n' }, String(delivered)), h('span', null, 'Anfragen übermittelt (7 Tage)')),
-      h('div', { class: ['stat', waiting > 0 && 'stat-info'] }, h('span', { class: 'stat-n' }, String(waiting)), h('span', null, 'warten auf Zustellung')),
+      h('div', { class: ['stat', waiting > 0 && 'stat-info'] }, h('span', { class: 'stat-n' }, String(waiting)), h('span', null, 'warten auf Zustellung'),
+        d.awaitingApproval ? h('span', { class: 'small' }, link('/admin/zustellung?status=awaiting_approval', `außerdem ${d.awaitingApproval} bei Vorgesetzten zur Freigabe`)) : null),
       h('div', { class: ['stat', d.failed > 0 && 'stat-bad'] }, h('span', { class: 'stat-n' }, String(d.failed)), h('span', null, d.failed ? link('/admin/zustellung?status=failed', 'fehlgeschlagen') : 'fehlgeschlagen'))),
     approvals.length ? h('section', { class: 'panel' }, h('h2', null, 'Wartet auf Ihre Freigabe'),
       h('ul', { class: 'plain' }, ...approvals.map((a) => h('li', null, link(a.href, a.label), h('span', { class: 'muted' }, ` (${sysName(a.sys)})`))))) : null,
@@ -40,7 +41,8 @@ export async function deliveryPage(_p: Record<string, string>, q: URLSearchParam
   const r = await get<{ requests: { id: string; systemName: string; title: string; status: string; attempts: number; lastError: string | null; ticketNumber: string | null; createdAt: number; userName: string; nextAttemptAt: number; systemId: string }[] }>(`/api/admin/requests${status ? `?status=${status}` : ''}`);
   return h('div', null,
     pageHead('Zustellung', 'Anfragen auf dem Weg vom Portal nach Zammad'),
-    h('div', { class: 'row' }, select(status, [{ value: 'failed', label: 'Fehlgeschlagen' }, { value: 'queued', label: 'Wartend' }, { value: 'delivered', label: 'Übermittelt' }], (x) => navigate(`/admin/zustellung${x ? `?status=${x}` : ''}`), { empty: 'Alle' })),
+    h('div', { class: 'row' }, select(status, [{ value: 'failed', label: 'Fehlgeschlagen' }, { value: 'queued', label: 'Wartend' }, { value: 'delivered', label: 'Übermittelt' },
+      { value: 'awaiting_approval', label: 'Wartet auf Freigabe' }, { value: 'rejected', label: 'Abgelehnt' }, { value: 'withdrawn', label: 'Zurückgezogen' }, { value: 'expired', label: 'Abgelaufen' }], (x) => navigate(`/admin/zustellung${x ? `?status=${x}` : ''}`), { empty: 'Alle' })),
     table(r.requests, [
       { label: 'Gesendet', render: (x) => fmtDate(x.createdAt) },
       { label: 'Betreff', class: 'grow', render: (x) => h('span', null, x.title, h('br'), h('span', { class: 'muted small' }, `${x.userName}, ${x.systemName}`)) },
@@ -63,7 +65,9 @@ const ACTIONS: Record<string, string> = {
   'overview.created': 'Übersicht angelegt', 'overview.updated': 'Übersicht geändert', 'overview.deleted': 'Übersicht gelöscht',
   'branding.draft_saved': 'Branding-Entwurf', 'branding.published': 'Branding veröffentlicht', 'branding.submitted_for_approval': 'Branding zur Freigabe', 'branding.approved': 'Branding freigegeben', 'branding.rejected': 'Branding abgelehnt', 'asset.uploaded': 'Bild hochgeladen', 'settings.branding': 'Anmeldeseite geändert',
   'role.created': 'Rolle angelegt', 'role.updated': 'Rolle geändert', 'role.deleted': 'Rolle gelöscht', 'role.assigned': 'Rolle zugeordnet', 'role.unassigned': 'Zuordnung entfernt',
-  'request.created': 'Anfrage gesendet', 'request.retry': 'Erneut gesendet', 'ticket.reply': 'Antwort gesendet',
+  'request.created': 'Anfrage gesendet', 'request.retry': 'Erneut gesendet',
+  'approval.requested': 'Freigabe erbeten', 'approval.approved': 'Anfrage freigegeben', 'approval.rejected': 'Anfrage abgelehnt', 'approval.withdrawn': 'Anfrage zurückgezogen',
+  'approval.reassigned': 'Freigebende Person geändert', 'approval.expired': 'Freigabe abgelaufen', 'ticket.reply': 'Antwort gesendet',
   'update.requested': 'Update angefordert', 'update.check_requested': 'Update-Prüfung angefordert', 'audit.exported': 'Audit-Log exportiert',
 };
 

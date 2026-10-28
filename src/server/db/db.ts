@@ -70,10 +70,22 @@ export class Db {
       const version = Number.parseInt(f, 10);
       if (done.has(version)) continue;
       const sql = readFileSync(join(dir, f), 'utf8');
-      this.tx(() => {
-        this.raw.exec(sql);
-        this.run('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)', version, Date.now());
-      });
+      // Tabellen neu aufbauen (SQLite kann CHECK-Regeln nicht ändern): Fremdschlüssel dafür kurz aus,
+      // sonst löscht DROP TABLE abhängige Zeilen mit. Danach Zusammenhang prüfen.
+      const fkOff = /^-- foreign_keys=off\s*$/m.test(sql);
+      if (fkOff) this.raw.exec('PRAGMA foreign_keys = OFF');
+      try {
+        this.tx(() => {
+          this.raw.exec(sql);
+          if (fkOff) {
+            const broken = this.all('PRAGMA foreign_key_check');
+            if (broken.length) throw new Error(`Migration ${f}: ${broken.length} ungültige Verweise`);
+          }
+          this.run('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)', version, Date.now());
+        });
+      } finally {
+        if (fkOff) this.raw.exec('PRAGMA foreign_keys = ON');
+      }
       applied.push(version);
     }
     return applied;

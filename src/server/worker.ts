@@ -2,6 +2,8 @@
 import type { App } from './app.ts';
 import { deliverNext, purgeOld } from './services/requests.ts';
 import { purgeExpiredSessions } from './auth/sessions.ts';
+import { approvalHousekeeping } from './services/approvals.ts';
+import { purgeNotifications } from './services/notifications.ts';
 import { log, setLogLevel } from './log.ts';
 
 export function startWorker(app: App, intervalMs = 2000): () => void {
@@ -23,14 +25,17 @@ export function startWorker(app: App, intervalMs = 2000): () => void {
   };
   const housekeeping = () => {
     try {
+      approvalHousekeeping(app);
       const n = purgeOld(app);
       purgeExpiredSessions(app);
+      purgeNotifications(app);
       if (n) log.info('Alte Anfragedaten gelöscht', { anzahl: n });
     } catch (err) {
       log.error('Aufräumen fehlgeschlagen', { error: (err as Error).message });
     }
   };
   const t1 = setInterval(() => void tick(), intervalMs);
+  // Stündlich: Fristen der Freigaben, Aufbewahrung, Sitzungen
   const t2 = setInterval(housekeeping, 3600_000);
   housekeeping();
   void tick();

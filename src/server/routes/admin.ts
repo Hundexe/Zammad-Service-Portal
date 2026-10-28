@@ -167,6 +167,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
       systems: systems.map((s) => ({ id: s.id, name: s.name, status: s.status })),
       requests7d: Object.fromEntries(counts.map((c) => [c.status, c.n])),
       failed: app.db.get<{ n: number }>(`SELECT COUNT(*) n FROM requests WHERE status = 'failed' AND ${inSys('system_id')}`, ...ids)?.n ?? 0,
+      awaitingApproval: app.db.get<{ n: number }>(`SELECT COUNT(*) n FROM requests WHERE status = 'awaiting_approval' AND ${inSys('system_id')}`, ...ids)?.n ?? 0,
       pendingApprovals: { forms: pendingForms, branding: pendingBranding },
       warnings,
       update: upd,
@@ -267,6 +268,8 @@ export function registerAdminRoutes(router: Router, app: App): void {
     const s = sysOr404(ctx.params.systemId);
     const open = app.db.get<{ n: number }>("SELECT COUNT(*) n FROM requests WHERE system_id = ? AND status IN ('queued','sending')", s.id)!.n;
     if (open > 0) throw new HttpError(409, `Es warten noch ${open} Anfragen auf Zustellung`, 'conflict');
+    const awaiting = app.db.get<{ n: number }>("SELECT COUNT(*) n FROM requests WHERE system_id = ? AND status = 'awaiting_approval'", s.id)!.n;
+    if (awaiting > 0) throw new HttpError(409, `Es warten noch ${awaiting} Anfragen auf eine Freigabe durch Vorgesetzte`, 'conflict');
     app.db.tx(() => {
       app.db.run('DELETE FROM requests WHERE system_id = ?', s.id);
       app.db.run('DELETE FROM ticket_systems WHERE id = ?', s.id);
@@ -896,7 +899,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
     const status = ctx.query.get('status');
     const where: string[] = [];
     const params: string[] = [];
-    if (status && ['queued', 'sending', 'delivered', 'failed'].includes(status)) { where.push('r.status = ?'); params.push(status); }
+    if (status && ['awaiting_approval', 'queued', 'sending', 'delivered', 'failed', 'rejected', 'withdrawn', 'expired'].includes(status)) { where.push('r.status = ?'); params.push(status); }
     if (allowed) { where.push(`r.system_id IN (${allowed.map(() => '?').join(',')})`); params.push(...allowed); }
     const rows = app.db.all(
       `SELECT r.id, r.system_id AS systemId, s.name AS systemName, r.title, r.status, r.attempts, r.last_error AS lastError, r.ticket_number AS ticketNumber,

@@ -59,6 +59,28 @@ Benutzer          Portal (app)                       Worker                     
 - Ist Zammad nicht erreichbar oder im Wartungsmodus, bleibt die Anfrage in der Warteschlange. Der Worker versucht es mit wachsenden Abständen erneut (30 s … 1 h, bis zu 20 Versuche).
 - Nach der Zustellung werden Formularinhalt und Anhänge sofort aus dem Portal gelöscht. Titel und Ticketnummer bleiben für „Meine Anfragen“; nach einem Jahr wird auch das gelöscht.
 
+### Mit Freigabe durch Vorgesetzte
+
+Enthält das Formular ein sichtbares Feld „Freigabe durch Vorgesetzte(n)“, schiebt sich ein Schritt dazwischen:
+
+```
+Anfragende Person        Portal                                   Freigebende Person        Worker → Zammad
+   │ Formular + Adresse ─▶│ prüfen wie oben, Ticket fertig bauen,     │                          │
+   │                      │ verschlüsselt speichern                   │                          │
+   │                      │ Status awaiting_approval ─ Benachrichtigung ▶ Glocke, „Freigaben“    │
+   │◀ „Wartet auf Freigabe“│                                          │                          │
+   │                      │◀──────────────────────── Freigeben ───────│                          │
+   │                      │ Vermerk + Tag „freigegeben“ ins Ticket,   │                          │
+   │                      │ Status queued ───────────────────────────────────────────────────────▶│ zustellen wie oben
+   │◀─ Benachrichtigung ──│                                           │                          │
+   │                      │◀──────────────────────── Ablehnen ────────│  (Begründung Pflicht)    │
+   │◀─ Benachrichtigung ──│ Status rejected, Inhalt + Anhänge löschen │                          │
+```
+
+- Zustände von `requests`: `awaiting_approval` → `queued` → `sending` → `delivered` / `failed`, oder `awaiting_approval` → `rejected` / `withdrawn` (anfragende Person zieht zurück) / `expired` (Frist `APPROVAL_EXPIRE_DAYS`). Der Worker fasst nur `queued` an.
+- Der Worker prüft stündlich die Fristen: einmalige Erinnerung nach `APPROVAL_REMIND_DAYS`, Ablauf nach `APPROVAL_EXPIRE_DAYS`.
+- Benachrichtigungen (`src/server/services/notifications.ts`) landen in der Tabelle `notifications` und erscheinen an der Glocke. Ziel ist ein Konto oder – für Personen, die sich vielleicht noch nie angemeldet haben – eine E-Mail-Adresse. Weitere Kanäle hängen sich über `registerChannel()` an; heute gibt es nur den Posteingang im Portal.
+
 ## Zammad-Anbindung
 
 | Zweck | Endpunkt | Kopfzeile |
@@ -104,7 +126,7 @@ src/
     server.ts      zentrale Prüfungen (Sitzung, CSRF, Herkunft, Rechte, Step-up)
     http/          Router, Header, statische Dateien
     auth/          Sitzungen, OIDC (Entra), TOTP
-    services/      Audit, Rechte, Benutzer, Formulare, Anfragen, Dateien, Zammad-Stammdaten
+    services/      Audit, Rechte, Benutzer, Formulare, Anfragen, Freigaben, Benachrichtigungen, Dateien, Zammad-Stammdaten
     connectors/    Zammad-Anbindung
     routes/        API: auth, portal, admin
     db/            SQLite, Migrationen
@@ -128,8 +150,10 @@ deploy/            Docker Compose, Caddy, Installationsskript
 | `branding_versions`, `assets` | Stil, Farben und Texte versioniert, Logos |
 | `roles`, `role_assignments` | Rollen und deren Zuordnung zu Benutzern, Gruppen oder allen |
 | `requests`, `request_files` | Outbox (Inhalt verschlüsselt, Dateien verschlüsselt auf der Platte) |
+| `approvals` | Freigabe je Anfrage: Adresse der freigebenden Person, Status, Frist; Ansicht für die freigebende Person und Hinweis verschlüsselt |
+| `notifications` | Benachrichtigungen im Portal (an Konto oder E-Mail-Adresse), gelesen-Zeitpunkt; Löschung nach 90 Tagen |
 | `zammad_customers` | Zuordnung Benutzer → Kunden-ID je System |
 | `audit_log` | nur anhängbar, Hash-Kette |
 | `update_state`, `update_jobs` | Update-Status und Aufträge an den Updater |
 
-Alle Geheimnisse werden mit AES-256-GCM verschlüsselt. Für jeden Zweck (Token, TOTP, Anfrage, Upload, OIDC) wird per HKDF ein eigener Schlüssel aus dem Hauptschlüssel `SECRET_KEY` abgeleitet.
+Alle Geheimnisse werden mit AES-256-GCM verschlüsselt. Für jeden Zweck (Token, TOTP, Anfrage, Freigabe, Upload, OIDC) wird per HKDF ein eigener Schlüssel aus dem Hauptschlüssel `SECRET_KEY` abgeleitet.

@@ -78,6 +78,8 @@ export interface Config {
   /** Obergrenzen für Uploads (MB). Formulare können kleiner, aber nie größer einstellen. */
   upload: { maxFileMb: number; maxTotalMb: number };
   retentionDays: number;
+  /** Freigaben durch Vorgesetzte: Frist bis zum Verfall und Erinnerung (Tage, 0 = keine Erinnerung) */
+  approval: { expireDays: number; remindDays: number };
   /** Ratenbegrenzung: [Burst, Nachschub pro Sekunde] */
   rateLimits: { api: [number, number]; write: [number, number]; login: [number, number] };
   allowPrivateTicketUrls: boolean;
@@ -150,6 +152,10 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
       maxTotalMb: range('UPLOAD_MAX_TOTAL_MB', 25, 1, 25, errors),
     },
     retentionDays: range('RETENTION_DAYS', 30, 1, 3650, errors),
+    approval: {
+      expireDays: range('APPROVAL_EXPIRE_DAYS', 14, 1, 90, errors),
+      remindDays: range('APPROVAL_REMIND_DAYS', 3, 0, 89, errors),
+    },
     rateLimits: {
       api: [range('RATE_LIMIT_API_BURST', 240, 20, 100000, errors), 4],
       write: [range('RATE_LIMIT_WRITE_BURST', 60, 5, 100000, errors), 1],

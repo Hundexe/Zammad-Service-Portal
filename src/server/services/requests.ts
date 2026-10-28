@@ -14,6 +14,7 @@ import { allowedGroups, connectorFor, getSystem, type SystemRow } from './system
 import { releasedAttributes } from './metadata.ts';
 import type { FormRow, FormVersionRow } from './forms.ts';
 import { ConnectorError, type CustomerRef } from '../connectors/types.ts';
+import { approverFor, buildSummary, insertApproval, notifyRequested, type ApproverChoice } from './approvals.ts';
 
 export interface TicketPayload {
   title: string;
@@ -104,7 +105,7 @@ export interface SubmitInput { values: FormValues; files: Record<string, Incomin
 
 export async function submitRequest(
   app: App, user: AuthUser, sys: SystemRow, form: FormRow, version: FormVersionRow, def: FormDefinition, input: SubmitInput,
-): Promise<{ id: string; title: string }> {
+): Promise<{ id: string; title: string; approval: ApproverChoice | null }> {
   // Dateien: zuerst nur Metadaten für die Formularprüfung
   const values: FormValues = { ...(input.values ?? {}) };
   const fileFields = def.fields.filter((f) => f.type === 'file');
@@ -119,6 +120,8 @@ export async function submitRequest(
   }
   const result = validateSubmission(def, values);
   if (!result.ok) throw new HttpError(422, 'Bitte die markierten Felder prüfen', 'validation', result.errors);
+  // Freigabe durch Vorgesetzte nötig? Dann bleibt die Anfrage bis zur Entscheidung im Portal.
+  const approval = approverFor(app, user, def, result.values);
 
   // Dateien inhaltlich prüfen (Typ, Virenscan)
   const checked: { fieldId: string; file: CheckedFile }[] = [];
@@ -144,12 +147,15 @@ export async function submitRequest(
   }
   const payload = buildTicket(sys, form, def, result.values, user, id);
   const t = Date.now();
+  let approvalId: string | null = null;
   app.db.tx(() => {
     app.db.run(
-      `INSERT INTO requests (id, user_id, system_id, form_id, form_version_id, title, payload, status, attempts, next_attempt_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?)`,
-      id, user.id, sys.id, form.id, version.id, payload.title, app.box.encrypt('request', JSON.stringify(payload)), t, t,
+      `INSERT INTO requests (id, user_id, system_id, form_id, form_version_id, title, payload, status, attempts, next_attempt_at, created_at, queued_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+      id, user.id, sys.id, form.id, version.id, payload.title, app.box.encrypt('request', JSON.stringify(payload)),
+      approval ? 'awaiting_approval' : 'queued', t, t, approval ? null : t,
     );
+    if (approval) approvalId = insertApproval(app, id, approval, buildSummary(def, result.values, user, form.name, sys.name));
     for (const c of checked) {
       const fileId = uuid();
       app.db.run(
@@ -159,7 +165,8 @@ export async function submitRequest(
       storeFile(app, id, fileId, c.file.data);
     }
   });
-  return { id, title: payload.title };
+  if (approvalId) notifyRequested(app, approvalId);
+  return { id, title: payload.title, approval };
 }
 
 // ---------------------------------------------------------------- Zustellung
@@ -280,7 +287,7 @@ export function purgeOld(app: App): number {
     removeRequestFiles(app, r.id);
   }
   // Einträge ganz entfernen, wenn sie älter als ein Jahr sind
-  app.db.run('DELETE FROM requests WHERE created_at < ? AND status IN (\'delivered\', \'failed\')', Date.now() - 365 * 86400_000);
+  app.db.run("DELETE FROM requests WHERE created_at < ? AND status IN ('delivered', 'failed', 'rejected', 'withdrawn', 'expired')", Date.now() - 365 * 86400_000);
   return rows.length;
 }
 

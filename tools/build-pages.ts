@@ -49,7 +49,10 @@ try {
   demo.app.db.run("INSERT INTO role_assignments (id, role_id, subject_type, subject_value, system_id, created_at) VALUES (?, ?, 'user', ?, NULL, ?)", uuid(), superAdmin.id, alex.id, Date.now());
 
   // Alle erreichbaren Seiten besuchen (Breitensuche über interne Links und Reiter)
-  const queue = ['/', '/anfragen', '/konto', '/admin', '/admin/zustellung?status=failed', '/admin/zustellung?status=queued', '/admin/zustellung?status=delivered'];
+  // Personenvorschläge für das Freigabe-Feld einmal aufzeichnen (die Demo filtert sie im Browser)
+  await page.evaluate(() => fetch('/api/portal/people?q=example').then((r) => r.text()));
+  await page.evaluate(() => fetch('/api/portal/notifications').then((r) => r.text()));
+  const queue = ['/', '/anfragen', '/freigaben', '/freigaben?ansicht=erledigt', '/konto', '/admin', '/admin/zustellung?status=awaiting_approval', '/admin/zustellung?status=failed', '/admin/zustellung?status=queued', '/admin/zustellung?status=delivered'];
   const seen = new Set(queue);
   let visited = 0;
   while (queue.length && visited < MAX_PAGES) {

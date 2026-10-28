@@ -16,7 +16,7 @@ interface Released { name: string; display: string; type: string; portalType: st
 
 const TYPE_LABEL: Record<string, string> = {
   text: 'Text', textarea: 'Mehrzeiliger Text', email: 'E-Mail', number: 'Zahl', date: 'Datum', checkbox: 'Kästchen (Ja/Nein)',
-  select: 'Auswahl', multiselect: 'Mehrfachauswahl', file: 'Datei-Upload', info: 'Hinweistext', zammad: 'Zammad-Objekt',
+  select: 'Auswahl', multiselect: 'Mehrfachauswahl', file: 'Datei-Upload', info: 'Hinweistext', approver: 'Freigabe durch Vorgesetzte(n)', zammad: 'Zammad-Objekt',
 };
 const FILE_LABEL: Record<string, string> = { pdf: 'PDF', image: 'Bilder', office: 'Office-Dokumente', text: 'Text/CSV' };
 const MAP_LABEL: Record<string, string> = { article: 'Nur im Tickettext', tag: 'Als Tag', group: 'Bestimmt die Gruppe', priority: 'Bestimmt die Priorität', zammad_field: 'In Zammad-Feld schreiben', none: 'Nicht übernehmen', title: 'Nur für den Titel' };
@@ -215,6 +215,13 @@ export async function formEditorPage(p: Record<string, string>) {
             f = { id: slugify(label, taken), type: newType as FieldType, label, mapping: { target: 'article' } };
             if (newType === 'select' || newType === 'multiselect') f.options = [{ value: 'option_1', label: 'Option 1' }, { value: 'option_2', label: 'Option 2' }];
             if (newType === 'file') { f.maxFiles = 3; f.maxSizeMb = 10; }
+            if (newType === 'approver') {
+              if (def.fields.some((x) => x.type === 'approver')) { mount(msg, notice('error', 'Ein Formular kann nur ein Freigabe-Feld haben.')); return; }
+              f.label = 'Wer gibt die Anfrage frei?';
+              f.id = slugify('freigabe', taken);
+              f.help = 'E-Mail-Adresse Ihrer bzw. Ihres Vorgesetzten. Die Anfrage geht erst nach der Freigabe an die IT.';
+              f.placeholder = 'vorname.nachname@…';
+            }
           }
           def.fields.push(f);
           selected = f.id;
@@ -238,7 +245,7 @@ export async function formEditorPage(p: Record<string, string>) {
     const upd = (fn: () => void, redraw = false) => { fn(); markDirty(); if (redraw) draw(); else drawPreview(); };
     const taken = new Set(def.fields.filter((x) => x !== f).map((x) => x.id));
     const attr = f.type === 'zammad' ? released.find((r) => r.name === f.attribute) : undefined;
-    const others = def.fields.filter((x) => x !== f && x.type !== 'info' && x.type !== 'file');
+    const others = def.fields.filter((x) => x !== f && x.type !== 'info' && x.type !== 'file' && x.type !== 'approver');
     const rule = f.visibleIf;
     const items: Child[] = [
       h('h2', null, 'Eigenschaften'),
@@ -252,10 +259,16 @@ export async function formEditorPage(p: Record<string, string>) {
       })), { label: 'Feld-ID', help: 'Für Vorlagen: {{' + f.id + '}}. Nur a–z, 0–9, _.' }) : null,
       fieldWrap(textarea(f.help ?? '', (x) => upd(() => { f.help = x || undefined; }), { rows: 2 }), { label: f.type === 'info' ? 'Text' : 'Hilfetext' }),
     ];
-    if (f.type !== 'info') {
+    if (f.type === 'approver') {
+      items.push(notice('info', 'Die anfragende Person gibt hier ihre Vorgesetzte bzw. ihren Vorgesetzten an. Die Anfrage wartet im Portal, bis diese Person sie unter „Freigaben“ freigibt – erst dann landet sie im Ticketsystem. Bei Ablehnung oder ohne Entscheidung wird sie gelöscht.'),
+        checkbox(f.knownOnly === true, 'Nur Personen, die sich schon im Portal angemeldet haben', (x) => upd(() => { f.knownOnly = x || undefined; }),
+          'Schützt vor Tippfehlern und erfundenen Adressen. Wer sich noch nie angemeldet hat, kann dann nicht gewählt werden.'),
+        h('p', { class: 'small muted' }, 'Das Feld ist immer Pflicht, sobald es sichtbar ist. Mit „Nur anzeigen, wenn …“ lässt sich die Freigabe auf bestimmte Fälle beschränken, z. B. nur bei teurer Hardware.'));
+    }
+    if (f.type !== 'info' && f.type !== 'approver') {
       items.push(checkbox(Boolean(f.required), 'Pflichtfeld', (x) => upd(() => { f.required = x || undefined; })));
     }
-    if (['text', 'textarea', 'email', 'number'].includes(f.type)) {
+    if (['text', 'textarea', 'email', 'number', 'approver'].includes(f.type)) {
       items.push(fieldWrap(input(f.placeholder ?? '', (x) => upd(() => { f.placeholder = x || undefined; })), { label: 'Platzhalter' }));
     }
     if (['text', 'textarea', 'email', 'select', 'date'].includes(f.type)) {
@@ -311,8 +324,9 @@ export async function formEditorPage(p: Record<string, string>) {
     }
     if (f.type !== 'info' && f.type !== 'zammad') {
       const m = f.mapping ?? { target: 'article' as const };
+      const targets = Object.entries(MAP_LABEL).filter(([k]) => f.type !== 'approver' || k === 'article' || k === 'none');
       items.push(h('details', { class: 'more', attrs: { open: m.target !== 'article' || undefined } }, h('summary', null, 'Übernahme ins Ticket'),
-        fieldWrap(select(m.target, Object.entries(MAP_LABEL).map(([value, label]) => ({ value, label })), (x) => upd(() => { f.mapping = { ...m, target: x as typeof m.target }; }, true)), { label: 'Verwendung', help: 'Alle Felder stehen außerdem im Tickettext ({{alle_felder}}), außer „Nicht übernehmen“.' }),
+        fieldWrap(select(m.target, targets.map(([value, label]) => ({ value, label })), (x) => upd(() => { f.mapping = { ...m, target: x as typeof m.target }; }, true)), { label: 'Verwendung', help: 'Alle Felder stehen außerdem im Tickettext ({{alle_felder}}), außer „Nicht übernehmen“.' }),
         m.target === 'zammad_field' ? fieldWrap(input(m.name ?? '', (x) => upd(() => { f.mapping = { ...m, name: x }; })), { label: 'Name des Zammad-Feldes' }) : null,
         ['tag', 'group', 'priority', 'zammad_field'].includes(m.target) && (f.options?.length) ? fieldWrap(textarea(Object.entries(m.valueMap ?? {}).map(([k, v]) => `${k} = ${v}`).join('\n'), (x) => upd(() => {
           const map: Record<string, string> = {};

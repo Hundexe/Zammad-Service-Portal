@@ -54,6 +54,7 @@ node --test test/flow.test.ts     # einzelne Datei
 | `test/security-local-login.test.ts` | lokale Anmeldung: Sperre, 2FA-Pflicht, Rechteausweitung |
 | `test/updater.test.ts` | Updater mit simuliertem Git/Docker inkl. Rollback |
 | `test/review-oidc.test.ts` | Review 2026-10, #2: Einzelprüfungen des ID-Tokens mit selbst signierten Tokens |
+| `test/approvals.test.ts` | Freigabe durch Vorgesetzte: Ablauf, Rechte, Fristen, Benachrichtigungen, Migration 004 |
 | `test/review.test.ts` | Review 2026-10, #3–#13: IDOR, Zammad-Felder und -Gruppen, Kundenzuordnung, SSRF-Guard, Uploads, Backup/Restore, Outbox, Step-up, Monitoring |
 
 Die Tests starten das Portal, den Zammad- und den Entra-Simulator im selben Prozess; es wird nichts weiter benötigt.

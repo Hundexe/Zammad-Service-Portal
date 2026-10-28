@@ -184,7 +184,7 @@ async function main(): Promise<void> {
         if (flag('json')) console.log(JSON.stringify(r));
         else {
           console.log(`Version:     ${r.version}`);
-          console.log(`Zustellung:  ${r.outbox.queued} wartend, ${r.outbox.sending} in Arbeit, ${r.outbox.failed} fehlgeschlagen, ${r.outbox.deliveredLast24h} zugestellt (24 h)`);
+          console.log(`Zustellung:  ${r.outbox.queued} wartend, ${r.outbox.sending} in Arbeit, ${r.outbox.failed} fehlgeschlagen, ${r.outbox.deliveredLast24h} zugestellt (24 h), ${r.outbox.awaitingApproval} warten auf Freigabe`);
           console.log(`Älteste:     ${r.outbox.oldestQueuedMinutes === null ? '–' : `${r.outbox.oldestQueuedMinutes} min`}`);
           console.log(`Scanner:     ${r.scanner.message}`);
           console.log(`Microsoft:   ${r.entra.message}`);
