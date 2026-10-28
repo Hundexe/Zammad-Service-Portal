@@ -1,5 +1,9 @@
 # Änderungen
 
+## 1.4.3 – 28.10.2026
+
+- „Abbrechen“ im Anfrageformular ist jetzt eine Schaltfläche in gleicher Größe neben „Anfrage senden“ statt eines Links
+
 ## 1.4.2 – 28.10.2026
 
 - Bedienelemente verhalten sich wie in einer App: Schaltflächen, Navigation, Benutzermenü, Reiter, Formular-Kacheln und Seitenleiste lassen sich nicht mehr versehentlich markieren, Links und Bilder nicht mehr wegziehen (kein Drag-Bild mit Adresse). Tickettexte, Tabellen, Eingabefelder, Ticketnummern und Passwort-Anzeigen bleiben markier- und kopierbar; das Verschieben von Feldern im Formular-Editor funktioniert weiter

@@ -137,7 +137,7 @@ export async function formPage(p: Record<string, string>) {
   } } },
     form.el,
     msg,
-    h('div', { class: 'form-actions' }, submit, link(`/s/${sys?.id ?? data.system.id}`, 'Abbrechen')),
+    h('div', { class: 'form-actions' }, submit, h('a', { class: ['btn', 'btn-secondary'], attrs: { href: `/s/${sys?.id ?? data.system.id}`, 'data-link': '' } }, 'Abbrechen')),
   );
   // Sammelhinweis verschwindet, sobald korrigiert wird
   el.addEventListener('input', () => { if (msg.firstChild) mount(msg); });
