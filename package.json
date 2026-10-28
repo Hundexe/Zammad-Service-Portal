@@ -1,6 +1,6 @@
 {
   "name": "zammad-service-portal",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "private": true,
   "description": "Self-Service-Portal für Zammad: Anfragen über Formulare, Tickets per Zammad-API, Anmeldung über Microsoft Entra ID.",
   "type": "module",

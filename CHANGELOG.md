@@ -1,5 +1,9 @@
 # Änderungen
 
+## 1.6.3 – 28.10.2026
+
+- Fehlermeldung bei nicht freigegebenen Zammad-Objekten (Editor und „Aus Datei übernehmen“) sagt jetzt, wo man sie freigibt
+
 ## 1.6.2 – 28.10.2026
 
 - **Formulare und Vorlagen exportieren:** **In Datei exportieren** unter **Formulare** und unter **Vorlagen** lädt alle Formulare (veröffentlichte Version) und Vorlagen des Ticketsystems als JSON herunter – im Format, das **Aus Datei übernehmen …** liest. So lassen sie sich zwischen Ticketsystemen und Portalen übertragen, ohne gleich alles zu ersetzen

@@ -417,7 +417,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
     const d = def as FormDefinition;
     if (!problems.length) {
       const released = new Set(releasedAttributes(s).map((a) => a.name));
-      for (const f of d.fields) if (f.type === 'zammad' && !released.has(f.attribute!)) problems.push(`Feld „${f.label}“: Zammad-Attribut „${f.attribute}“ ist nicht freigegeben`);
+      for (const f of d.fields) if (f.type === 'zammad' && !released.has(f.attribute!)) problems.push(`Feld „${f.label}“: Zammad-Attribut „${f.attribute}“ ist nicht freigegeben – unter „Zammad-Objekte“ freigeben oder ein normales Auswahlfeld nehmen`);
       // Freie Zuordnung in Zammad-Felder nur in freigegebene Attribute
       for (const f of d.fields) {
         if (f.mapping?.target === 'zammad_field' && f.mapping.name && !released.has(f.mapping.name)) problems.push(`Feld „${f.label}“: Zammad-Feld „${f.mapping.name}“ ist nicht freigegeben (Ticketsystem → Zammad-Felder)`);
