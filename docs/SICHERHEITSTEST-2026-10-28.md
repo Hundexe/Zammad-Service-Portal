@@ -6,7 +6,7 @@
 | Datum | 28.10.2026 (über Nacht) |
 | Umfang | gesamter Quellcode (Server, Oberfläche, Updater, Installer, Deployment), laufende Instanz im Produktionsmodus hinter Caddy mit TLS |
 | Schwerpunkt | alles, was seit dem [letzten Pentest](PENTEST.md) dazugekommen ist: Freigabe durch Vorgesetzte, Benachrichtigungen, Personensuche, Export/Import, Formulare und Vorlagen aus Datei, Abbrechen durch Admins, neue Ticketliste, Navigationslinks, Update-Dienst ohne Docker |
-| Ergebnis | **1 kritischer Fund (bereits behoben), 1 hoch, 7 mittel, 19 niedrig, 7 Info.** Alle Funde ab „Niedrig“ sind mit einem Test nachgestellt; Ausnahmen sind in der Tabelle markiert. Für jeden offenen Fund gibt es ein Issue. |
+| Ergebnis | **1 kritischer Fund (bereits behoben), 1 hoch, 7 mittel, 19 niedrig, 7 Info.** Alle Funde ab „Niedrig“ sind mit einem Test nachgestellt; Ausnahmen sind in der Tabelle markiert. Für jeden offenen Fund gibt es ein Issue (#16 bis #43, Info-Punkte gesammelt in #43). |
 
 > **Einordnung:** Der Test lief in einer Testumgebung mit Simulatoren für Zammad, Microsoft Entra ID und ClamAV. Er ersetzt keinen unabhängigen Pentest gegen die echte Installation (siehe [GO-LIVE.md](GO-LIVE.md)). Die Beschreibungen hier und in den Issues nennen Ursache, Auswirkung und Behebung, aber keine fertigen Angriffsskripte.
 
@@ -26,40 +26,40 @@ Der **kritische Fund ST-01** steckte im Update-Dienst ohne Docker, der erst am 2
 
 | ID | Schwere | Fund | Status |
 | --- | --- | --- | --- |
-| ST-01 | **Kritisch** | Update-Dienst (ohne Docker, root) folgte beim Übereignen von Dateien im Datenverzeichnis symbolischen Links → Rechteausweitung vom Dienstbenutzer zu root | **behoben in 1.8.1** |
-| ST-02 | **Hoch** (bei mehreren Tenants, sonst Mittel) | E-Mail aus Entra ist ungeprüft und nicht eindeutig, entscheidet aber über Ticketzugriff und Freigaben | offen |
-| ST-03 | Mittel | Admin für ein Ticketsystem leitet das gespeicherte Zammad-Token durch Ändern der Adresse auf einen eigenen Server um (auch per Import) | offen |
-| ST-04 | Mittel | Ein großer JSON-Request (bis 40 MB) eines beliebigen Benutzers bringt den Prozess zum Absturz bzw. blockiert ihn ~19 s; gleichzeitige Uploads erschöpfen den Speicher | offen |
-| ST-05 | Mittel | ReDoS: Prüfmuster im Formular laufen ohne Zeitlimit; ein harmlos aussehendes Muster blockiert das Portal für alle | offen |
-| ST-06 | Mittel | Wer nur „Benutzer verwalten“ hat, legt ein lokales Konto mit der Adresse einer Person an, die noch nie im Portal war, und sieht deren Tickets und Freigaben | offen |
-| ST-07 | Mittel | Selbstfreigabe über ein eigenes Zweitkonto; jedes Konto kann als freigebende Person eingetragen werden | offen |
-| ST-08 | Mittel | Vier-Augen-Prinzip: Name, Beschreibung, sichtbare Gruppen und Aktiv-Status eines Formulars gehen ohne Freigabe live | offen |
-| ST-09 | Mittel | systemd-Unit des Update-Dienstes (root) ohne jede Härtung | offen |
-| ST-10 | Niedrig | Abbruch beim Lesen der Zammad-Antwort → Anfrage sofort „fehlgeschlagen“, „Erneut senden“ legt ein zweites Ticket an | offen |
-| ST-11 | Niedrig | `?` oder `#` am Ende der Zammad-Adresse umgeht die Prüfung „ohne Parameter“ → Pfad interner Aufrufe frei wählbar | offen |
-| ST-12 | Niedrig | `ALLOW_PRIVATE_TICKET_URLS` ist im Docker-Stack fest `true`, die Doku sagt, man könne es abschalten | offen |
-| ST-13 | Niedrig | Löschen eines Ticketsystems (auch per Import) lässt verschlüsselte Uploads fehlgeschlagener Anfragen dauerhaft liegen | offen |
-| ST-14 | Niedrig | Titel, Ablehnungs- und Abbruchgrund liegen im Klartext in der Datenbank (Anfragen, Benachrichtigungen, Audit-Log) | offen |
-| ST-15 | Niedrig | Sicherungen mit Dateirechten 0644; Sicherungen vor Updates werden nie gelöscht | offen |
-| ST-16 | Niedrig | Umwandlung von Zammad-HTML in Text mit quadratischer Laufzeit (präparierter Artikel blockiert das Portal) | offen, Weg über echtes Zammad nicht geprüft |
-| ST-17 | Niedrig | SVG-Logo-Filter per Namespace-Präfix und Entities umgehbar; nur die Sandbox-CSP verhindert XSS | offen |
-| ST-18 | Niedrig | Text-Vorlagen gehen als ungefiltertes HTML ins Ticket; Platzhalter in Attributen (`href="{{feld}}"`) erlauben `javascript:`-Links | offen, Wirkung in Zammad nicht geprüft |
-| ST-19 | Niedrig | Rate-Limiter: Aufräumen kostet ab 50 000 Adressen bei jedem Request O(n), keine Obergrenze, IPv6 je Adresse | offen, Angriff übers Netz nicht geprüft |
-| ST-20 | Niedrig | Step-up und Passwortwechsel: derselbe TOTP-Code wird bei parallelen Requests zweimal angenommen; Sperre greift verspätet | offen |
-| ST-21 | Niedrig | 2FA einrichten ohne erneute Bestätigung (übernommene Sitzung sperrt den Inhaber aus) | offen |
-| ST-22 | Niedrig | Step-up über Entra: ohne `auth_time` gilt eine stille SSO-Anmeldung als Bestätigung | offen, gegen echtes Entra nicht geprüft |
-| ST-23 | Niedrig | Personensuche ohne Recht `portal.use`, auch für lokale Konten; mit Zwei-Zeichen-Suchen sind Name, E-Mail und Abteilung aller Microsoft-Konten im Portal abrufbar | offen |
-| ST-24 | Niedrig | „Tickets der Organisation anzeigen“ erlaubt auch Antworten in fremde Tickets | offen |
-| ST-25 | Niedrig | Freigabefrist durch Umtragen beliebig verlängerbar; Benachrichtigungen an frei gewählte Adressen | offen |
-| ST-26 | Niedrig | Audit-Lücken: Vorlagen-Änderungen über den Formular-Import, Veröffentlichen per Import, Verbindungstest | offen |
-| ST-27 | Niedrig | Lieferkette: Signaturschlüssel per Trust-on-first-use aus dem Repository, Node.js-Download nur mit Prüfsumme aus derselben Quelle | offen |
-| ST-28 | Niedrig | `SECURITY.md` verweist auf „Report a vulnerability“, die private Meldung von Schwachstellen ist im Repository aber nicht eingeschaltet | offen |
-| ST-29 | Info | JSON-Body `null` führt auf 13 Routen (auch Login) zu 500 statt 400 | offen |
-| ST-30 | Info | Härtung im Frontend und bei Werten: URL-Filter in `h()` mit Steuerzeichen umgehbar (heute nicht erreichbar), `valueMap`-Zugriff auf Prototyp-Schlüssel | offen |
-| ST-31 | Info | Kryptografie: kurze GCM-Tags werden akzeptiert, AAD ohne Datensatzbezug, keine Schlüsselrotation; `scryptSync` beim Transfer blockiert | offen |
-| ST-32 | Info | Kleinere Punkte bei der Anmeldung: Version auf `/readyz`, Rechte-Auskunft im Zustand `mfa_pending`, Entra-Limit je IP bei geteilten Adressen, Transaktions-Cookie mehrfach verwendbar, `amr` ungeprüft | offen |
-| ST-33 | Info | Docker-Socket-Proxy des Updaters mit weitreichenden Rechten (Container anlegen) | offen |
-| ST-34 | Info | Tag „freigegeben“ nicht reserviert; Ziel-Admin kann das Vier-Augen-Prinzip für sein System selbst abschalten | offen |
+| ST-01 | **Kritisch** | Update-Dienst (ohne Docker, root) folgte beim Übereignen von Dateien im Datenverzeichnis symbolischen Links → Rechteausweitung vom Dienstbenutzer zu root | **behoben in 1.8.1** (#15) |
+| ST-02 | **Hoch** (bei mehreren Tenants, sonst Mittel) | E-Mail aus Entra ist ungeprüft und nicht eindeutig, entscheidet aber über Ticketzugriff und Freigaben | offen (#16) |
+| ST-03 | Mittel | Admin für ein Ticketsystem leitet das gespeicherte Zammad-Token durch Ändern der Adresse auf einen eigenen Server um (auch per Import) | offen (#17) |
+| ST-04 | Mittel | Ein großer JSON-Request (bis 40 MB) eines beliebigen Benutzers bringt den Prozess zum Absturz bzw. blockiert ihn ~19 s; gleichzeitige Uploads erschöpfen den Speicher | offen (#18) |
+| ST-05 | Mittel | ReDoS: Prüfmuster im Formular laufen ohne Zeitlimit; ein harmlos aussehendes Muster blockiert das Portal für alle | offen (#19) |
+| ST-06 | Mittel | Wer nur „Benutzer verwalten“ hat, legt ein lokales Konto mit der Adresse einer Person an, die noch nie im Portal war, und sieht deren Tickets und Freigaben | offen (#20) |
+| ST-07 | Mittel | Selbstfreigabe über ein eigenes Zweitkonto; jedes Konto kann als freigebende Person eingetragen werden | offen (#21) |
+| ST-08 | Mittel | Vier-Augen-Prinzip: Name, Beschreibung, sichtbare Gruppen und Aktiv-Status eines Formulars gehen ohne Freigabe live | offen (#22) |
+| ST-09 | Mittel | systemd-Unit des Update-Dienstes (root) ohne jede Härtung | offen (#23) |
+| ST-10 | Niedrig | Abbruch beim Lesen der Zammad-Antwort → Anfrage sofort „fehlgeschlagen“, „Erneut senden“ legt ein zweites Ticket an | offen (#24) |
+| ST-11 | Niedrig | `?` oder `#` am Ende der Zammad-Adresse umgeht die Prüfung „ohne Parameter“ → Pfad interner Aufrufe frei wählbar | offen (#25) |
+| ST-12 | Niedrig | `ALLOW_PRIVATE_TICKET_URLS` ist im Docker-Stack fest `true`, die Doku sagt, man könne es abschalten | offen (#26) |
+| ST-13 | Niedrig | Löschen eines Ticketsystems (auch per Import) lässt verschlüsselte Uploads fehlgeschlagener Anfragen dauerhaft liegen | offen (#27) |
+| ST-14 | Niedrig | Titel, Ablehnungs- und Abbruchgrund liegen im Klartext in der Datenbank (Anfragen, Benachrichtigungen, Audit-Log) | offen (#28) |
+| ST-15 | Niedrig | Sicherungen mit Dateirechten 0644; Sicherungen vor Updates werden nie gelöscht | offen (#29) |
+| ST-16 | Niedrig | Umwandlung von Zammad-HTML in Text mit quadratischer Laufzeit (präparierter Artikel blockiert das Portal) | offen, Weg über echtes Zammad nicht geprüft (#30) |
+| ST-17 | Niedrig | SVG-Logo-Filter per Namespace-Präfix und Entities umgehbar; nur die Sandbox-CSP verhindert XSS | offen (#31) |
+| ST-18 | Niedrig | Text-Vorlagen gehen als ungefiltertes HTML ins Ticket; Platzhalter in Attributen (`href="{{feld}}"`) erlauben `javascript:`-Links | offen, Wirkung in Zammad nicht geprüft (#32) |
+| ST-19 | Niedrig | Rate-Limiter: Aufräumen kostet ab 50 000 Adressen bei jedem Request O(n), keine Obergrenze, IPv6 je Adresse | offen, Angriff übers Netz nicht geprüft (#33) |
+| ST-20 | Niedrig | Step-up und Passwortwechsel: derselbe TOTP-Code wird bei parallelen Requests zweimal angenommen; Sperre greift verspätet | offen (#34) |
+| ST-21 | Niedrig | 2FA einrichten ohne erneute Bestätigung (übernommene Sitzung sperrt den Inhaber aus) | offen (#35) |
+| ST-22 | Niedrig | Step-up über Entra: ohne `auth_time` gilt eine stille SSO-Anmeldung als Bestätigung | offen, gegen echtes Entra nicht geprüft (#36) |
+| ST-23 | Niedrig | Personensuche ohne Recht `portal.use`, auch für lokale Konten; mit Zwei-Zeichen-Suchen sind Name, E-Mail und Abteilung aller Microsoft-Konten im Portal abrufbar | offen (#37) |
+| ST-24 | Niedrig | „Tickets der Organisation anzeigen“ erlaubt auch Antworten in fremde Tickets | offen (#38) |
+| ST-25 | Niedrig | Freigabefrist durch Umtragen beliebig verlängerbar; Benachrichtigungen an frei gewählte Adressen | offen (#39) |
+| ST-26 | Niedrig | Audit-Lücken: Vorlagen-Änderungen über den Formular-Import, Veröffentlichen per Import, Verbindungstest | offen (#40) |
+| ST-27 | Niedrig | Lieferkette: Signaturschlüssel per Trust-on-first-use aus dem Repository, Node.js-Download nur mit Prüfsumme aus derselben Quelle | offen (#41) |
+| ST-28 | Niedrig | `SECURITY.md` verweist auf „Report a vulnerability“, die private Meldung von Schwachstellen ist im Repository aber nicht eingeschaltet | offen (#42) |
+| ST-29 | Info | JSON-Body `null` führt auf 13 Routen (auch Login) zu 500 statt 400 | offen (#18) |
+| ST-30 | Info | Härtung im Frontend und bei Werten: URL-Filter in `h()` mit Steuerzeichen umgehbar (heute nicht erreichbar), `valueMap`-Zugriff auf Prototyp-Schlüssel | offen (#43) |
+| ST-31 | Info | Kryptografie: kurze GCM-Tags werden akzeptiert, AAD ohne Datensatzbezug, keine Schlüsselrotation; `scryptSync` beim Transfer blockiert | offen (#43) |
+| ST-32 | Info | Kleinere Punkte bei der Anmeldung: Version auf `/readyz`, Rechte-Auskunft im Zustand `mfa_pending`, Entra-Limit je IP bei geteilten Adressen, Transaktions-Cookie mehrfach verwendbar, `amr` ungeprüft | offen (#43) |
+| ST-33 | Info | Docker-Socket-Proxy des Updaters mit weitreichenden Rechten (Container anlegen) | offen (#43) |
+| ST-34 | Info | Tag „freigegeben“ nicht reserviert; Ziel-Admin kann das Vier-Augen-Prinzip für sein System selbst abschalten | offen (#43) |
 | ST-35 | Info | Doku: Wiederholungsanleitung in `PENTEST.md` nutzt Ratenlimits, die die Konfiguration ablehnt; testssl.sh braucht `hexdump` | behoben (Doku) |
 
 ## Details
@@ -161,7 +161,7 @@ Der **kritische Fund ST-01** steckte im Update-Dienst ohne Docker, der erst am 2
 | ST-32 | `/readyz` nennt die Version ohne Anmeldung; `/api/me` liefert im Zustand `mfa_pending` Rechte; Entra-Anmeldung 10/min je IP (geteilte Adressen); OIDC-Transaktions-Cookie mehrfach verwendbar; `amr` wird nicht geprüft. | Version nur intern; in Zwischenzuständen nur `state` und `csrf`; Limit für `entra/login` großzügiger; `state` nach Verwendung sperren; `amr`/Conditional Access in GO-LIVE prüfen. |
 | ST-33 | Socket-Proxy erlaubt dem Updater-Container Container zu erzeugen und zu starten. Die App erreicht den Proxy nicht. | Rechte auf das Nötigste begrenzen, Risiko dokumentieren. |
 | ST-34 | Tag „freigegeben“ kann aus Formular-Einstellungen kommen; ein Ziel-Admin kann Vier-Augen für sein System abschalten, allein veröffentlichen und wieder einschalten. | Tag reservieren; Schalter nur mit globalem Recht oder ins Audit mit Hinweis. |
-| ST-35 | `docs/PENTEST.md` nutzte Ratenlimits über dem erlaubten Bereich; testssl.sh braucht `hexdump`. | in diesem Commit korrigiert. |
+| ST-35 | `docs/PENTEST.md` nutzte Ratenlimits über dem erlaubten Bereich; testssl.sh braucht `hexdump`. | korrigiert. |
 
 ## Vorgehen
 
