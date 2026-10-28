@@ -3,7 +3,7 @@
 Neue Versionen werden als **signierte Git-Tags** (`vX.Y.Z`, siehe **Releases**) veröffentlicht. Der Update-Dienst auf der VM holt sie, prüft die Signatur, baut die Images **auf der VM** und startet das Portal neu. Dafür braucht es weder GitHub Actions noch eine Container-Registry.
 
 
-> **Installation ohne Docker** (`deploy/native/install.sh`): Updates einfach mit demselben Befehl wie bei der Installation einspielen (`curl -fsSL https://raw.githubusercontent.com/Hundexe/Zammad-Service-Portal/main/setup.sh | sudo bash`). Die Update-Schaltfläche in der Verwaltung und der Update-Dienst gibt es nur in der Docker-Variante.
+> **Installation ohne Docker** (`deploy/native/install.sh`): Ab 1.8.0 gibt es den Update-Dienst auch dort – siehe [Installation ohne Docker](#installation-ohne-docker). Alternativ weiterhin den Installationsbefehl erneut ausführen.
 
 ## So läuft ein Update aus der Oberfläche
 
@@ -68,6 +68,36 @@ release@example.com ssh-ed25519 AAAAC3Nz… release-signing
 ```
 
 Die E-Mail muss zur Git-Konfiguration (`user.email`) passen, mit der der Tag erstellt wird.
+
+## Installation ohne Docker
+
+`deploy/native/install.sh` richtet den systemd-Dienst `zammad-service-portal-updater` ein (läuft als root, hat keinen offenen Port). Er arbeitet wie der Docker-Updater, nur ohne Images:
+
+1. prüft alle 6 Stunden (oder nach **Jetzt nach Updates suchen**) die Tags `vX.Y.Z` im Repository,
+2. prüft die **Signatur des Tags** gegen `/etc/zammad-service-portal/allowed_signers` (beim ersten Lauf aus `deploy/release_signers` übernommen),
+3. sichert die Datenbank nach `/var/lib/zammad-service-portal/backups/vor-update-…sqlite`,
+4. checkt den Tag aus und führt `deploy/native/install.sh --ja` aus (Oberfläche bauen, Web und Worker neu starten, Benutzer bleiben unverändert),
+5. wartet, bis `http://127.0.0.1:3000/readyz` die neue Version meldet,
+6. setzt bei einem Fehler **automatisch zurück** (Dienste stoppen, Datenbank wiederherstellen, alten Stand auschecken, `install.sh` erneut).
+
+Danach startet sich der Update-Dienst selbst mit dem neuen Code neu.
+
+**Installationen vor 1.8.0** haben den Dienst noch nicht – einmal den Installationsbefehl ausführen, danach geht es über die Verwaltung:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Hundexe/Zammad-Service-Portal/main/setup.sh | sudo bash
+systemctl status zammad-service-portal-updater        # läuft er?
+journalctl -u zammad-service-portal-updater -n 50     # was hat er zuletzt getan?
+```
+
+| Einstellung in `portal.env` | Bedeutung |
+| --- | --- |
+| `UPDATER_ENABLED=false` | Update-Dienst abschalten (danach `install.sh` erneut ausführen) |
+| `UPDATE_ALLOWED_SIGNERS` | Datei mit erlaubten Signaturschlüsseln (Standard `/etc/zammad-service-portal/allowed_signers`) |
+| `UPDATE_REQUIRE_SIGNED_TAGS=false` | Signatur nicht prüfen – nicht empfohlen |
+| `CHECK_INTERVAL_HOURS` | Prüfabstand (Standard 6) |
+
+Solange im Repository **kein signierter Tag** liegt, zeigt die Seite „noch keine veröffentlichte Version“ – siehe nächster Abschnitt.
 
 ## Eine neue Version veröffentlichen (auf dem Build-PC)
 

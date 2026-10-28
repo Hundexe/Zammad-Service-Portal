@@ -23,7 +23,7 @@ Empfohlener Weg: eigene VM → 4 Wochen mit 5–10 IT-Benutzern → Pilot mit ei
 | ☐ | **Organisations-Tickets** wie gewollt | Einstellung „Tickets der eigenen Organisation anzeigen“ bewusst gesetzt; Kollege derselben Organisation sieht nur dann fremde Tickets |
 | ☐ | **Backup und Restore getestet** | Restore-Probe nach [BETRIEB.md](BETRIEB.md#restore-probe-alle-3-monate), Datum notiert |
 | ☐ | **Outbox übersteht Neustart und Zammad-Ausfall** | Zammad-Adresse kurz auf einen nicht erreichbaren Host stellen (oder Zammad stoppen), Anfrage absenden, `docker compose restart app worker`, Zammad wieder erreichbar → Ticket kommt genau einmal an |
-| ☐ | **Updater zunächst aus** | `COMPOSE_PROFILES=clamav` (ohne `updater`); Updates nach [UPDATES.md](UPDATES.md#manuell-aktualisieren-ohne-updater) |
+| ☐ | **Updater zunächst aus** | `COMPOSE_PROFILES=clamav` (ohne `updater`), ohne Docker `UPDATER_ENABLED=false` in `portal.env`; Updates nach [UPDATES.md](UPDATES.md#manuell-aktualisieren-ohne-updater) |
 | ☐ | **Egress-Firewall** | Regeln nach [BETRIEB.md](BETRIEB.md#ausgehende-verbindungen-begrenzen-egress-firewall); Test: `docker compose exec app /nodejs/bin/node -e "fetch('https://example.org').then(r=>console.log(r.status))"` schlägt fehl, Zammad-Verbindungstest klappt |
 | ☐ | **Container-Härtung** | `bash tools/check-hardening.sh` → „Härtung: wie erwartet.“ |
 | ☐ | **Zentrales Logging und Monitoring** | Logs kommen im SIEM/Log-System an; `/readyz` und `cli.ts status` im Monitoring; Alarmregel für `"alert":true` (lokale Anmeldung, nicht erneuerbare Microsoft-Schlüssel) |

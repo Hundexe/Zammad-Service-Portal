@@ -135,11 +135,19 @@ export async function auditPage(_p: Record<string, string>, q: URLSearchParams) 
 }
 
 export async function updatesPage() {
-  const d = await get<{ runningVersion: string; currentVersion: string; latestVersion: string | null; available: string[]; changelog: string; checkedAt: number | null; lastError: string | null; updaterOnline: boolean; jobs: { id: string; requestedBy: string; targetVersion: string; status: string; log: string; createdAt: number; finishedAt: number | null }[] }>('/api/admin/updates');
+  const d = await get<{ runningVersion: string; installMode?: 'docker' | 'native'; currentVersion: string; latestVersion: string | null; available: string[]; changelog: string; checkedAt: number | null; lastError: string | null; updaterOnline: boolean; jobs: { id: string; requestedBy: string; targetVersion: string; status: string; log: string; createdAt: number; finishedAt: number | null }[] }>('/api/admin/updates');
   const newer = d.available.filter((v) => v !== d.runningVersion);
+  const native = d.installMode === 'native';
+  // Ohne Prüfung oder ohne veröffentlichte Versionen nicht „aktuell“ behaupten
+  const emptyText = !d.checkedAt ? 'Noch keine Prüfung – sobald der Update-Dienst läuft, prüft er automatisch.'
+    : d.lastError ? 'Die letzte Prüfung ist fehlgeschlagen (siehe oben).'
+      : !d.latestVersion ? 'Im Repository gibt es noch keine veröffentlichte Version (signierter Tag vX.Y.Z). Siehe docs/UPDATES.md.'
+        : 'Das Portal ist aktuell.';
   return h('div', null,
     pageHead('Updates', `Installiert: Version ${d.runningVersion}`, can('update.install') ? [button('Jetzt nach Updates suchen', async () => { await post('/api/admin/updates/check'); toast('Der Updater prüft in Kürze'); })] : []),
-    !d.updaterOnline ? notice('warn', 'Der Update-Dienst meldet sich nicht. Läuft der Container „updater“? Siehe Betriebshandbuch.') : null,
+    !d.updaterOnline ? notice('warn', native
+      ? 'Der Update-Dienst meldet sich nicht. Auf dem Server prüfen: „systemctl status zammad-service-portal-updater“. Fehlt der Dienst (Installation vor 1.8.0), einmal den Installationsbefehl erneut ausführen – danach gehen Updates hier über die Verwaltung.'
+      : 'Der Update-Dienst meldet sich nicht. Läuft der Container „updater“ (COMPOSE_PROFILES mit „updater“)? Siehe docs/UPDATES.md.') : null,
     d.lastError ? notice('error', `Letzte Prüfung: ${d.lastError}`) : null,
     h('section', { class: 'panel' },
       h('h2', null, 'Verfügbare Versionen'),
@@ -148,10 +156,10 @@ export async function updatesPage() {
         { label: 'Version', render: (x) => h('strong', null, x.v) },
         { label: '', render: (x) => x.v === d.latestVersion ? badge('neueste', 'info') : '' },
         { label: '', render: (x) => can('update.install') ? button(`Auf ${x.v} aktualisieren`, async () => {
-          if (!await confirmDialog(`Auf Version ${x.v} aktualisieren?`, 'Der Updater sichert zuerst die Datenbank, prüft die Signatur des Images und startet das Portal neu. Schlägt der Start fehl, wird automatisch auf die alte Version zurückgesetzt. Das Portal ist dabei ca. 1 Minute nicht erreichbar.', 'Update starten')) return;
+          if (!await confirmDialog(`Auf Version ${x.v} aktualisieren?`, 'Der Updater prüft die Signatur der neuen Version, sichert die Datenbank und startet das Portal neu. Schlägt der Start fehl, wird automatisch auf die alte Version zurückgesetzt. Das Portal ist dabei ca. 1 Minute nicht erreichbar.', 'Update starten')) return;
           try { await post('/api/admin/updates/install', { version: x.v }); toast('Update angefordert'); navigate(curPath(), true); } catch (err) { toast(errorText(err), 'error'); }
         }, { kind: 'primary' }) : null },
-      ]) : h('p', null, 'Das Portal ist aktuell.'),
+      ]) : h('p', null, emptyText),
       d.changelog ? h('details', null, h('summary', null, 'Änderungen'), h('pre', { class: 'changelog' }, d.changelog)) : null),
     h('section', { class: 'panel' }, h('h2', null, 'Verlauf'), table(d.jobs, [
       { label: 'Angefordert', render: (j) => `${fmtDate(j.createdAt)} von ${j.requestedBy}` },

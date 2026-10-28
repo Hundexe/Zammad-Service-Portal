@@ -305,6 +305,7 @@ Nach jeder Änderung an `.env`: `docker compose up -d`.
 | Geheimnisse | `/etc/zammad-service-portal/secrets/` (Hauptschlüssel, Client-Secret) |
 | Daten | `/var/lib/zammad-service-portal` (SQLite-Datenbank, Uploads) |
 | Dienste | `zammad-service-portal` (Web) und `zammad-service-portal-worker` (Zustellung), Benutzer `zsp`, gehärtete systemd-Units |
+| Update-Dienst | `zammad-service-portal-updater` (root, kein offener Port) – Updates aus **Verwaltung → Updates**, nur signierte Release-Tags; abschalten mit `UPDATER_ENABLED=false` in `portal.env` |
 | Reverse Proxy | Caddy aus dem offiziellen Paket-Repository, Konfiguration `/etc/caddy/zammad-service-portal.caddy` |
 | Virenscanner | `clamav-daemon` (optional), lauscht nur auf 127.0.0.1:3310 |
 | Kommandozeile | `service-portal-cli` statt `docker compose exec app … cli.ts` |
@@ -320,7 +321,7 @@ service-portal-cli user:create --username max --name "Max Muster" --email max@fi
 service-portal-cli backup                             # Sicherung nach /var/lib/zammad-service-portal/backups
 ```
 
-Updates: `setup.sh` erneut ausführen (oder `git -C /opt/zammad-service-portal pull && /opt/zammad-service-portal/deploy/native/install.sh`). Die Update-Schaltfläche in der Verwaltung gibt es nur in der Docker-Variante. Das Stammzertifikat der internen Caddy-CA liegt unter `/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt`.
+Updates: über **Verwaltung → Updates** (ab 1.8.0, siehe [UPDATES.md](UPDATES.md#installation-ohne-docker)) oder `setup.sh` erneut ausführen (oder `git -C /opt/zammad-service-portal pull && /opt/zammad-service-portal/deploy/native/install.sh`). Das Stammzertifikat der internen Caddy-CA liegt unter `/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt`.
 
 ## Demo ohne Installation
 

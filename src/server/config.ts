@@ -1,6 +1,6 @@
 // Konfiguration aus Umgebungsvariablen. Geheimnisse werden bevorzugt aus Dateien
 // gelesen (VAR_FILE), wie es Docker Secrets vorsehen.
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 function readSecret(name: string): string | undefined {
   const file = process.env[`${name}_FILE`];
@@ -87,6 +87,8 @@ export interface Config {
   allowLoopbackTicketUrls: boolean;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   version: string;
+  /** docker = Docker Compose, native = deploy/native/install.sh (systemd) */
+  installMode: 'docker' | 'native';
 }
 
 export function loadConfig(overrides: Partial<Config> = {}): Config {
@@ -166,6 +168,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     allowLoopbackTicketUrls: (overrides.env ?? env) === 'test' || bool('ALLOW_LOOPBACK_TICKET_URLS', false),
     logLevel: (process.env.LOG_LEVEL as Config['logLevel']) || 'info',
     version: process.env.APP_VERSION ?? readVersion(),
+    installMode: process.env.INSTALL_MODE === 'native' || (!process.env.INSTALL_MODE && !existsSync('/.dockerenv') && !!process.env.PORTAL_DIR) ? 'native' : 'docker',
     ...overrides,
   };
   if (errors.length) throw new Error(`Konfiguration ungültig (deploy/.env):\n  - ${errors.join('\n  - ')}`);

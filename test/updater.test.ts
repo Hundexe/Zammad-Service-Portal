@@ -1,14 +1,16 @@
 // Tests des Update-Dienstes mit simuliertem Docker/Git.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Db, uuid } from '../src/server/db/db.ts';
 import { Updater, compareVersions, setEnvValue, readEnvFile, type Exec, type UpdaterConfig } from '../updater/updater.ts';
 
-function setup(opts: { healthyVersion: (call: number) => string | null; failCmd?: RegExp }) {
+function setup(opts: { healthyVersion: (call: number) => string | null; failCmd?: RegExp; mode?: 'docker' | 'native' }) {
   const dir = mkdtempSync(join(tmpdir(), 'zsp-upd-'));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ version: '1.0.0' }));
+  mkdirSync(join(dir, '.git'));
   const db = new Db(join(dir, 'portal.sqlite'));
   db.migrate();
   db.run("INSERT INTO settings (key, value) VALUES ('marker', 'vorher')");
@@ -33,7 +35,8 @@ function setup(opts: { healthyVersion: (call: number) => string | null; failCmd?
   const cfg: UpdaterConfig = {
     dataDir: dir, portalDir: dir, composeFile: join(dir, 'docker-compose.yml'), envFile, projectName: 'test', source: 'git',
     gitRemote: 'origin', requireSignedTags: true, registryImage: 'ghcr.io/x/y', cosignIdentityRegexp: '.*', cosignIssuer: 'x',
-    healthUrl: 'http://app/readyz', healthTimeoutMs: 50, checkIntervalMs: 3600_000, appUid: 65532,
+    healthUrl: 'http://app/readyz', healthTimeoutMs: 50, checkIntervalMs: 3600_000, appUid: 65532, appGid: 65532,
+    mode: opts.mode ?? 'docker', installScript: join(dir, 'deploy/native/install.sh'), services: ['zsp-web', 'zsp-worker'],
   };
   const u = new Updater(cfg, exec, fetchImpl);
   return { u, dir, calls, envFile, cleanup: () => { u.db.close(); rmSync(dir, { recursive: true, force: true }); } };
@@ -124,5 +127,58 @@ test('ungültige Versionsangaben werden nicht ausgeführt', async () => {
   try {
     await assert.rejects(() => s.u.runJob({ id: 'x', target_version: '1.0.0; rm -rf /' }));
     assert.equal(s.calls.length, 0);
+  } finally { s.cleanup(); }
+});
+
+test('ohne Docker: Version aus package.json, Update über install.sh, kein Docker', async () => {
+  const s = setup({ healthyVersion: () => '1.2.0', mode: 'native' });
+  try {
+    assert.equal(s.u.currentVersion(), '1.0.0');
+    await s.u.check();
+    assert.deepEqual(JSON.parse(s.u.db.get<{ available: string }>('SELECT available FROM update_state WHERE id = 1')!.available), ['1.0.0', '1.1.0', '1.2.0']);
+    const id = addJob(s.u, '1.2.0');
+    assert.equal(await s.u.tick(), true);
+    const job = s.u.db.get<{ status: string; log: string }>('SELECT * FROM update_jobs WHERE id = ?', id)!;
+    assert.equal(job.status, 'succeeded', job.log);
+    assert.ok(s.calls.some((c) => c.includes('verify-tag v1.2.0')), 'Signatur geprüft');
+    assert.ok(s.calls.some((c) => c.includes(`safe.directory=${s.dir}`)));
+    const checkout = s.calls.findIndex((c) => c.includes('checkout --detach --force v1.2.0'));
+    const install = s.calls.findIndex((c) => c === `bash ${join(s.dir, 'deploy/native/install.sh')} --ja`);
+    assert.ok(checkout >= 0 && install > checkout, 'erst auschecken, dann installieren');
+    assert.ok(!s.calls.some((c) => c.startsWith('docker')), 'kein Docker');
+    assert.equal(readEnvFile(s.envFile).get('APP_VERSION'), '1.0.0', '.env bleibt unverändert');
+    assert.equal(await s.u.tick(), false, 'kein weiterer Auftrag');
+  } finally { s.cleanup(); }
+});
+
+test('ohne Docker: fehlgeschlagenes Update stoppt die Dienste und stellt alles wieder her', async () => {
+  const s = setup({ healthyVersion: () => '1.0.0', mode: 'native' });
+  try {
+    const id = addJob(s.u, '1.2.0');
+    const origSwitch = (s.u as any).switchTo.bind(s.u);
+    (s.u as any).switchTo = async (v: string, log: (x: string) => void) => {
+      await origSwitch(v, log);
+      s.u.db.run("UPDATE settings SET value = 'kaputt-migriert' WHERE key = 'marker'");
+    };
+    await s.u.tick();
+    const job = s.u.db.get<{ status: string; log: string }>('SELECT * FROM update_jobs WHERE id = ?', id)!;
+    assert.equal(job.status, 'rolled_back', job.log);
+    assert.equal(s.u.db.get<{ value: string }>("SELECT value FROM settings WHERE key = 'marker'")!.value, 'vorher');
+    assert.ok(s.calls.includes('systemctl stop zsp-web zsp-worker'));
+    assert.ok(s.calls.some((c) => c.includes('checkout --detach --force abc123')));
+    assert.equal(s.calls.filter((c) => c.includes('install.sh --ja')).length, 2, 'neu und alt installiert');
+  } finally { s.cleanup(); }
+});
+
+test('ohne Docker: fehlende Signaturdatei verhindert das Update', async () => {
+  const s = setup({ healthyVersion: () => '1.2.0', mode: 'native' });
+  try {
+    s.u.cfg.allowedSignersFile = join(s.dir, 'gibt-es-nicht');
+    const id = addJob(s.u, '1.2.0');
+    await s.u.tick();
+    const job = s.u.db.get<{ status: string; log: string }>('SELECT * FROM update_jobs WHERE id = ?', id)!;
+    assert.equal(job.status, 'failed');
+    assert.match(job.log, /Signaturschlüssel/);
+    assert.ok(!s.calls.some((c) => c.includes('checkout') || c.includes('install.sh')));
   } finally { s.cleanup(); }
 });

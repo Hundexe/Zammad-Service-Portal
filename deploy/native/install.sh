@@ -14,11 +14,15 @@
 #   Geheimnisse       /etc/zammad-service-portal/secrets/
 #   Daten             /var/lib/zammad-service-portal         (SQLite-Datenbank, Uploads)
 #   Dienste           zammad-service-portal, zammad-service-portal-worker (systemd, Benutzer "zsp")
+#   Updates           zammad-service-portal-updater (systemd, root) – Updates aus der Verwaltung,
+#                     nur signierte Release-Tags; abschalten mit UPDATER_ENABLED=false in portal.env
 #   Reverse Proxy     Caddy (TLS, Weiterleitung HTTP → HTTPS)
 #   Virenscanner      clamav-daemon (optional)
 #   Kommandozeile     service-portal-cli user:create … (wie "cli.ts" im Docker-Betrieb)
 #
 # Erneut ausführen = aktualisieren: baut neu, startet neu, Einstellungen und Daten bleiben.
+# Der Update-Dienst ruft das Skript mit ZSP_FROM_UPDATER=1 auf (dann ohne Benutzer-Schritt und ohne
+# Neustart des Update-Dienstes selbst).
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -114,6 +118,10 @@ elif [ "$INTERACTIVE" = 1 ]; then
   if ask_yn "Einstellungen (Hostname/IP, Ports, Virenscanner, Microsoft) ändern?" "n"; then configure_common; fi
 fi
 if [ "$WANT_CLAMAV" = 1 ]; then set_env CLAMAV_HOST 127.0.0.1; else set_env CLAMAV_HOST ""; fi
+# Kennzeichen für Portal und Update-Dienst (auch bei älteren Installationen nachtragen)
+set_env INSTALL_MODE native
+set_env PORTAL_DIR "$REPO_DIR"
+grep -q '^UPDATE_ALLOWED_SIGNERS=' "$ENV_FILE" || set_env UPDATE_ALLOWED_SIGNERS "$CONF_DIR/allowed_signers"
 # shellcheck disable=SC1090
 set -a; . "$ENV_FILE"; set +a
 check_urls
@@ -245,6 +253,45 @@ done
 [ "$ready" = 1 ] || fail "Das Portal startet nicht. Ursache: journalctl -u $UNIT -n 50"
 systemctl restart "$UNIT-worker"
 
+# Update-Dienst: läuft als root (git, systemd, dieses Skript), hat keinen offenen Port und liest
+# Aufträge aus der Datenbank. Installiert nur Tags mit gültiger Signatur aus allowed_signers.
+if [ ! -s "$CONF_DIR/allowed_signers" ] && [ -f "$REPO_DIR/deploy/release_signers" ]; then
+  grep -v '^#' "$REPO_DIR/deploy/release_signers" > "$CONF_DIR/allowed_signers" || true
+  chmod 644 "$CONF_DIR/allowed_signers"
+fi
+cat > "/etc/systemd/system/$UNIT-updater.service" <<EOF
+[Unit]
+Description=Service-Portal für Zammad (Updates aus der Verwaltung)
+After=network-online.target $UNIT.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=$ENV_FILE
+Environment=NODE_OPTIONS=--disable-warning=ExperimentalWarning
+Environment=INSTALL_MODE=native
+WorkingDirectory=$REPO_DIR
+ExecStart=$NODE updater/updater.ts
+# Nach einem Update beendet sich der Dienst und startet mit dem neuen Code
+Restart=always
+RestartSec=10
+# 022: ausgecheckter Code muss für den Dienstbenutzer lesbar bleiben (Daten sind durch 700 geschützt)
+UMask=0022
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+if [ "${UPDATER_ENABLED:-true}" = false ]; then
+  systemctl disable --now --quiet "$UNIT-updater" 2>/dev/null || true
+  note "Update-Dienst ist abgeschaltet (UPDATER_ENABLED=false)."
+else
+  systemctl enable --quiet "$UNIT-updater"
+  # Läuft das Skript aus dem Update-Dienst heraus, startet dieser sich nach dem Update selbst neu
+  [ "${ZSP_FROM_UPDATER:-0}" = 1 ] || systemctl restart "$UNIT-updater"
+fi
+
 # ---------------------------------------------------------------- 6. Virenscanner und Caddy
 say "6/7 Virenscanner und Reverse Proxy"
 if [ "$WANT_CLAMAV" = 1 ]; then
@@ -320,7 +367,11 @@ systemctl restart caddy
 # ---------------------------------------------------------------- 7. Benutzer
 say "7/7 Benutzer"
 cli() { /usr/local/bin/service-portal-cli "$@"; }
-create_users "$ADMIN_USER" "$NEW_ENV"
+if [ "${ZSP_FROM_UPDATER:-0}" = 1 ]; then
+  note "Update aus der Verwaltung – Benutzer bleiben unverändert."
+else
+  create_users "$ADMIN_USER" "$NEW_ENV"
+fi
 
 say "Fertig"
 note "Portal:         ${PUBLIC_URL}"
@@ -332,4 +383,4 @@ note "Einstellungen:  $ENV_FILE  (danach: systemctl restart $UNIT $UNIT-worker)"
 note "Logs:           journalctl -u $UNIT -f"
 note "Benutzer:       service-portal-cli user:create --username max --name \"Max Muster\" --email max@firma.de"
 note "Stammzertifikat für die Browser: /var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt"
-note "Aktualisieren:  Installationsbefehl erneut ausführen."
+note "Aktualisieren:  Verwaltung → Updates (signierte Versionen) oder den Installationsbefehl erneut ausführen."

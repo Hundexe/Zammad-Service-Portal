@@ -1111,6 +1111,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
     const seen = Number(state.updater_seen_at ?? 0);
     return {
       runningVersion: app.cfg.version,
+      installMode: app.cfg.installMode,
       currentVersion: state.current_version ?? app.cfg.version,
       latestVersion: state.latest_version,
       available: parseJson<string[]>(state.available, []),

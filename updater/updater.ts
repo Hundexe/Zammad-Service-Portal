@@ -10,8 +10,12 @@
 //
 // Der Dienst hat keinen offenen Port. Er liest Aufträge aus der Datenbank und
 // spricht Docker nur über einen Socket-Proxy mit eingeschränkten Rechten an.
+//
+// Installation ohne Docker (INSTALL_MODE=native): Der Dienst läuft als systemd-Unit
+// "zammad-service-portal-updater". Statt Images zu bauen, checkt er den signierten Tag aus
+// und führt deploy/native/install.sh --ja aus (baut die Oberfläche, startet die Dienste neu).
 import { execFile } from 'node:child_process';
-import { chownSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chownSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Db } from '../src/server/db/db.ts';
 
@@ -19,6 +23,8 @@ export interface ExecResult { code: number; stdout: string; stderr: string }
 export type Exec = (cmd: string, args: string[], opts?: { cwd?: string; timeoutMs?: number; env?: Record<string, string> }) => Promise<ExecResult>;
 
 export interface UpdaterConfig {
+  /** docker = Docker Compose, native = systemd-Dienste ohne Docker */
+  mode: 'docker' | 'native';
   dataDir: string;
   portalDir: string;
   composeFile: string;
@@ -38,6 +44,10 @@ export interface UpdaterConfig {
   healthTimeoutMs: number;
   checkIntervalMs: number;
   appUid: number;
+  appGid: number;
+  /** nur native: Installationsskript und systemd-Units von Web und Worker */
+  installScript: string;
+  services: string[];
 }
 
 export const realExec: Exec = (cmd, args, opts = {}) => new Promise((resolve) => {
@@ -89,13 +99,38 @@ export class Updater {
     this.exec = exec;
     this.fetchImpl = fetchImpl;
     this.db = new Db(join(cfg.dataDir, 'portal.sqlite'));
+    this.fixOwnership();
+  }
+
+  get native(): boolean { return this.cfg.mode === 'native'; }
+
+  /** git-Aufruf im Portal-Verzeichnis (safe.directory: das Repository gehört evtl. einem anderen Benutzer als root) */
+  private git(...args: string[]): string[] {
+    return ['-C', this.cfg.portalDir, '-c', `safe.directory=${this.cfg.portalDir}`, ...args];
+  }
+
+  /**
+   * Ohne Docker läuft der Updater als root, das Portal als Dienstbenutzer. Legt der Updater die
+   * Datenbank-Nebendateien (-wal, -shm) oder Backups an, gehören sie root – das Portal könnte dann nicht
+   * mehr schreiben. Deshalb nach jedem Schritt dem Dienstbenutzer zurückgeben.
+   */
+  fixOwnership(): void {
+    if (!this.native) return;
+    const { appUid: uid, appGid: gid, dataDir } = this.cfg;
+    const own = (f: string) => { try { if (existsSync(f)) chownSync(f, uid, gid); } catch { /* ohne Rechte (Tests) */ } };
+    for (const ext of ['', '-wal', '-shm']) own(join(dataDir, `portal.sqlite${ext}`));
+    const backups = join(dataDir, 'backups');
+    if (existsSync(backups)) {
+      own(backups);
+      for (const f of readdirSync(backups)) own(join(backups, f));
+    }
   }
 
   private compose(...args: string[]): string[] {
     return ['compose', '-p', this.cfg.projectName, '-f', this.cfg.composeFile, '--env-file', this.cfg.envFile, ...args];
   }
 
-  private async must(cmd: string, args: string[], log: (s: string) => void, opts: { cwd?: string; timeoutMs?: number } = {}): Promise<string> {
+  private async must(cmd: string, args: string[], log: (s: string) => void, opts: { cwd?: string; timeoutMs?: number; env?: Record<string, string> } = {}): Promise<string> {
     log(`$ ${cmd} ${args.join(' ')}`);
     const r = await this.exec(cmd, args, opts);
     const tail = (r.stdout + r.stderr).trim().split('\n').slice(-15).join('\n');
@@ -105,6 +140,9 @@ export class Updater {
   }
 
   currentVersion(): string {
+    if (this.native) {
+      try { return String(JSON.parse(readFileSync(join(this.cfg.portalDir, 'package.json'), 'utf8')).version); } catch { return '0.0.0'; }
+    }
     const env = readEnvFile(this.cfg.envFile);
     return (this.cfg.source === 'git' ? env.get('APP_VERSION') : env.get('IMAGE_TAG')) ?? '0.0.0';
   }
@@ -118,13 +156,14 @@ export class Updater {
   async availableVersions(): Promise<{ versions: string[]; changelog: string }> {
     if (this.cfg.source === 'git') {
       const noop = () => undefined;
-      await this.must('git', ['-C', this.cfg.portalDir, 'fetch', '--tags', '--force', '--prune', this.cfg.gitRemote], noop, { timeoutMs: 120_000 });
-      const out = await this.must('git', ['-C', this.cfg.portalDir, 'tag', '--list', 'v*'], noop);
+      if (this.native && !existsSync(join(this.cfg.portalDir, '.git'))) throw new Error(`${this.cfg.portalDir} ist kein Git-Verzeichnis – Updates brauchen eine Installation per setup.sh (git clone).`);
+      await this.must('git', this.git('fetch', '--tags', '--force', '--prune', this.cfg.gitRemote), noop, { timeoutMs: 120_000 });
+      const out = await this.must('git', this.git('tag', '--list', 'v*'), noop);
       const versions = out.split('\n').map((t) => t.trim()).filter((t) => SEMVER.test(t)).map((t) => t.slice(1)).sort(compareVersions);
       let changelog = '';
       const latest = versions.at(-1);
       if (latest) {
-        const r = await this.exec('git', ['-C', this.cfg.portalDir, 'show', `v${latest}:CHANGELOG.md`]);
+        const r = await this.exec('git', this.git('show', `v${latest}:CHANGELOG.md`));
         if (r.code === 0) changelog = r.stdout.split(/\n(?=## )/).slice(0, 4).join('\n').slice(0, 8000);
       }
       return { versions, changelog };
@@ -174,8 +213,9 @@ export class Updater {
     const target = join(this.cfg.dataDir, 'portal.sqlite');
     for (const ext of ['-wal', '-shm']) rmSync(target + ext, { force: true });
     copyFileSync(backup, target);
-    try { chownSync(target, this.cfg.appUid, this.cfg.appUid); } catch { /* ohne CHOWN-Recht (Tests) */ }
+    try { chownSync(target, this.cfg.appUid, this.cfg.appGid); } catch { /* ohne CHOWN-Recht (Tests) */ }
     this.db = new Db(target);
+    this.fixOwnership();
   }
 
   private async waitHealthy(version: string, log: (s: string) => void): Promise<void> {
@@ -193,9 +233,20 @@ export class Updater {
     throw new Error(`Neue Version meldet sich nicht gesund (${last})`);
   }
 
+  /** nur native: Installationsskript der ausgecheckten Version ausführen (baut, startet Web und Worker neu) */
+  private async runInstall(log: (s: string) => void): Promise<void> {
+    this.fixOwnership();
+    await this.must('bash', [this.cfg.installScript, '--ja'], log, { cwd: this.cfg.portalDir, timeoutMs: 30 * 60_000, env: { ZSP_FROM_UPDATER: '1' } });
+  }
+
   private async switchTo(version: string, log: (s: string) => void): Promise<void> {
+    if (this.native) {
+      await this.must('git', this.git('checkout', '--detach', '--force', `v${version}`), log);
+      await this.runInstall(log);
+      return;
+    }
     if (this.cfg.source === 'git') {
-      await this.must('git', ['-C', this.cfg.portalDir, 'checkout', '--detach', '--force', `v${version}`], log);
+      await this.must('git', this.git('checkout', '--detach', '--force', `v${version}`), log);
       setEnvValue(this.cfg.envFile, 'APP_VERSION', version);
       await this.must('docker', this.compose('build', '--pull', 'app'), log, { timeoutMs: 30 * 60_000 });
     } else {
@@ -207,11 +258,11 @@ export class Updater {
 
   private async verify(version: string, log: (s: string) => void): Promise<void> {
     if (this.cfg.source === 'git') {
-      await this.must('git', ['-C', this.cfg.portalDir, 'rev-parse', '--verify', `refs/tags/v${version}`], log);
+      await this.must('git', this.git('rev-parse', '--verify', `refs/tags/v${version}`), log);
       if (this.cfg.requireSignedTags) {
-        const args = ['-C', this.cfg.portalDir];
-        if (this.cfg.allowedSignersFile) args.push('-c', `gpg.ssh.allowedSignersFile=${this.cfg.allowedSignersFile}`);
-        await this.must('git', [...args, 'verify-tag', `v${version}`], log);
+        if (this.cfg.allowedSignersFile && !existsSync(this.cfg.allowedSignersFile)) throw new Error(`Datei mit erlaubten Signaturschlüsseln fehlt: ${this.cfg.allowedSignersFile}`);
+        const extra = this.cfg.allowedSignersFile ? ['-c', `gpg.ssh.allowedSignersFile=${this.cfg.allowedSignersFile}`] : [];
+        await this.must('git', this.git(...extra, 'verify-tag', `v${version}`), log);
         log('Tag-Signatur gültig.');
       } else {
         log('Hinweis: Tag-Signaturen werden nicht geprüft (UPDATE_REQUIRE_SIGNED_TAGS=false).');
@@ -236,7 +287,7 @@ export class Updater {
     };
     this.db.run("UPDATE update_jobs SET status = 'running', started_at = ? WHERE id = ?", Date.now(), job.id);
     const from = this.currentVersion();
-    const prevRef = this.cfg.source === 'git' ? (await this.exec('git', ['-C', this.cfg.portalDir, 'rev-parse', 'HEAD'])).stdout.trim() : '';
+    const prevRef = this.cfg.source === 'git' || this.native ? (await this.exec('git', this.git('rev-parse', 'HEAD'))).stdout.trim() : '';
     let backup = '';
     try {
       log(`Update von ${from} auf ${target}`);
@@ -258,11 +309,23 @@ export class Updater {
       }
       log('Rolle zurück …');
       try {
+        if (this.native) {
+          if (!prevRef) throw new Error('Vorheriger Stand unbekannt');
+          await this.must('systemctl', ['stop', ...this.cfg.services], log);
+          this.restoreDb(backup);
+          log('Datenbank wiederhergestellt.');
+          await this.must('git', this.git('checkout', '--detach', '--force', prevRef), log);
+          await this.runInstall(log);
+          await this.waitHealthy(from, log);
+          this.db.run("UPDATE update_jobs SET status = 'rolled_back', finished_at = ? WHERE id = ?", Date.now(), job.id);
+          log(`Zurückgerollt auf ${from}.`);
+          return 'rolled_back';
+        }
         await this.must('docker', this.compose('stop', 'app', 'worker'), log);
         this.restoreDb(backup);
         log('Datenbank wiederhergestellt.');
         if (this.cfg.source === 'git') {
-          await this.must('git', ['-C', this.cfg.portalDir, 'checkout', '--detach', '--force', prevRef], log);
+          await this.must('git', this.git('checkout', '--detach', '--force', prevRef), log);
           setEnvValue(this.cfg.envFile, 'APP_VERSION', from);
           await this.must('docker', this.compose('build', 'app'), log, { timeoutMs: 30 * 60_000 });
         } else {
@@ -281,40 +344,54 @@ export class Updater {
     }
   }
 
-  async tick(): Promise<void> {
-    this.heartbeat();
-    if (this.checkDue()) await this.check();
-    const job = this.db.get<{ id: string; target_version: string }>("SELECT id, target_version FROM update_jobs WHERE status = 'requested' ORDER BY created_at LIMIT 1");
-    if (job) {
+  /** Ein Durchlauf. Rückgabe: true, wenn ein Update-Auftrag bearbeitet wurde. */
+  async tick(): Promise<boolean> {
+    try {
+      this.heartbeat();
+      if (this.checkDue()) await this.check();
+      const job = this.db.get<{ id: string; target_version: string }>("SELECT id, target_version FROM update_jobs WHERE status = 'requested' ORDER BY created_at LIMIT 1");
+      if (!job) return false;
       await this.runJob(job);
       await this.check();
+      return true;
+    } finally {
+      this.fixOwnership();
     }
   }
 }
 
 export function configFromEnv(): UpdaterConfig {
   const env = process.env;
+  const native = env.INSTALL_MODE === 'native';
   const portalDir = env.PORTAL_DIR ?? '/opt/zammad-service-portal';
+  const dataDir = env.DATA_DIR ?? (native ? '/var/lib/zammad-service-portal' : '/data');
+  // Ohne Docker: Dateien gehören dem Dienstbenutzer, dem auch das Datenverzeichnis gehört
+  let owner = { uid: 65532, gid: 65532 };
+  if (native) { try { owner = statSync(dataDir); } catch { /* Verzeichnis fehlt noch */ } }
   return {
-    dataDir: env.DATA_DIR ?? '/data',
+    mode: native ? 'native' : 'docker',
+    dataDir,
     portalDir,
     composeFile: env.COMPOSE_FILE_PATH ?? join(portalDir, 'deploy/docker-compose.yml'),
     envFile: env.ENV_FILE_PATH ?? join(portalDir, 'deploy/.env'),
     projectName: env.COMPOSE_PROJECT_NAME ?? 'service-portal',
-    source: env.UPDATE_SOURCE === 'registry' ? 'registry' : 'git',
+    source: !native && env.UPDATE_SOURCE === 'registry' ? 'registry' : 'git',
     gitRemote: env.UPDATE_GIT_REMOTE ?? 'origin',
     requireSignedTags: (env.UPDATE_REQUIRE_SIGNED_TAGS ?? 'true') !== 'false',
-    allowedSignersFile: env.UPDATE_ALLOWED_SIGNERS || undefined,
+    allowedSignersFile: env.UPDATE_ALLOWED_SIGNERS || (native ? '/etc/zammad-service-portal/allowed_signers' : undefined),
     registryImage: env.REGISTRY_IMAGE ?? 'ghcr.io/hundexe/zammad-service-portal',
     registryUser: env.REGISTRY_USER || undefined,
     registryToken: env.REGISTRY_TOKEN_FILE ? readFileSync(env.REGISTRY_TOKEN_FILE, 'utf8').trim() : undefined,
     cosignKey: env.COSIGN_KEY || undefined,
     cosignIdentityRegexp: env.COSIGN_IDENTITY_REGEXP ?? '^https://github.com/Hundexe/Zammad-Service-Portal/',
     cosignIssuer: env.COSIGN_ISSUER ?? 'https://token.actions.githubusercontent.com',
-    healthUrl: env.APP_HEALTH_URL ?? 'http://app:3000/readyz',
+    healthUrl: env.APP_HEALTH_URL ?? (native ? `http://127.0.0.1:${env.PORT || 3000}/readyz` : 'http://app:3000/readyz'),
     healthTimeoutMs: Number(env.HEALTH_TIMEOUT_SECONDS ?? 180) * 1000,
     checkIntervalMs: Number(env.CHECK_INTERVAL_HOURS ?? 6) * 3600_000,
-    appUid: 65532,
+    appUid: owner.uid,
+    appGid: owner.gid,
+    installScript: join(portalDir, 'deploy/native/install.sh'),
+    services: ['zammad-service-portal', 'zammad-service-portal-worker'],
   };
 }
 
@@ -323,11 +400,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // Warten, bis die App die Datenbank angelegt hat
   while (!existsSync(join(cfg.dataDir, 'portal.sqlite'))) await new Promise((r) => setTimeout(r, 5000));
   const u = new Updater(cfg);
-  console.log(JSON.stringify({ time: new Date().toISOString(), level: 'info', msg: 'Updater gestartet', source: cfg.source, version: u.currentVersion() }));
+  console.log(JSON.stringify({ time: new Date().toISOString(), level: 'info', msg: 'Updater gestartet', mode: cfg.mode, source: cfg.source, version: u.currentVersion() }));
   let stop = false;
   process.on('SIGTERM', () => { stop = true; });
   while (!stop) {
-    try { await u.tick(); } catch (err) { console.error(JSON.stringify({ time: new Date().toISOString(), level: 'error', msg: (err as Error).message })); }
+    let didJob = false;
+    try { didJob = await u.tick(); } catch (err) { console.error(JSON.stringify({ time: new Date().toISOString(), level: 'error', msg: (err as Error).message })); }
+    // Ohne Docker: nach einem Update beenden – systemd startet den Updater mit dem neuen Code neu
+    if (didJob && u.native) break;
     await new Promise((r) => setTimeout(r, 30_000));
   }
   u.db.close();

@@ -1,5 +1,12 @@
 # Änderungen
 
+## 1.8.0 – 28.10.2026
+
+- **Updates aus der Verwaltung auch ohne Docker:** `deploy/native/install.sh` richtet den Dienst `zammad-service-portal-updater` ein. Er prüft die signierten Release-Tags, sichert die Datenbank, checkt die neue Version aus und führt `install.sh --ja` aus; bei einem Fehler setzt er Datenbank und Code automatisch zurück. Danach startet er sich selbst mit dem neuen Code neu. Abschalten mit `UPDATER_ENABLED=false` in `portal.env`. Installationen vor 1.8.0: einmal den Installationsbefehl erneut ausführen
+- Seite **Updates**: passender Hinweis je Installationsart; zeigt nicht mehr „aktuell“, wenn noch nie geprüft wurde oder im Repository noch keine veröffentlichte Version liegt
+- **Lizenz:** MIT (`LICENSE`), Haftungsausschluss im README, `THIRD-PARTY-NOTICES.md` mit fremden Bestandteilen und Markenhinweis
+- Tests: 3 neue, insgesamt 242
+
 ## 1.7.0 – 28.10.2026
 
 - **Logogröße einstellbar** unter **Stil, Farben und Logo** (und **Anmeldeseite**): Höhe in der Navigationsleiste (20–72 px, Standard 28) und auf der Farbfläche (24–200 px, Standard 44), mit Vorschau

@@ -4,7 +4,7 @@ Self-Service-Portal für IT-Abteilungen mit einem oder mehreren Zammad-Systemen:
 
 **[▶ Demo im Browser ansehen](https://hundexe.github.io/Zammad-Service-Portal/)** – ohne Installation, mit Beispieldaten (Portal und Verwaltung zum Durchklicken).
 
-**Aktuelle Version: 1.4.3** – mit allen Punkten aus einem externen Architektur- und Sicherheits-Review ([was geändert wurde](docs/REVIEW-2026-10.md), [Änderungen](CHANGELOG.md)).
+**Aktuelle Version: 1.8.0** – [Änderungen](CHANGELOG.md), externes Architektur- und Sicherheits-Review: [was geändert wurde](docs/REVIEW-2026-10.md).
 
 ![Startseite des Portals im Stil „Glas“](docs/screenshots/31-stil-glas.png)
 
@@ -95,7 +95,7 @@ TypeScript auf Node.js 24 ohne externe Laufzeitpakete (HTTP, Krypto, SQLite und 
 ## Tests
 
 ```bash
-npm test                        # 239 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
+npm test                        # 242 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
 npm run typecheck
 node tools/loadtest.ts          # Lasttest: 50 Logins, 50 Ticketansichten, 20 Anfragen mit Anhang
 bash tools/secret-scan.sh       # vor jeder Veröffentlichung: keine Geheimnisse im Repository
@@ -109,7 +109,7 @@ bash tools/secret-scan.sh       # vor jeder Veröffentlichung: keine Geheimnisse
 | Review: Token-Prüfung im Detail, Schlüsselwechsel, JWKS-Erneuerung und Höchstalter | 33 |
 | Review: Zugriffe, Zammad-Felder und -Gruppen, Kundenzuordnung, SSRF-Schutz (inkl. IPv6 und TLS), Uploads, Backup/Restore, Zustellung, Step-up, Monitoring | 40 |
 | Freigabe durch Vorgesetzte: Ablauf, Rechte (404 für Fremde, keine Selbstfreigabe), Fristen, Benachrichtigungen, Migration | 14 |
-| Grundfunktionen, Ende-zu-Ende, Ticketliste, Verwaltung (inkl. Abbrechen, Export/Import, Formulare und Vorlagen aus Datei), Stile, Updater | 68 |
+| Grundfunktionen, Ende-zu-Ende, Ticketliste, Verwaltung (inkl. Abbrechen, Export/Import, Formulare und Vorlagen aus Datei), Stile, Updater (Docker und ohne Docker) | 71 |
 
 Die Tests starten Portal, Zammad- und Microsoft-Simulator im selben Prozess – es wird nichts weiter benötigt. Lasttest-Ergebnisse: [docs/LASTTEST.md](docs/LASTTEST.md).
 
@@ -118,3 +118,11 @@ Die Tests starten Portal, Zammad- und Microsoft-Simulator im selben Prozess – 
 - Versionen erscheinen als **signierte Git-Tags** unter Releases; Änderungen stehen im [CHANGELOG](CHANGELOG.md). Veröffentlicht wird mit `tools/release.sh` (ohne GitHub Actions).
 - Updates manuell oder per Klick aus der Verwaltung: [docs/UPDATES.md](docs/UPDATES.md).
 - Sicherheitsprobleme bitte vertraulich melden: [SECURITY.md](SECURITY.md).
+
+## Lizenz und Haftung
+
+Das Portal steht unter der [MIT-Lizenz](LICENSE): Es darf frei genutzt, verändert und weitergegeben werden, auch in Unternehmen – der Copyright-Hinweis und der Lizenztext müssen dabei erhalten bleiben. Fremde Bestandteile (Schrift Inter) und Marken: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+**Haftungsausschluss.** Die Software wird unentgeltlich und **ohne jede Gewähr** bereitgestellt („as is“, siehe Lizenz). Es gibt keine Zusage, dass sie fehlerfrei, sicher oder für einen bestimmten Zweck geeignet ist, und keinen Anspruch auf Support, Updates oder Fehlerbehebung. Wer das Portal betreibt, ist selbst verantwortlich für Prüfung vor dem Produktivbetrieb (siehe [GO-LIVE.md](docs/GO-LIVE.md)), Datensicherung, Updates, Datenschutz (DSGVO, ggf. Betriebsvereinbarung) und die Sicherheit der eigenen Umgebung. Soweit gesetzlich zulässig, ist die Haftung der Autoren ausgeschlossen; nach deutschem Recht bleibt sie bei unentgeltlicher Überlassung auf Vorsatz und grobe Fahrlässigkeit beschränkt sowie unberührt, wo eine Haftung zwingend ist (z. B. arglistig verschwiegene Mängel, Produkthaftungsgesetz).
+
+Dieses Projekt ist kein offizielles Produkt der Zammad Foundation und steht in keiner Verbindung zu ihr oder zu Microsoft.
