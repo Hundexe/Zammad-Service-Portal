@@ -1,5 +1,13 @@
 # Änderungen
 
+## 1.10.0 – 29.10.2026
+
+- **Benachrichtigung bei Antworten der IT:** Antwortet ein Bearbeiter in Zammad auf ein Ticket, erscheint im Portal unter der Glocke „Neue Antwort: <Ticket>“ mit dem Anfang der Antwort; ein Klick öffnet das Ticket. Mehrere Antworten seit dem letzten Blick werden zu einer Nachricht zusammengefasst
+  - Der Worker schaut jede Minute je Ticketsystem nach geänderten Tickets (eine Abfrage) und liest Nachrichten nur bei Tickets von Personen, die das Portal kennt
+  - Keine internen Notizen, keine Benachrichtigungen für Antworten von vor der Einführung
+  - Einstellung `TICKET_WATCH_SECONDS` (Standard 60, 0 = aus); funktioniert auch mit älteren Zammad-Versionen ohne Suche mit Bedingung
+  - Der API-Benutzer braucht Leserechte (`ticket.agent`) auf die Gruppen der Tickets
+
 ## 1.9.11 – 29.10.2026
 
 - **Antworten aus dem Portal mit Verlauf:** Wie bei E-Mails hängt an jeder Antwort aus dem Portal die letzte Nachricht des Tickets als Zitat („Am … schrieb …:“) – mit den Zitaten davor, also dem ganzen Verlauf. In Zammad und in E-Mails an das Team ist der Zusammenhang so sofort sichtbar. Interne Notizen werden nie zitiert; bei ausgeblendeten Bearbeiternamen steht auch im Zitat nur der Name des Ticketsystems

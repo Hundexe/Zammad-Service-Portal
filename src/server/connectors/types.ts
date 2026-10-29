@@ -89,6 +89,10 @@ export interface Connector {
   findOrCreateCustomer(user: { email: string; displayName: string }): Promise<CustomerRef>;
   createTicket(input: CreateTicketInput): Promise<{ id: number; number: string }>;
   listTickets(customer: CustomerRef): Promise<TicketSummary[]>;
+  /** Für die Benachrichtigung: Tickets, die sich seit `since` geändert haben (Sicht des API-Benutzers) */
+  ticketsUpdatedSince(since: string): Promise<{ id: number; title: string; customerId: number; updatedAt: string }[]>;
+  /** Für die Benachrichtigung: öffentliche Antworten von Bearbeitern in einem Ticket (keine internen Notizen) */
+  agentReplies(ticketId: number): Promise<{ id: number; createdAt: string; contentType: string; body: string }[]>;
   getTicket(customer: CustomerRef, ticketId: number): Promise<{ ticket: TicketSummary; articles: ArticleSummary[] } | null>;
   getAttachment(customer: CustomerRef, ticketId: number, articleId: number, attachmentId: number): Promise<{ data: Buffer; mime: string; filename: string } | null>;
   addReply(customer: CustomerRef, ticketId: number, bodyHtml: string, attachments: Attachment[]): Promise<void>;

@@ -80,11 +80,13 @@ Unter **Erledigt** stehen Ihre Entscheidungen. Den Inhalt zeigt das Portal danac
 
 ### Benachrichtigungen
 
-Die Glocke oben rechts zeigt neue Nachrichten mit einer Zahl: Freigabe erbeten, Erinnerung, freigegeben, abgelehnt, abgelaufen, zurückgezogen. Ein Klick auf eine Nachricht öffnet die passende Seite; **Alle gelesen** setzt den Zähler zurück. Nachrichten werden nach 90 Tagen gelöscht.
+Die Glocke oben rechts zeigt neue Nachrichten mit einer Zahl: **neue Antwort der IT auf ein eigenes Ticket** (mit Anfang der Antwort, ein Klick öffnet das Ticket), Freigabe erbeten, Erinnerung, freigegeben, abgelehnt, abgelaufen, zurückgezogen. Ein Klick auf eine Nachricht öffnet die passende Seite; **Alle gelesen** setzt den Zähler zurück. Nachrichten werden nach 90 Tagen gelöscht.
 
 ![Benachrichtigungen](screenshots/45-freigabe-benachrichtigungen.png)
 
-Das Portal verschickt keine E-Mails. Über die Eingangsbestätigung und Antworten der IT informiert wie bisher Zammad.
+Das Portal verschickt keine E-Mails. Über die Eingangsbestätigung und Antworten der IT informiert per E-Mail wie bisher Zammad.
+
+Antworten der IT erkennt das Portal, indem es jede Minute in Zammad nach geänderten Tickets schaut (Einstellung `TICKET_WATCH_SECONDS`, 0 schaltet es ab). Benachrichtigt werden nur öffentliche Antworten von Bearbeitern – keine internen Notizen – und nur Personen, die das Portal kennt. Der API-Benutzer braucht dafür Leserechte (`ticket.agent`) auf die Gruppen der Tickets; ohne diese Rechte bleibt die Glocke für Antworten stumm.
 
 ### Meine Tickets
 

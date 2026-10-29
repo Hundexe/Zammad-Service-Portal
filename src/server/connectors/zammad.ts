@@ -362,6 +362,33 @@ export class ZammadConnector implements Connector {
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
+  async ticketsUpdatedSince(since: string): Promise<{ id: number; title: string; customerId: number; updatedAt: string }[]> {
+    // Ohne Suchbegriff mit Bedingung: Zammad sucht direkt in der Datenbank (unabhängig von Elasticsearch)
+    const q = new URLSearchParams({
+      'condition[ticket.updated_at][operator]': 'after (absolute)',
+      'condition[ticket.updated_at][value]': since,
+      sort_by: 'updated_at', order_by: 'desc', limit: '200', expand: 'true',
+    });
+    let raw: Json[];
+    try {
+      raw = ZammadConnector.ticketList(await this.call('GET', `/api/v1/tickets/search?${q}`));
+    } catch (err) {
+      if (!(err instanceof ConnectorError) || ![400, 404, 422, 500].includes(err.status ?? 0)) throw err;
+      // Ältere Versionen: neueste zuerst über die Liste, dann selbst filtern
+      raw = ZammadConnector.ticketList(await this.call('GET', '/api/v1/tickets?expand=true&per_page=100&sort_by=updated_at&order_by=desc'));
+    }
+    return raw
+      .map((t) => ({ id: Number(t.id), title: String(t.title ?? ''), customerId: Number(t.customer_id), updatedAt: String(t.updated_at ?? '') }))
+      .filter((t) => Number.isSafeInteger(t.id) && Number.isSafeInteger(t.customerId) && t.updatedAt >= since);
+  }
+
+  async agentReplies(ticketId: number): Promise<{ id: number; createdAt: string; contentType: string; body: string }[]> {
+    const arts = ((await this.call('GET', `/api/v1/ticket_articles/by_ticket/${ticketId}`)) ?? []) as Json[];
+    return (Array.isArray(arts) ? arts : [])
+      .filter((a) => a.internal !== true && a.internal !== 'true' && String(a.sender ?? '') === 'Agent')
+      .map((a) => ({ id: Number(a.id), createdAt: String(a.created_at ?? ''), contentType: String(a.content_type ?? 'text/plain'), body: String(a.body ?? '').slice(0, 50_000) }));
+  }
+
   async getTicket(customer: CustomerRef, ticketId: number): Promise<{ ticket: TicketSummary; articles: ArticleSummary[] } | null> {
     const onBehalfOf = this.sys.creationMode === 'on_behalf_of' ? this.behalf(customer) : undefined;
     let raw: Json;

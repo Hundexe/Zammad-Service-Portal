@@ -93,6 +93,8 @@ export interface Config {
   /** Ticketsysteme auf 127.0.0.1/localhost erlauben – nur für Demo und Entwicklung */
   allowLoopbackTicketUrls: boolean;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
+  /** Alle N Sekunden in Zammad nach neuen Antworten schauen und die Kunden im Portal benachrichtigen (0 = aus) */
+  ticketWatchSeconds: number;
   version: string;
   /** docker = Docker Compose, native = deploy/native/install.sh (systemd) */
   installMode: 'docker' | 'native';
@@ -178,6 +180,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     ticketUrlAllowedHosts: list('TICKET_URL_ALLOWED_HOSTS').map((h) => h.toLowerCase()),
     allowLoopbackTicketUrls: (overrides.env ?? env) === 'test' || bool('ALLOW_LOOPBACK_TICKET_URLS', false),
     logLevel: (process.env.LOG_LEVEL as Config['logLevel']) || 'info',
+    ticketWatchSeconds: process.env.TICKET_WATCH_SECONDS === '0' ? 0 : range('TICKET_WATCH_SECONDS', 60, 15, 3600, errors),
     version: process.env.APP_VERSION ?? readVersion(),
     installMode: process.env.INSTALL_MODE === 'native' || (!process.env.INSTALL_MODE && !existsSync('/.dockerenv') && !!process.env.PORTAL_DIR) ? 'native' : 'docker',
     ...overrides,

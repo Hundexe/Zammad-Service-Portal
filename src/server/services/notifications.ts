@@ -9,7 +9,7 @@ import { localEmailTaken } from './requests.ts';
 
 export type NotificationKind =
   | 'approval.requested' | 'approval.reminder' | 'approval.approved' | 'approval.rejected'
-  | 'approval.expired' | 'approval.withdrawn' | 'approval.reassigned' | 'request.cancelled';
+  | 'approval.expired' | 'approval.withdrawn' | 'approval.reassigned' | 'request.cancelled' | 'ticket.reply';
 
 export interface NotificationInput {
   /** Empfänger: Konto oder E-Mail-Adresse (für Personen, die vielleicht noch nie angemeldet waren) */
