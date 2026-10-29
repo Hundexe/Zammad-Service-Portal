@@ -1,6 +1,7 @@
 // Portal für Benutzer: Ticketsystem wählen, Formular ausfüllen, eigene Tickets ansehen.
 import type { App } from '../app.ts';
-import { HttpError, type Router } from '../http/core.ts';
+import { HttpError, RateLimiter, type Router } from '../http/core.ts';
+import { canAnywhere } from '../services/rbac.ts';
 import { ASSET_CSP } from '../http/security.ts';
 import type { AppCtx } from '../server.ts';
 import { parseJson } from '../db/db.ts';
@@ -198,9 +199,14 @@ export function registerPortalRoutes(router: Router, app: App): void {
   });
 
   // Personen, die sich schon einmal mit Microsoft angemeldet haben – Vorschläge beim Eintippen
+  // Vorschläge für die freigebende Person: nur für Microsoft-Konten mit Portal-Recht, ab 3 Zeichen, begrenzt je Konto
+  const peopleLimiter = new RateLimiter(30, 0.5);
   router.get('/api/portal/people', user, (ctx: AppCtx) => {
+    const u = ctx.user!;
+    if (u.kind !== 'entra' || !canAnywhere(u, 'portal.use')) return { people: [] };
     const q = (ctx.query.get('q') ?? '').trim().slice(0, 100);
-    if (q.length < 2) return { people: [] };
+    if (q.length < 3) return { people: [] };
+    if (!peopleLimiter.take(u.id)) throw new HttpError(429, 'Zu viele Suchanfragen – bitte kurz warten', 'rate_limited');
     const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
     const rows = app.db.all<{ display_name: string; email: string; department: string | null }>(
       `SELECT display_name, email, department FROM users
@@ -299,7 +305,8 @@ export function registerPortalRoutes(router: Router, app: App): void {
       if (!detail) throw new HttpError(404, 'Ticket nicht gefunden', 'not_found');
       return {
         ticket: detail.ticket,
-        allowReplies: sys.allow_replies === 1,
+        // Tickets der Organisation sind nur lesbar
+        allowReplies: sys.allow_replies === 1 && detail.ticket.customerId === customer!.customerId,
         articles: detail.articles.map((a) => ({
           id: a.id, from: a.from, sender: a.sender, createdAt: a.createdAt,
           text: a.contentType.includes('html') ? htmlToText(a.body) : a.body.slice(0, 200_000),

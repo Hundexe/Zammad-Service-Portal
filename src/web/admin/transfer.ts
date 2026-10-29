@@ -5,7 +5,7 @@ import { button, checkbox, confirmDialog, errorText, fieldWrap, notice, pageHead
 import { can } from '../lib/app.ts';
 import { loadAdminSystems } from './common.ts';
 
-interface PlanSystem { slug: string; name: string; action: 'create' | 'replace'; token: boolean; forms: number; templates: number; overviews: number; brandingVersions: number; releasedAttributes: number }
+interface PlanSystem { slug: string; name: string; action: 'create' | 'replace'; token: boolean; baseUrl?: string; previousUrl?: string | null; urlChanged?: boolean; tokenDropped?: boolean; forms: number; templates: number; overviews: number; brandingVersions: number; releasedAttributes: number }
 interface Plan { systems: PlanSystem[]; remove: { slug: string; name: string; requests: number }[]; assets: number; warnings: string[] }
 
 const MIN_PW = 12;
@@ -79,13 +79,14 @@ export async function transferPage() {
       h('h3', null, 'Vorschau'),
       h('p', null, `${replaced} Ticketsystem(e) werden ersetzt, ${created} neu angelegt`, plan.remove.length ? `, ${plan.remove.length} gelöscht` : '', '. ', `${plan.assets} Logo(s).`),
       table(plan.systems, [
-        { label: 'Ticketsystem', class: 'grow', render: (s) => h('span', null, s.name, h('br'), h('span', { class: 'muted small' }, s.slug)) },
+        { label: 'Ticketsystem', class: 'grow', render: (s) => h('span', null, s.name, h('br'), h('span', { class: 'muted small' }, s.slug),
+          s.urlChanged ? h('span', null, h('br'), h('strong', { class: 'small' }, 'Neue Adresse: '), h('span', { class: 'small' }, `${s.previousUrl} → ${s.baseUrl}`)) : null) },
         { label: 'Aktion', render: (s) => s.action === 'create' ? 'neu' : 'ersetzen' },
         { label: 'Formulare', class: 'num', render: (s) => String(s.forms) },
         { label: 'Vorlagen', class: 'num', render: (s) => String(s.templates) },
         { label: 'Übersichten', class: 'num', render: (s) => String(s.overviews) },
         { label: 'Zammad-Objekte', class: 'num', render: (s) => String(s.releasedAttributes) },
-        { label: 'Token', class: 'num', render: (s) => s.token ? 'aus der Datei' : s.action === 'replace' ? 'bleibt' : 'fehlt' },
+        { label: 'Token', class: 'num', render: (s) => s.token ? 'aus der Datei' : s.tokenDropped ? 'neu eintragen' : s.action === 'replace' ? 'bleibt' : 'fehlt' },
       ]),
     ];
     if (plan.remove.length) {

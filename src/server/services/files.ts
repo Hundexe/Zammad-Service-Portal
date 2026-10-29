@@ -3,6 +3,7 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { App } from '../app.ts';
+import { sanitizeSvg } from './svg.ts';
 import { HttpError } from '../http/core.ts';
 import type { FileKind } from '../../shared/form.ts';
 import { log } from '../log.ts';
@@ -115,20 +116,21 @@ export function removeRequestFiles(app: App, requestId: string): void {
   rmSync(join(app.uploadsDir, requestId), { recursive: true, force: true });
 }
 
-/** Prüft ein Logo. SVGs werden auf gefährliche Inhalte geprüft; ausgeliefert werden sie zusätzlich mit Sandbox-CSP. */
-export function checkLogo(data: Buffer, kind: 'logo' | 'favicon'): { mime: string } {
+/**
+ * Prüft ein Logo. SVGs werden per Allowlist bereinigt und neu geschrieben (data = bereinigte Fassung, die
+ * gespeichert werden muss); ausgeliefert werden sie zusätzlich mit Sandbox-CSP.
+ */
+export function checkLogo(data: Buffer, kind: 'logo' | 'favicon'): { mime: string; data: Buffer } {
   const limit = kind === 'logo' ? 1024 * 1024 : 256 * 1024;
   if (data.length === 0 || data.length > limit) throw new HttpError(422, `Datei zu groß (max. ${limit / 1024} KB)`, 'bad_file');
   const head = data.subarray(0, 12);
-  if (head.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return { mime: 'image/png' };
-  if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return { mime: 'image/jpeg' };
-  if (head.subarray(0, 4).toString('latin1') === 'RIFF' && head.subarray(8, 12).toString('latin1') === 'WEBP') return { mime: 'image/webp' };
-  if (kind === 'favicon' && head[0] === 0 && head[1] === 0 && head[2] === 1 && head[3] === 0) return { mime: 'image/x-icon' };
-  const text = data.toString('utf8');
-  if (/^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*<svg[\s>]/i.test(text)) {
-    const bad = /<script|<foreignObject|<iframe|<embed|<object|<!ENTITY|<!DOCTYPE|\son[a-z]+\s*=|javascript:|data:text\/html|xlink:href\s*=\s*["']\s*(?!#)|\shref\s*=\s*["']\s*(?!#)|@import|url\s*\(\s*["']?\s*(?!#)/i;
-    if (bad.test(text)) throw new HttpError(422, 'SVG enthält nicht erlaubte Inhalte (Skripte, externe Verweise)', 'bad_file');
-    return { mime: 'image/svg+xml' };
+  if (head.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return { mime: 'image/png', data };
+  if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return { mime: 'image/jpeg', data };
+  if (head.subarray(0, 4).toString('latin1') === 'RIFF' && head.subarray(8, 12).toString('latin1') === 'WEBP') return { mime: 'image/webp', data };
+  if (kind === 'favicon' && head[0] === 0 && head[1] === 0 && head[2] === 1 && head[3] === 0) return { mime: 'image/x-icon', data };
+  const text = data.toString('utf8').replace(/^\uFEFF/, '');
+  if (/^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*<(svg|!DOCTYPE)[\s>]/i.test(text)) {
+    return { mime: 'image/svg+xml', data: Buffer.from(sanitizeSvg(text), 'utf8') };
   }
   throw new HttpError(422, 'Erlaubt sind PNG, JPEG, WebP oder SVG', 'bad_file');
 }

@@ -11,20 +11,20 @@ import { ADMIN_PERMISSIONS, GLOBAL_PERMISSIONS, PERMISSION_KEYS, PERMISSIONS } f
 import { connectorFor, getSystem, listSystems, publishedBranding, globalBranding, validateSystemUrl, allowedGroups, type SystemRow } from '../services/systems.ts';
 import { getMetadata, releasedAttributes, releasedWithOptions, validateRelease } from '../services/metadata.ts';
 import {
-  emptyDefinition, getForm, latestVersion, publishVersion, publishedVersion, resolveDefinition, saveDraft,
+  emptyDefinition, getForm, latestVersion, publishVersion, publishedVersion, resolveDefinition, saveDraft, stageFormMeta,
   type FormRow, type FormVersionRow,
 } from '../services/forms.ts';
 import { validateDefinition, type FormDefinition } from '../../shared/form.ts';
 import { contrastWarnings, DEFAULT_BRANDING, validateBranding, type Branding } from '../../shared/branding.ts';
-import { checkLogo, decodeBase64Strict } from '../services/files.ts';
+import { checkLogo, decodeBase64Strict, removeRequestFiles } from '../services/files.ts';
 import { createLocalUser, emailInUse, getUser, publicUser, resetLocalPassword, toAuthUser, type UserRow } from '../services/users.ts';
 import { destroyUserSessions } from '../auth/sessions.ts';
 import { retryRequest } from '../services/requests.ts';
 import { cancelRequest } from '../services/approvals.ts';
-import { applyImport, buildExport, planImport, summarizePlan } from '../services/transfer.ts';
+import { applyImport, buildExport, planImport, sameOrigin, summarizePlan } from '../services/transfer.ts';
 import { ConnectorError } from '../connectors/types.ts';
 import { OVERVIEW_COLUMNS } from './portal.ts';
-import { placeholders } from '../../shared/template.ts';
+import { placeholders, templateHtmlProblems } from '../../shared/template.ts';
 
 // ---------------------------------------------------------------- Hilfen
 
@@ -206,6 +206,10 @@ export function registerAdminRoutes(router: Router, app: App): void {
     const mode = str(b, 'creationMode', 20) || existing?.creation_mode || 'on_behalf_of';
     if (!['on_behalf_of', 'customer_field'].includes(mode)) throw new HttpError(422, 'Anlage-Modus ungültig', 'validation');
     const token = typeof b.apiToken === 'string' && b.apiToken.trim() !== '' ? str(b, 'apiToken', 500) : null;
+    // Das gespeicherte Token nie an eine neue Adresse schicken: bei geändertem Ursprung neu eingeben lassen
+    if (existing && !token && sameOrigin(existing.base_url, baseUrl) !== true) {
+      throw new HttpError(422, 'Die Adresse ändert sich – bitte das API-Token für die neue Adresse eingeben', 'validation', { apiToken: 'Bei neuer Adresse Pflicht' });
+    }
     const portalTag = str(b, 'portalTag', 60) || existing?.portal_tag || 'service-portal';
     if (!/^[\p{L}\p{N}_.\- ]{1,60}$/u.test(portalTag)) throw new HttpError(422, 'Tag ungültig', 'validation');
     const allowed = b.allowedGroups === undefined && existing ? allowedGroups(existing) : stringList(b, 'allowedGroups', 200, 160);
@@ -264,6 +268,11 @@ export function registerAdminRoutes(router: Router, app: App): void {
   router.put('/api/admin/systems/:systemId', admin('system.manage', { stepup: true }), async (ctx: AppCtx) => {
     const before = sysOr404(ctx.params.systemId);
     const v = await readSystemBody(ctx.body as Body, before);
+    // Vier-Augen-Prinzip abschalten nur mit globalem Recht – sonst könnte der Admin eines Systems es
+    // ausschalten, allein veröffentlichen und wieder einschalten
+    if (before.require_approval === 1 && v.require_approval === 0 && !can(ctx.user, 'system.manage', null)) {
+      throw new HttpError(403, 'Das Vier-Augen-Prinzip kann nur ein globaler Admin abschalten', 'forbidden');
+    }
     app.db.run(
       `UPDATE ticket_systems SET name = ?, base_url = ?, api_token = ?, default_group = ?, creation_mode = ?, status = ?, visible_groups = ?, require_approval = ?,
         show_org_tickets = ?, allow_replies = ?, closed_states = ?, portal_tag = ?, sort = ?, allowed_groups = ?, hide_agent_names = ?, updated_at = ? WHERE id = ?`,
@@ -282,20 +291,27 @@ export function registerAdminRoutes(router: Router, app: App): void {
     if (open > 0) throw new HttpError(409, `Es warten noch ${open} Anfragen auf Zustellung`, 'conflict');
     const awaiting = app.db.get<{ n: number }>("SELECT COUNT(*) n FROM requests WHERE system_id = ? AND status = 'awaiting_approval'", s.id)!.n;
     if (awaiting > 0) throw new HttpError(409, `Es warten noch ${awaiting} Anfragen auf eine Freigabe durch Vorgesetzte`, 'conflict');
+    const requestIds = app.db.all<{ id: string }>('SELECT id FROM requests WHERE system_id = ?', s.id).map((r) => r.id);
     app.db.tx(() => {
       app.db.run('DELETE FROM requests WHERE system_id = ?', s.id);
       app.db.run('DELETE FROM ticket_systems WHERE id = ?', s.id);
       audit(app.db, actor(ctx), { action: 'system.deleted', targetType: 'system', targetId: s.id, details: { name: s.name, slug: s.slug } });
     });
+    // Verschlüsselte Anhänge (z. B. fehlgeschlagener Anfragen) mit entfernen
+    for (const id of requestIds) removeRequestFiles(app, id);
     return { ok: true };
   });
 
   router.post('/api/admin/systems/:systemId/test', admin('system.manage'), async (ctx: AppCtx) => {
     const s = sysOr404(ctx.params.systemId);
+    let origin = '';
+    try { origin = new URL(s.base_url).origin; } catch { /* ungültig */ }
     try {
       const info = await connectorFor(app, s).test();
+      audit(app.db, actor(ctx), { action: 'system.tested', targetType: 'system', targetId: s.id, systemId: s.id, details: { adresse: origin, ok: true } });
       return { ok: true, ...info };
     } catch (err) {
+      audit(app.db, actor(ctx), { action: 'system.tested', targetType: 'system', targetId: s.id, systemId: s.id, details: { adresse: origin, ok: false } });
       return { ok: false, error: err instanceof ConnectorError ? err.message : 'Verbindung fehlgeschlagen' };
     }
   });
@@ -322,7 +338,11 @@ export function registerAdminRoutes(router: Router, app: App): void {
 
   // ---------------------------------------------------------------- Formulare
   function versionInfo(v: FormVersionRow | undefined) {
-    return v ? { id: v.id, version: v.version, status: v.status, note: v.note, createdBy: v.created_by, createdAt: v.created_at, submittedBy: v.submitted_by, approvedBy: v.approved_by, publishedAt: v.published_at } : null;
+    const meta = v?.meta ? parseJson<Record<string, unknown> | null>(v.meta, null) : null;
+    return v ? {
+      id: v.id, version: v.version, status: v.status, note: v.note, createdBy: v.created_by, createdAt: v.created_at, submittedBy: v.submitted_by, approvedBy: v.approved_by, publishedAt: v.published_at,
+      pendingMeta: meta ? { name: meta.name, description: meta.description, visibleGroups: parseJson<string[]>(String(meta.visible_groups ?? '[]'), []), active: meta.active === 1 } : null,
+    } : null;
   }
 
   function formPublic(f: FormRow) {
@@ -390,6 +410,19 @@ export function registerAdminRoutes(router: Router, app: App): void {
   router.put('/api/admin/systems/:systemId/forms/:formId', admin('form.edit'), (ctx: AppCtx) => {
     const f = formOr404(ctx.params.systemId, ctx.params.formId);
     const m = readFormMeta(ctx.body as Body, f);
+    const sys = sysOr404(f.system_id);
+    const gatedChanged = m.name !== f.name || m.description !== f.description || m.visible_groups !== f.visible_groups || m.active !== f.active;
+    if (sys.require_approval === 1 && gatedChanged) {
+      // Vier-Augen-Prinzip: was Mitarbeitende sehen (Name, Text, Sichtbarkeit, aktiv) gilt erst nach Freigabe
+      app.db.run('UPDATE forms SET category = ?, sort = ?, updated_at = ? WHERE id = ?', m.category, m.sort, Date.now(), f.id);
+      try {
+        stageFormMeta(app, f.id, { name: m.name, description: m.description, visible_groups: m.visible_groups, active: m.active }, ctx.user!.id);
+      } catch (err) {
+        throw new HttpError(409, (err as Error).message, 'conflict');
+      }
+      audit(app.db, actor(ctx), { action: 'form.meta_staged', targetType: 'form', targetId: f.id, systemId: f.system_id, details: diff(f as any, { ...f, ...m } as any) });
+      return { form: formPublic(getForm(app, f.id)!), staged: true };
+    }
     app.db.run('UPDATE forms SET name = ?, description = ?, category = ?, visible_groups = ?, sort = ?, active = ?, updated_at = ? WHERE id = ?',
       m.name, m.description, m.category, m.visible_groups, m.sort, m.active, Date.now(), f.id);
     audit(app.db, actor(ctx), { action: 'form.updated', targetType: 'form', targetId: f.id, systemId: f.system_id, details: diff(f as any, { ...f, ...m } as any) });
@@ -537,6 +570,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
         const kind = typeof tp?.kind === 'string' ? tp.kind : '';
         if (!['title', 'body', 'success'].includes(kind) || typeof tp.name !== 'string' || !tp.name.trim() || tp.name.length > 120
           || typeof tp.content !== 'string' || tp.content.length > (kind === 'body' ? 20000 : 1000)) { errors.push('Vorlage ungültig'); continue; }
+        if (kind === 'body') { const pr = templateHtmlProblems(tp.content); if (pr.length) { errors.push(`Vorlage „${tp.name.trim()}“: ${pr.join('; ')}`); continue; } }
         templates.push({ kind, name: tp.name.trim(), content: tp.content });
       }
     }
@@ -556,21 +590,29 @@ export function registerAdminRoutes(router: Router, app: App): void {
           id = uuid();
           app.db.run('INSERT INTO forms (id, system_id, slug, name, description, category, visible_groups, sort, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             id, s.id, p.slug, p.meta.name, p.meta.description, p.meta.category, p.meta.visible_groups, p.meta.sort, p.meta.active, t, t);
+        } else if (s.require_approval === 1) {
+          // Vier-Augen-Prinzip: sichtbare Angaben erst mit der Freigabe (siehe unten), Kategorie/Reihenfolge sofort
+          app.db.run('UPDATE forms SET category = ?, sort = ?, updated_at = ? WHERE id = ?', p.meta.category, p.meta.sort, t, id);
         } else {
           app.db.run('UPDATE forms SET name = ?, description = ?, category = ?, visible_groups = ?, sort = ?, active = ?, updated_at = ? WHERE id = ?',
             p.meta.name, p.meta.description, p.meta.category, p.meta.visible_groups, p.meta.sort, p.meta.active, t, id);
         }
         const v = saveDraft(app, id, p.def!, ctx.user!.id, 'Aus Datei übernommen');
+        if (p.id && s.require_approval === 1) {
+          app.db.run('UPDATE form_versions SET meta = ? WHERE id = ?', JSON.stringify({ name: p.meta.name, description: p.meta.description, visible_groups: p.meta.visible_groups, active: p.meta.active }), v.id);
+        }
         if (publish) {
           if (s.require_approval === 1) app.db.run("UPDATE form_versions SET status = 'pending', submitted_by = ? WHERE id = ?", ctx.user!.id, v.id);
           else { app.db.run('UPDATE form_versions SET submitted_by = ? WHERE id = ?', ctx.user!.id, v.id); publishVersion(app, v, null); }
         }
         audit(app.db, actor(ctx), { action: p.action === 'create' ? 'form.created' : 'form.draft_saved', targetType: 'form', targetId: id, systemId: s.id, details: { slug: p.slug, quelle: 'Datei', veroeffentlicht: publish } });
+        if (publish) audit(app.db, actor(ctx), { action: s.require_approval === 1 ? 'form.submitted_for_approval' : 'form.published', targetType: 'form', targetId: id, systemId: s.id, details: { version: v.version, quelle: 'Datei' } });
       }
       for (const tp of templates) {
         const ex = app.db.get<{ id: string }>('SELECT id FROM templates WHERE system_id = ? AND kind = ? AND name = ?', s.id, tp.kind, tp.name);
         if (ex) app.db.run('UPDATE templates SET content = ?, updated_at = ?, updated_by = ? WHERE id = ?', tp.content, t, ctx.user!.id, ex.id);
         else app.db.run('INSERT INTO templates (id, system_id, kind, name, content, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', uuid(), s.id, tp.kind, tp.name, tp.content, t, t, ctx.user!.id);
+        audit(app.db, actor(ctx), { action: ex ? 'template.updated' : 'template.created', targetType: 'template', targetId: ex?.id ?? null, systemId: s.id, details: { art: tp.kind, name: tp.name, quelle: 'Datei' } });
       }
     });
     return { imported: summary };
@@ -636,7 +678,12 @@ export function registerAdminRoutes(router: Router, app: App): void {
   function readTemplate(b: Body) {
     const kind = str(b, 'kind', 20, true);
     if (!['title', 'body', 'success'].includes(kind)) throw new HttpError(422, 'Art ungültig', 'validation');
-    return { kind, name: str(b, 'name', 120, true), content: str(b, 'content', kind === 'body' ? 20000 : 1000, true) };
+    const content = str(b, 'content', kind === 'body' ? 20000 : 1000, true);
+    if (kind === 'body') {
+      const problems = templateHtmlProblems(content);
+      if (problems.length) throw new HttpError(422, `Text-Vorlage: ${problems.join('; ')}`, 'validation', problems);
+    }
+    return { kind, name: str(b, 'name', 120, true), content };
   }
 
   router.post('/api/admin/systems/:systemId/templates', admin('template.edit'), (ctx: AppCtx) => {
@@ -790,8 +837,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
     const b = ctx.body as Body;
     const kind = str(b, 'kind', 10, true);
     if (kind !== 'logo' && kind !== 'favicon') throw new HttpError(422, 'Art ungültig', 'validation');
-    const data = decodeBase64Strict(b.data);
-    const { mime } = checkLogo(data, kind);
+    const { mime, data } = checkLogo(decodeBase64Strict(b.data), kind);
     const hash = sha256(data);
     const existing = app.db.get<{ id: string }>('SELECT id FROM assets WHERE sha256 = ? AND kind = ?', hash, kind);
     if (existing) return existing;

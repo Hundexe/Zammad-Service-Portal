@@ -9,14 +9,14 @@
 // Kürzel behalten ihre interne ID (Rollen-Zuordnungen und alte Anfragen bleiben gültig), ihr Inhalt wird ersetzt.
 // Ticketsysteme, die nicht in der Datei stehen, werden gelöscht. Alles läuft in einer Transaktion: entweder ganz oder gar nicht.
 import { createCipheriv, createDecipheriv, randomBytes, scrypt } from 'node:crypto';
-import { hashSemaphore } from '../crypto.ts';
 import type { App } from '../app.ts';
 import { parseJson, uuid } from '../db/db.ts';
-import { sha256 } from '../crypto.ts';
+import { hashSemaphore, sha256 } from '../crypto.ts';
 import { HttpError } from '../http/core.ts';
 import { validateDefinition, isProtectedZammadField, type FormDefinition } from '../../shared/form.ts';
 import { DEFAULT_BRANDING, validateBranding } from '../../shared/branding.ts';
-import { checkLogo, decodeBase64Strict } from './files.ts';
+import { templateHtmlProblems } from '../../shared/template.ts';
+import { checkLogo, decodeBase64Strict, removeRequestFiles } from './files.ts';
 import { listSystems, validateSystemUrl, type SystemRow } from './systems.ts';
 import { audit, type Actor } from './audit.ts';
 
@@ -115,12 +115,19 @@ export async function buildExport(app: App, password?: string): Promise<Json> {
   };
 }
 
+/** Gleicher Ursprung (Schema, Host, Port)? undefined, wenn eine Adresse ungültig ist. */
+export function sameOrigin(a: string, b: string): boolean | undefined {
+  try { return new URL(a).origin === new URL(b).origin; } catch { return undefined; }
+}
+
 // ---------------------------------------------------------------- Import: prüfen
 
 interface Asset { ref: string; kind: 'logo' | 'favicon'; mime: string; data: Buffer; sha: string }
 interface PlannedSystem {
   slug: string; name: string; existingId: string | null;
   row: Record<string, string | number | null>; token: string | null; tokenFromFile: boolean;
+  /** Adresse geändert und kein Token in der Datei: vorhandenes Token verwerfen (nie an eine neue Adresse senden) */
+  dropToken: boolean; previousUrl: string | null;
   released: string; branding: { version: number; status: string; data: Record<string, unknown>; createdAt: number; publishedAt: number | null }[];
   forms: { slug: string; name: string; description: string; category: string; visibleGroups: string; sort: number; active: number; versions: { version: number; status: string; note: string; definition: string; createdAt: number; publishedAt: number | null }[] }[];
   templates: { kind: string; name: string; content: string }[];
@@ -165,8 +172,7 @@ export async function planImport(app: App, file: unknown, password?: string): Pr
   for (const a of (file.assets as unknown[] ?? [])) {
     if (!isObj(a) || typeof a.ref !== 'string' || !/^asset-\d{1,4}$/.test(a.ref) || (a.kind !== 'logo' && a.kind !== 'favicon')) { errors.push('Logo: Eintrag ungültig'); continue; }
     try {
-      const data = decodeBase64Strict(a.data);
-      const { mime } = checkLogo(data, a.kind);
+      const { mime, data } = checkLogo(decodeBase64Strict(a.data), a.kind);
       assets.push({ ref: a.ref, kind: a.kind, mime, data, sha: sha256(data) });
     } catch (err) {
       errors.push(`Logo ${a.ref}: ${(err as Error).message}`);
@@ -238,9 +244,15 @@ export async function planImport(app: App, file: unknown, password?: string): Pr
       }
     }
     const existing = app.db.get<SystemRow>('SELECT * FROM ticket_systems WHERE slug = ?', sl);
+    let dropToken = false;
     if (!token && !existing?.api_token) {
       warnings.push(`${w}: kein Zammad-Token in der Datei – das System wird deaktiviert angelegt, bitte Token unter „Verbindung“ eintragen`);
       status = 'inactive';
+    } else if (!token && existing && sameOrigin(existing.base_url, baseUrl) === false) {
+      // Nie das vorhandene Token an eine andere Adresse schicken (sonst gelangt es an deren Betreiber)
+      warnings.push(`${w}: Adresse ändert sich (${existing.base_url} → ${baseUrl}) und die Datei enthält kein Token – das System wird ohne Token und deaktiviert übernommen, bitte Token neu eintragen`);
+      status = 'inactive';
+      dropToken = true;
     } else if (!token) {
       warnings.push(`${w}: kein Token in der Datei – das vorhandene Token des Zielsystems bleibt`);
     }
@@ -317,6 +329,7 @@ export async function planImport(app: App, file: unknown, password?: string): Pr
     else for (const tp of s.templates) {
       if (!isObj(tp) || !['title', 'body', 'success'].includes(String(tp.kind)) || typeof tp.name !== 'string' || !tp.name.trim() || tp.name.length > 120
         || typeof tp.content !== 'string' || tp.content.length > (tp.kind === 'body' ? 20000 : 1000)) { errors.push(`${w}: Vorlage ungültig`); continue; }
+      if (tp.kind === 'body') { const pr = templateHtmlProblems(tp.content); if (pr.length) { errors.push(`${w}: Vorlage „${tp.name.trim()}“: ${pr.join('; ')}`); continue; } }
       templates.push({ kind: String(tp.kind), name: tp.name.trim(), content: tp.content });
     }
     const overviews: PlannedSystem['overviews'] = [];
@@ -330,7 +343,7 @@ export async function planImport(app: App, file: unknown, password?: string): Pr
     }
 
     systems.push({
-      slug: sl, name, existingId: existing?.id ?? null, token, tokenFromFile: Boolean(token),
+      slug: sl, name, existingId: existing?.id ?? null, token, tokenFromFile: Boolean(token), dropToken, previousUrl: existing?.base_url ?? null,
       row: {
         name, base_url: baseUrl, default_group: defaultGroup, creation_mode: mode, status, visible_groups: JSON.stringify(list(s.visibleGroups, 'visibleGroups')),
         require_approval: flag('requireApproval', false), show_org_tickets: flag('showOrgTickets', false), allow_replies: flag('allowReplies', true),
@@ -357,6 +370,7 @@ export function summarizePlan(plan: ImportPlan) {
   return {
     systems: plan.systems.map((s) => ({
       slug: s.slug, name: s.name, action: s.existingId ? 'replace' : 'create', token: s.tokenFromFile,
+      baseUrl: s.row.base_url, previousUrl: s.previousUrl, urlChanged: s.previousUrl !== null && s.previousUrl !== s.row.base_url, tokenDropped: s.dropToken,
       forms: s.forms.length, templates: s.templates.length, overviews: s.overviews.length, brandingVersions: s.branding.length, releasedAttributes: JSON.parse(s.released).length,
     })),
     remove: plan.remove.map((r) => ({ slug: r.slug, name: r.name, requests: r.requests })),
@@ -369,6 +383,7 @@ export function summarizePlan(plan: ImportPlan) {
 
 export function applyImport(app: App, plan: ImportPlan, actor: Actor): ReturnType<typeof summarizePlan> {
   const t = Date.now();
+  const removedRequests: string[] = [];
   app.db.tx(() => {
     // Logos: gleicher Inhalt wird wiederverwendet
     const assetIds = new Map<string, string>();
@@ -380,6 +395,7 @@ export function applyImport(app: App, plan: ImportPlan, actor: Actor): ReturnTyp
     }
 
     for (const r of plan.remove) {
+      for (const q of app.db.all<{ id: string }>('SELECT id FROM requests WHERE system_id = ?', r.id)) removedRequests.push(q.id);
       app.db.run('DELETE FROM requests WHERE system_id = ?', r.id);
       app.db.run('DELETE FROM ticket_systems WHERE id = ?', r.id);
     }
@@ -389,7 +405,7 @@ export function applyImport(app: App, plan: ImportPlan, actor: Actor): ReturnTyp
       let id = s.existingId;
       if (id) {
         const before = app.db.get<SystemRow>('SELECT * FROM ticket_systems WHERE id = ?', id)!;
-        const token = s.token ? app.box.encrypt('system-token', s.token) : before.api_token;
+        const token = s.token ? app.box.encrypt('system-token', s.token) : s.dropToken ? null : before.api_token;
         app.db.run(
           `UPDATE ticket_systems SET name = ?, base_url = ?, api_token = ?, default_group = ?, creation_mode = ?, status = ?, visible_groups = ?, require_approval = ?,
             show_org_tickets = ?, allow_replies = ?, closed_states = ?, portal_tag = ?, sort = ?, allowed_groups = ?, hide_agent_names = ?, released_attributes = ?, updated_at = ? WHERE id = ?`,
@@ -450,5 +466,6 @@ export function applyImport(app: App, plan: ImportPlan, actor: Actor): ReturnTyp
     }
     audit(app.db, actor, { action: 'transfer.imported', targetType: 'portal', details: summarizePlan(plan) });
   });
+  for (const id of removedRequests) removeRequestFiles(app, id);
   return summarizePlan(plan);
 }

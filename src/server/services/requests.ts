@@ -96,7 +96,8 @@ export function buildTicket(
     group,
     priority,
     fields: zammadFields,
-    tags: [...tags],
+    // Der Tag „freigegeben“ ist reserviert: nur die Freigabe durch Vorgesetzte setzt ihn (siehe approvals.ts)
+    tags: [...tags].filter((t) => t.toLowerCase() !== 'freigegeben'),
     customer: { email: user.email, displayName: user.displayName },
   };
 }

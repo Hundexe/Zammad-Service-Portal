@@ -15,7 +15,12 @@ export interface FormRow {
 export interface FormVersionRow {
   id: string; form_id: string; version: number; definition: string; status: 'draft' | 'pending' | 'published' | 'archived';
   note: string; created_by: string | null; created_at: number; submitted_by: string | null; approved_by: string | null; published_at: number | null;
+  /** Geänderte Stammdaten, die mit dieser Version gelten (nur bei Vier-Augen-Prinzip) */
+  meta?: string | null;
 }
+
+/** Stammdaten, die bei Vier-Augen-Prinzip erst mit der Freigabe gelten. */
+export interface GatedFormMeta { name: string; description: string; visible_groups: string; active: number }
 
 export function getForm(app: App, id: string): FormRow | undefined {
   return app.db.get<FormRow>('SELECT * FROM forms WHERE id = ?', id);
@@ -85,7 +90,20 @@ export function publishVersion(app: App, version: FormVersionRow, approverId: st
     app.db.run("UPDATE form_versions SET status = 'archived' WHERE form_id = ? AND status = 'published'", version.form_id);
     app.db.run("UPDATE form_versions SET status = 'published', approved_by = ?, published_at = ? WHERE id = ?", approverId, Date.now(), version.id);
     app.db.run('UPDATE forms SET updated_at = ? WHERE id = ?', Date.now(), version.form_id);
+    const meta = parseJson<GatedFormMeta | null>(app.db.get<{ meta: string | null }>('SELECT meta FROM form_versions WHERE id = ?', version.id)?.meta ?? null, null);
+    if (meta) {
+      app.db.run('UPDATE forms SET name = ?, description = ?, visible_groups = ?, active = ? WHERE id = ?', meta.name, meta.description, meta.visible_groups, meta.active, version.form_id);
+    }
   });
+}
+
+/** Stammdaten als Teil des Entwurfs vormerken (Vier-Augen-Prinzip). Legt bei Bedarf einen Entwurf an. */
+export function stageFormMeta(app: App, formId: string, meta: GatedFormMeta, userId: string): FormVersionRow {
+  const latest = latestVersion(app, formId);
+  if (latest?.status === 'pending') throw new Error('Es wartet bereits eine Version auf Freigabe');
+  const draft = latest?.status === 'draft' ? latest : saveDraft(app, formId, JSON.parse(latest?.definition ?? JSON.stringify(emptyDefinition())) as FormDefinition, userId, 'Allgemeine Angaben geändert');
+  app.db.run('UPDATE form_versions SET meta = ? WHERE id = ?', JSON.stringify(meta), draft.id);
+  return app.db.get<FormVersionRow>('SELECT * FROM form_versions WHERE id = ?', draft.id)!;
 }
 
 export function emptyDefinition(): FormDefinition {

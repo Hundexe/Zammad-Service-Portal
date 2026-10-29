@@ -1,4 +1,5 @@
 // Formular-Schema, Validierung und Sichtbarkeitsregeln.
+import { templateHtmlProblems } from './template.ts';
 // Dieses Modul läuft unverändert im Browser und auf dem Server: Die Prüfung im
 // Browser ist nur Komfort, maßgeblich ist immer die Prüfung auf dem Server.
 
@@ -339,6 +340,7 @@ export function validateDefinition(def: unknown): string[] {
   else {
     if (typeof s.titleTemplate !== 'string' || s.titleTemplate.trim() === '' || s.titleTemplate.length > 300) problems.push('Titel-Vorlage fehlt oder zu lang');
     if (typeof s.bodyTemplate !== 'string' || s.bodyTemplate.length > 20000) problems.push('Text-Vorlage fehlt oder zu lang');
+    else for (const x of templateHtmlProblems(s.bodyTemplate)) problems.push(`Text-Vorlage: ${x}`);
     if (s.tags !== undefined && (!Array.isArray(s.tags) || s.tags.some((t) => typeof t !== 'string' || t.length > 60))) problems.push('Tags ungültig');
   }
   return problems;

@@ -83,7 +83,8 @@ export async function validateSystemUrl(app: App, url: string): Promise<string |
   try { u = new URL(url); } catch { return 'Ungültige URL'; }
   if (u.protocol !== 'https:' && u.protocol !== 'http:') return 'Nur http(s) erlaubt';
   if (u.username || u.password) return 'Zugangsdaten gehören nicht in die URL';
-  if (u.search || u.hash) return 'URL ohne Parameter angeben';
+  // Auf dem Rohtext prüfen: ein leeres „?“ oder „#“ ergibt leere search/hash, würde aber den API-Pfad zur Query machen
+  if (u.search || u.hash || /[?#]/.test(url)) return 'URL ohne Parameter angeben';
   if (app.cfg.env === 'production' && u.protocol !== 'https:' && !process.env.ALLOW_HTTP_TICKET_URLS) return 'In Produktion nur https:// (oder ALLOW_HTTP_TICKET_URLS setzen)';
   const host = u.hostname.replace(/^\[|\]$/g, '');
   const nameProblem = blockedHostname(host, guardOptions(app));

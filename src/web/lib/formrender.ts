@@ -106,7 +106,7 @@ export function renderForm(def: FormDefinition, opts: { preview?: boolean; searc
         el.addEventListener('input', () => {
           set(el.value.trim() === '' ? undefined : el.value.trim());
           const q = el.value.trim();
-          if (!opts.searchPeople || q.length < 2 || q === lastQ || q.includes('@') && list.querySelector(`option[value="${CSS.escape(q.toLowerCase())}"]`)) return;
+          if (!opts.searchPeople || q.length < 3 || q === lastQ || q.includes('@') && list.querySelector(`option[value="${CSS.escape(q.toLowerCase())}"]`)) return;
           clearTimeout(timer);
           timer = setTimeout(() => {
             lastQ = q;

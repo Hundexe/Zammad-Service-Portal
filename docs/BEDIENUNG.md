@@ -44,7 +44,7 @@ Portal öffnen und **Mit Microsoft anmelden** wählen. Es gilt dasselbe Konto wi
 
 Manche Formulare – z. B. **Hardware anfordern** oder kostenpflichtige Software – brauchen eine Freigabe. Dann gibt es im Formular einen eigenen Kasten **Diese Anfrage braucht eine Freigabe**. Er kann auch erst erscheinen, wenn er gebraucht wird (z. B. erst bei „Ja, Lizenz nötig“).
 
-1. Die E-Mail-Adresse der bzw. des Vorgesetzten eintragen. Ab zwei Buchstaben schlägt das Portal Personen vor, die sich schon einmal angemeldet haben. Die eigene Adresse geht nicht.
+1. Die E-Mail-Adresse der bzw. des Vorgesetzten eintragen. Ab drei Buchstaben schlägt das Portal Personen vor, die sich schon einmal angemeldet haben. Die eigene Adresse geht nicht.
 
    ![Formular mit Freigabe](screenshots/40-freigabe-formular.png)
 

@@ -10,7 +10,7 @@ import { renderForm } from '../lib/formrender.ts';
 import { admin, adminSystem, loadAdminSystems } from './common.ts';
 import { FILE_KINDS, type FormDefinition, type FormField, type FieldType } from '../../shared/form.ts';
 
-interface VersionInfo { id: string; version: number; status: string; note: string; createdAt: number; createdBy: string | null; submittedBy: string | null; createdByName?: string | null; submittedByName?: string | null; approvedByName?: string | null; publishedAt: number | null }
+interface VersionInfo { id: string; version: number; status: string; note: string; createdAt: number; createdBy: string | null; submittedBy: string | null; createdByName?: string | null; submittedByName?: string | null; approvedByName?: string | null; publishedAt: number | null; pendingMeta?: { name: string; description: string; visibleGroups: string[]; active: boolean } | null }
 interface AdminForm { id: string; systemId: string; slug: string; name: string; description: string; category: string; visibleGroups: string[]; sort: number; active: boolean; published: VersionInfo | null; latest: VersionInfo | null }
 interface Released { name: string; display: string; type: string; portalType: string | null; options?: { value: string; label: string }[] }
 
@@ -459,10 +459,15 @@ export async function formEditorPage(p: Record<string, string>) {
   }
 
   function generalTab(): HTMLElement {
-    const m = { ...meta };
+    // Bei Vier-Augen-Prinzip: vorgemerkte Angaben aus dem Entwurf zeigen
+    const staged = latest?.status !== 'published' ? latest?.pendingMeta ?? null : null;
+    const m = { ...meta, ...(staged ?? {}) };
     return h('div', { class: 'panel stack' },
       h('h2', null, 'Allgemein'),
-      notice('info', 'Diese Angaben gelten sofort und sind nicht versioniert.'),
+      s.requireApproval
+        ? notice('info', 'Vier-Augen-Prinzip: Name, Kurzbeschreibung, Sichtbarkeit und „Im Portal anzeigen“ gelten erst, wenn die nächste Version freigegeben ist. Kategorie und Reihenfolge gelten sofort.')
+        : notice('info', 'Diese Angaben gelten sofort und sind nicht versioniert.'),
+      staged ? notice('warn', 'Geänderte Angaben sind vorgemerkt und gelten mit der Freigabe der nächsten Version.') : null,
       fieldWrap(input(m.name, (x) => { m.name = x; }), { label: 'Name' }),
       fieldWrap(input(m.category, (x) => { m.category = x; }), { label: 'Kategorie' }),
       fieldWrap(textarea(m.description, (x) => { m.description = x; }, { rows: 2 }), { label: 'Kurzbeschreibung' }),
@@ -471,7 +476,11 @@ export async function formEditorPage(p: Record<string, string>) {
       checkbox(m.active, 'Im Portal anzeigen', (x) => { m.active = x; }),
       h('div', { class: 'row' },
         editable ? button('Speichern', async () => {
-          try { await put(base, m); Object.assign(meta, m); toast('Gespeichert'); draw(); } catch (err) { toast(errorText(err), 'error'); }
+          try {
+            const r = await put<{ staged?: boolean }>(base, m);
+            if (r.staged) { toast('Vorgemerkt – gilt nach der Freigabe der nächsten Version'); navigate(curPath(), true); return; }
+            Object.assign(meta, m); toast('Gespeichert'); draw();
+          } catch (err) { toast(errorText(err), 'error'); }
         }, { kind: 'primary' }) : null,
         can('form.publish', s.id) ? button('Formular löschen', async () => {
           if (!await confirmDialog('Formular löschen?', `„${meta.name}“ und alle Versionen werden gelöscht.`, 'Löschen', true)) return;

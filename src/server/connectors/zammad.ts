@@ -78,7 +78,11 @@ export class ZammadConnector implements Connector {
   }
 
   private url(path: string): string {
-    return this.sys.baseUrl.replace(/\/+$/, '') + path;
+    // Basisadresse ohne Query/Fragment (Altbestand), Pfad wird immer angehängt – nie als Query
+    const base = new URL(this.sys.baseUrl);
+    base.search = '';
+    base.hash = '';
+    return base.toString().replace(/\/+$/, '') + path;
   }
 
   private async call(method: string, path: string, opts: { body?: unknown; onBehalfOf?: string; raw?: boolean } = {}): Promise<Json> {
@@ -364,6 +368,8 @@ export class ZammadConnector implements Connector {
   async addReply(customer: CustomerRef, ticketId: number, bodyHtml: string, attachments: Attachment[]): Promise<void> {
     const detail = await this.getTicket(customer, ticketId);
     if (!detail) throw new ConnectorError('Ticket nicht gefunden', false, 404);
+    // Organisations-Tickets sind nur lesbar: antworten nur in eigene Tickets (sonst im Namen anderer)
+    if (detail.ticket.customerId !== customer.customerId) throw new ConnectorError('Ticket nicht gefunden', false, 404);
     const onBehalfOf = this.sys.creationMode === 'on_behalf_of' ? this.behalf(customer) : undefined;
     await this.call('POST', '/api/v1/ticket_articles', {
       onBehalfOf,

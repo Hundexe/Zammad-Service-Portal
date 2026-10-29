@@ -380,7 +380,7 @@ test('Migrationen 004 und 005 erhalten bestehende Anfragen und Anhänge', () => 
     db.run("INSERT INTO ticket_systems (id, slug, name, base_url, api_token, created_at, updated_at) VALUES ('s1', 's1', 'S1', 'https://z.example.org', 'x', ?, ?)", t, t);
     db.run("INSERT INTO requests (id, user_id, system_id, form_id, form_version_id, title, payload, status, next_attempt_at, created_at) VALUES ('r1', 'u1', 's1', 'f', 'v', 'Alt', 'enc', 'queued', ?, ?)", t, t - 5000);
     db.run("INSERT INTO request_files (id, request_id, field_id, filename, mime, size, sha256) VALUES ('f1', 'r1', 'anhang', 'a.pdf', 'application/pdf', 1, 'x')");
-    assert.deepEqual(db.migrate(), [4, 5, 6]);
+    assert.deepEqual(db.migrate(), [4, 5, 6, 7]);
     const r = db.get<{ status: string; queued_at: number }>("SELECT status, queued_at FROM requests WHERE id = 'r1'")!;
     assert.equal(r.status, 'queued');
     assert.equal(r.queued_at, t - 5000);
