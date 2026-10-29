@@ -8,7 +8,8 @@
 // Import = „alles ersetzen“: Das Zielsystem hat danach genau die Ticketsysteme der Datei. Ticketsysteme mit gleichem
 // Kürzel behalten ihre interne ID (Rollen-Zuordnungen und alte Anfragen bleiben gültig), ihr Inhalt wird ersetzt.
 // Ticketsysteme, die nicht in der Datei stehen, werden gelöscht. Alles läuft in einer Transaktion: entweder ganz oder gar nicht.
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes, scrypt } from 'node:crypto';
+import { hashSemaphore } from '../crypto.ts';
 import type { App } from '../app.ts';
 import { parseJson, uuid } from '../db/db.ts';
 import { sha256 } from '../crypto.ts';
@@ -30,8 +31,11 @@ const LOGO_FIELDS = { logoLightId: 'logo', logoDarkId: 'logo', faviconId: 'favic
 interface Sealed { iv: string; tag: string; data: string }
 type Json = any;
 
-function kdfKey(password: string, salt: Buffer, p: typeof KDF): Buffer {
-  return scryptSync(password, salt, 32, { N: p.N, r: p.r, p: p.p, maxmem: 256 * 1024 * 1024 });
+/** Asynchron und über dieselbe Begrenzung wie die Anmelde-Hashes (blockiert den Server nicht, begrenzt den Speicher). */
+function kdfKey(password: string, salt: Buffer, p: typeof KDF): Promise<Buffer> {
+  return hashSemaphore.run(() => new Promise<Buffer>((resolve, reject) => {
+    scrypt(password, salt, 32, { N: p.N, r: p.r, p: p.p, maxmem: 256 * 1024 * 1024 }, (err, key) => (err ? reject(err) : resolve(key)));
+  }));
 }
 function seal(key: Buffer, aad: string, plain: string): Sealed {
   const iv = randomBytes(12);
@@ -41,15 +45,17 @@ function seal(key: Buffer, aad: string, plain: string): Sealed {
   return { iv: iv.toString('base64'), tag: c.getAuthTag().toString('base64'), data: data.toString('base64') };
 }
 function unseal(key: Buffer, aad: string, s: Sealed): string {
-  const d = createDecipheriv('aes-256-gcm', key, Buffer.from(String(s.iv), 'base64'));
+  const tag = Buffer.from(String(s.tag), 'base64');
+  if (tag.length !== 16) throw new Error('Ungültiges Chiffrat');
+  const d = createDecipheriv('aes-256-gcm', key, Buffer.from(String(s.iv), 'base64'), { authTagLength: 16 });
   d.setAAD(Buffer.from(aad));
-  d.setAuthTag(Buffer.from(String(s.tag), 'base64'));
+  d.setAuthTag(tag);
   return Buffer.concat([d.update(Buffer.from(String(s.data), 'base64')), d.final()]).toString('utf8');
 }
 
 // ---------------------------------------------------------------- Export
 
-export function buildExport(app: App, password?: string): Json {
+export async function buildExport(app: App, password?: string): Promise<Json> {
   if (password !== undefined && password.length < EXPORT_PASSWORD_MIN) {
     throw new HttpError(422, `Das Export-Passwort braucht mindestens ${EXPORT_PASSWORD_MIN} Zeichen`, 'validation', { password: 'zu kurz' });
   }
@@ -57,7 +63,7 @@ export function buildExport(app: App, password?: string): Json {
   let tokens: Json = null;
   if (password) {
     const salt = randomBytes(16);
-    key = kdfKey(password, salt, KDF);
+    key = await kdfKey(password, salt, KDF);
     tokens = { kdf: 'scrypt', ...KDF, salt: salt.toString('base64'), check: seal(key, 'check', EXPORT_FORMAT) };
   }
   const assets: Json[] = [];
@@ -145,7 +151,7 @@ export async function planImport(app: App, file: unknown, password?: string): Pr
       throw new HttpError(422, 'Verschlüsselung der Datei wird nicht unterstützt', 'validation');
     }
     if (!password) throw new HttpError(422, 'Diese Datei enthält verschlüsselte Zammad-Tokens – bitte das Export-Passwort eingeben', 'validation', { password: 'Pflichtfeld' });
-    key = kdfKey(password, Buffer.from(t.salt, 'base64'), KDF);
+    key = await kdfKey(password, Buffer.from(t.salt, 'base64'), KDF);
     try {
       if (unseal(key, 'check', t.check as unknown as Sealed) !== EXPORT_FORMAT) throw new Error('x');
     } catch {

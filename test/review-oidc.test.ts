@@ -98,6 +98,12 @@ describe('OIDC: ID-Token-Prüfung (#2)', () => {
     await client().verifyIdToken(sign(claims({ auth_time: t() - 30 })), { nonce: 'n1', stepup: true });
   });
 
+  test('Step-up ohne auth_time wird abgelehnt (stille SSO-Anmeldung zählt nicht als Bestätigung)', async () => {
+    await assert.rejects(client().verifyIdToken(sign(claims()), { nonce: 'n1', stepup: true }), /auth_time fehlt/);
+    // Normale Anmeldung braucht auth_time nicht
+    await client().verifyIdToken(sign(claims()), { nonce: 'n1', stepup: false });
+  });
+
   test('Schlüsselwechsel: neuer kid → JWKS wird neu geladen, aber höchstens alle 5 Minuten', async () => {
     keys = [jwk(k1.publicKey, 'k1')];
     const c = client();

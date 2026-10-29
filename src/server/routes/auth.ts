@@ -7,7 +7,7 @@ import {
   createSession, destroySession, destroyUserSessions, secureCookies, setSessionState, type SessionState,
 } from '../auth/sessions.ts';
 import { getUser, toAuthUser, upsertEntraUser, type UserRow } from '../services/users.ts';
-import { hashPassword, passwordProblems, verifyPassword } from '../crypto.ts';
+import { hashPassword, hashSemaphore, passwordProblems, verifyPassword } from '../crypto.ts';
 import { generateTotpSecret, otpauthUri, verifyTotp } from '../auth/totp.ts';
 import { qrMatrix } from '../qr.ts';
 import { audit } from '../services/audit.ts';
@@ -25,21 +25,6 @@ export function lockMinutes(lockout: Config['lockout'], lockCount: number): numb
   return Math.min(lockout.minutes * factor, lockout.maxMinutes);
 }
 
-/** Begrenzt gleichzeitige Passwort-Hashes (scrypt braucht je 128 MB). */
-class Semaphore {
-  private queue: (() => void)[] = [];
-  private active = 0;
-  private max: number;
-  constructor(max: number) { this.max = max; }
-  async run<T>(fn: () => Promise<T>): Promise<T> {
-    if (this.active >= this.max) await new Promise<void>((r) => this.queue.push(r));
-    this.active++;
-    try { return await fn(); } finally {
-      this.active--;
-      this.queue.shift()?.();
-    }
-  }
-}
 
 /** Muss dieses lokale Konto 2FA nutzen? (Einstellungen LOCAL_USER_REQUIRE_TOTP / LOCAL_ADMIN_REQUIRE_TOTP) */
 export function totpRequired(app: App, row: UserRow): boolean {
@@ -57,7 +42,9 @@ export function safeReturnTo(v: unknown): string {
 
 export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): void {
   const loginLimiter = new RateLimiter(...app.cfg.rateLimits.login); // Standard: 10 Versuche, dann 1 je 6 s je IP
-  const hashSem = new Semaphore(2);
+  // Microsoft-Anmeldung prüft hier kein Passwort – großzügiger, damit geteilte Adressen (RDS, NAT) morgens nicht blockieren
+  const entraLimiter = new RateLimiter(Math.max(60, app.cfg.rateLimits.login[0] * 6), Math.max(1, app.cfg.rateLimits.login[1] * 6));
+  const hashSem = hashSemaphore;
   const oidcCookie = secureCookies(app) ? '__Host-zsp_oidc' : 'zsp_oidc';
   const actor = (ctx: AppCtx, u?: { id: string; display_name?: string; displayName?: string }) => ({
     id: u?.id ?? null, name: u?.display_name ?? u?.displayName ?? null, ip: ctx.ip,
@@ -106,6 +93,14 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
   router.get('/api/me', { auth: 'any' }, (ctx: AppCtx) => {
     const u = ctx.user!;
     const s = ctx.session!;
+    // Zwischenzustände (z. B. nur das Passwort ist bekannt): keine Rechte, keine Admin-Auskunft
+    if (s.state !== 'active') {
+      return {
+        user: { id: u.id, kind: u.kind, username: u.username, displayName: u.displayName, email: null, department: null, totpEnabled: u.totpEnabled },
+        state: s.state, csrf: s.csrf, isAdmin: false, permissions: { global: [], bySystem: {} },
+        stepupValidUntil: 0, sessionExpiresAt: s.expiresAt,
+      };
+    }
     return {
       user: { id: u.id, kind: u.kind, username: u.username, displayName: u.displayName, email: u.email, department: u.department, totpEnabled: u.totpEnabled },
       state: s.state,
@@ -124,6 +119,14 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
    */
   function alertLocalLogin(ctx: AppCtx, row: UserRow, mfa: boolean): void {
     log.warn('Lokale Anmeldung', { alert: true, event: 'local_login', user: row.id, username: row.username, ip: ctx.ip, mfa });
+  }
+
+  /**
+   * Verbraucht einen TOTP-Zeitschritt atomar: nur wenn er neuer ist als der zuletzt benutzte.
+   * So wird derselbe Code auch bei parallelen Anfragen nur einmal angenommen.
+   */
+  function consumeTotpStep(userId: string, step: number): boolean {
+    return !!app.db.get('UPDATE users SET totp_last_step = ? WHERE id = ? AND (totp_last_step IS NULL OR totp_last_step < ?) RETURNING id', step, userId, step);
   }
 
   router.post('/api/auth/local/login', { auth: 'public', bodyLimit: 4096 }, async (ctx: AppCtx) => {
@@ -180,7 +183,8 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
       }
       throw new HttpError(401, 'Code ungültig', 'totp_invalid');
     }
-    app.db.run('UPDATE users SET totp_last_step = ?, last_login_at = ? WHERE id = ?', step, Date.now(), row.id);
+    if (!consumeTotpStep(row.id, step)) throw new HttpError(401, 'Code ungültig', 'totp_invalid');
+    app.db.run('UPDATE users SET last_login_at = ? WHERE id = ?', Date.now(), row.id);
     clearFailures(row);
     const state = nextState(row, true);
     // Neue Sitzungs-ID nach dem zweiten Faktor (Rechteerhöhung = neues Token)
@@ -200,7 +204,10 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
     const next = typeof b.newPassword === 'string' ? b.newPassword : '';
     // Gesperrt: keine Passwortprüfung (sonst ließe sich die Sperre über diesen Weg umgehen)
     if (isLocked(row)) throw new HttpError(423, 'Konto vorübergehend gesperrt – bitte später erneut versuchen', 'locked');
-    if (!(await hashSem.run(() => verifyPassword(current, row.password_hash)))) {
+    const okCurrent = await hashSem.run(() => verifyPassword(current, row.password_hash));
+    // Nach dem (asynchronen) Hash frisch lesen: parallele Fehlversuche können inzwischen gesperrt haben
+    if (isLocked(getUser(app.db, row.id)!)) throw new HttpError(423, 'Konto vorübergehend gesperrt – bitte später erneut versuchen', 'locked');
+    if (!okCurrent) {
       if (recordFailure(ctx, row, 'passwort_aendern')) { destroySession(app, ctx); throw new HttpError(401, 'Zu viele Fehlversuche – das Konto ist vorübergehend gesperrt', 'locked'); }
       throw new HttpError(401, 'Aktuelles Passwort ist falsch', 'wrong_password');
     }
@@ -231,15 +238,28 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
     return { secret: secret.replace(/(.{4})/g, '$1 ').trim(), uri, qr: qrMatrix(uri).map((r) => r.map((b) => (b ? 1 : 0)).join('')) };
   });
 
-  router.post('/api/auth/totp/enable', { auth: 'any', bodyLimit: 1024 }, (ctx: AppCtx) => {
+  router.post('/api/auth/totp/enable', { auth: 'any', bodyLimit: 4096 }, async (ctx: AppCtx) => {
     const s = ctx.session!;
     if (s.state !== 'totp_setup' && s.state !== 'active') throw new HttpError(409, 'Erst Anmeldung abschließen', 'bad_state');
     if (!loginLimiter.take(`totp:${s.userId}`)) throw new HttpError(429, 'Zu viele Versuche – bitte kurz warten', 'rate_limited');
     const row = getUser(app.db, s.userId)!;
     if (row.totp_enabled || !row.totp_secret) throw new HttpError(409, 'Bitte die Einrichtung neu starten', 'bad_state');
-    const step = verifyTotp(app.box.decrypt('totp', row.totp_secret), String((ctx.body as { code?: unknown }).code ?? '').replace(/\s/g, ''), null);
+    const b = ctx.body as { code?: unknown; password?: unknown };
+    // Im normalen Betrieb ist das Einrichten eine Änderung der Anmeldefaktoren: aktuelles Passwort nötig
+    // (sonst könnte eine übernommene Sitzung den Inhaber aussperren). Bei der Erstanmeldung wurde es eben eingegeben.
+    if (s.state === 'active') {
+      if (isLocked(row)) throw new HttpError(423, 'Konto vorübergehend gesperrt – bitte später erneut versuchen', 'locked');
+      const okPw = await hashSem.run(() => verifyPassword(typeof b.password === 'string' ? b.password : '', row.password_hash));
+      if (isLocked(getUser(app.db, row.id)!)) throw new HttpError(423, 'Konto vorübergehend gesperrt – bitte später erneut versuchen', 'locked');
+      if (!okPw) {
+        if (recordFailure(ctx, row, 'totp_einrichten')) { destroySession(app, ctx); throw new HttpError(401, 'Zu viele Fehlversuche – das Konto ist vorübergehend gesperrt', 'locked'); }
+        throw new HttpError(401, 'Aktuelles Passwort ist falsch', 'wrong_password');
+      }
+    }
+    const step = verifyTotp(app.box.decrypt('totp', row.totp_secret), String(b.code ?? '').replace(/\s/g, ''), null);
     if (step === null) throw new HttpError(401, 'Code ungültig – Uhrzeit des Handys prüfen', 'totp_invalid');
     app.db.run('UPDATE users SET totp_enabled = 1, totp_last_step = ? WHERE id = ?', step, row.id);
+    log.warn('Zwei-Faktor-Anmeldung eingerichtet', { alert: true, event: 'totp_enabled', user: row.id, username: row.username, ip: ctx.ip });
     destroyUserSessions(app, row.id, s.idHash);
     setSessionState(app, s, 'active', { mfa: true, authTime: Date.now() });
     app.db.run('UPDATE users SET last_login_at = ? WHERE id = ?', Date.now(), row.id);
@@ -256,11 +276,15 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
     if (isLocked(row)) throw new HttpError(423, 'Konto vorübergehend gesperrt – bitte später erneut versuchen', 'locked');
     const b = ctx.body as { password?: unknown; code?: unknown };
     const ok = await hashSem.run(() => verifyPassword(typeof b.password === 'string' ? b.password : '', row.password_hash));
+    // Nach dem (asynchronen) Hash frisch lesen: Sperre und zuletzt benutzter Code können sich geändert haben
+    const now = getUser(app.db, row.id)!;
+    if (isLocked(now)) throw new HttpError(423, 'Konto vorübergehend gesperrt – bitte später erneut versuchen', 'locked');
     let step: number | null = null;
-    if (ok && row.totp_enabled) {
-      step = verifyTotp(app.box.decrypt('totp', row.totp_secret!), String(b.code ?? '').replace(/\s/g, ''), row.totp_last_step);
+    if (ok && now.totp_enabled) {
+      step = verifyTotp(app.box.decrypt('totp', now.totp_secret!), String(b.code ?? '').replace(/\s/g, ''), now.totp_last_step);
+      if (step !== null && !consumeTotpStep(row.id, step)) step = null;
     }
-    if (!ok || (row.totp_enabled && step === null)) {
+    if (!ok || (now.totp_enabled && step === null)) {
       if (recordFailure(ctx, row, 'stepup')) {
         // Wer die Bestätigung 5× nicht schafft, verliert die Sitzung (schützt vor übernommenen Sitzungen)
         destroySession(app, ctx);
@@ -268,7 +292,6 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
       }
       throw new HttpError(401, 'Bestätigung fehlgeschlagen', 'stepup_failed');
     }
-    if (step !== null) app.db.run('UPDATE users SET totp_last_step = ? WHERE id = ?', step, row.id);
     clearFailures(row);
     setSessionState(app, s, s.state, { authTime: Date.now() });
     audit(app.db, actor(ctx, row), { action: 'stepup.success', targetType: 'user', targetId: row.id });
@@ -285,7 +308,7 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
   // ------------------------------------------------------------- Entra ID
   router.get('/api/auth/entra/login', { auth: 'public' }, async (ctx: AppCtx) => {
     if (!deps.entra) throw new HttpError(404, 'Microsoft-Anmeldung ist nicht konfiguriert', 'disabled');
-    if (!loginLimiter.take(`entra:${limiterKey(ctx.ip)}`)) throw new HttpError(429, 'Zu viele Anmeldeversuche – bitte kurz warten', 'rate_limited');
+    if (!entraLimiter.take(limiterKey(ctx.ip))) throw new HttpError(429, 'Zu viele Anmeldeversuche – bitte kurz warten', 'rate_limited');
     const stepup = ctx.query.get('stepup') === '1';
     if (stepup && (!ctx.session || ctx.user?.kind !== 'entra')) throw new HttpError(401, 'Bitte anmelden', 'unauthenticated');
     const tx = deps.entra.newTransaction(safeReturnTo(ctx.query.get('returnTo')), stepup);

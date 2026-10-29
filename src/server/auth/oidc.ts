@@ -252,8 +252,10 @@ export class EntraClient {
     if (!c.nonce || c.nonce !== tx.nonce) throw new Error('ID-Token: Nonce stimmt nicht');
     if (!c.oid || !/^[0-9a-f-]{36}$/i.test(c.oid)) throw new Error('ID-Token: Objekt-ID fehlt');
     if (tx.stepup) {
-      const authTime = c.auth_time ?? c.iat;
-      if (t - authTime > 600) throw new Error('Erneute Anmeldung nicht erfolgt');
+      // Ohne auth_time ist nicht belegt, dass wirklich neu angemeldet wurde (iat ist bei jedem Token „jetzt“,
+      // prompt=login steht nur in der Browser-URL). Optionalen Claim auth_time in der App-Registrierung setzen.
+      if (typeof c.auth_time !== 'number') throw new Error('Bestätigung: Claim auth_time fehlt (optionalen Claim in der App-Registrierung hinzufügen)');
+      if (t - c.auth_time > 600) throw new Error('Erneute Anmeldung nicht erfolgt');
     }
     if (c._claim_names?.groups) {
       log.warn('Entra liefert zu viele Gruppen im Token (Group Overage) – Gruppen werden ignoriert. App-Rollen oder "Gruppen, die der Anwendung zugewiesen sind" verwenden.', { oid: c.oid });

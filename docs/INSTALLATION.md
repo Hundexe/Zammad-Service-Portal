@@ -133,6 +133,7 @@ Andere Tenants lehnt das Portal immer ab, auch bei einer Multi-Tenant-App.
 4. **API-Berechtigungen:** Microsoft Graph, delegiert: `openid`, `profile`, `email`, `User.Read` → **Administratorzustimmung erteilen**.
 5. **Tokenkonfiguration → Gruppenanspruch hinzufügen** → „Der Anwendung zugewiesene Gruppen“, im ID-Token als **Gruppen-ID**.
    Damit stehen die Gruppen im Token, über die ihr Rechte und sichtbare Ticketsysteme steuert. Die Einschränkung auf zugewiesene Gruppen verhindert, dass bei Benutzern mit sehr vielen Gruppen Einträge fehlen.
+   Außerdem **Tokenkonfiguration → Optionalen Anspruch hinzufügen** → Tokentyp **ID** → **`auth_time`**. Ohne diesen Anspruch ist die „erneute Anmeldung“ vor kritischen Aktionen (Step-up) für Microsoft-Konten nicht möglich – das Portal lehnt sie dann ab, weil nicht belegt ist, dass wirklich neu angemeldet wurde.
 6. *Optional:* **App-Rollen** (z. B. `Portal.Admin`) anlegen. Im Portal heißen sie dann `approle:Portal.Admin` und lassen sich wie Gruppen zuordnen.
 7. **Unternehmensanwendungen → Service-Portal → Eigenschaften:** „Zuweisung erforderlich“ = **Ja**. Unter **Benutzer und Gruppen** die Gruppen zuweisen, die das Portal nutzen dürfen.
 8. **Bedingter Zugriff:** eine Richtlinie für die App `Service-Portal` mit MFA (und ggf. konformem Gerät). Das Portal verlässt sich bei Microsoft-Konten auf diese MFA.

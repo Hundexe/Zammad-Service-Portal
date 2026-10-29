@@ -6,6 +6,24 @@ import {
 } from 'node:crypto';
 import { promisify } from 'node:util';
 
+/** Begrenzt gleichzeitige scrypt-Aufrufe (je 128 MB) – gemeinsam für Anmeldung und Export-Passwort. */
+export class Semaphore {
+  private queue: (() => void)[] = [];
+  private active = 0;
+  private max: number;
+  constructor(max: number) { this.max = max; }
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.active >= this.max) await new Promise<void>((r) => this.queue.push(r));
+    this.active++;
+    try { return await fn(); } finally {
+      this.active--;
+      this.queue.shift()?.();
+    }
+  }
+}
+export const hashSemaphore = new Semaphore(2);
+
+
 const scrypt = promisify(scryptCb) as (pw: string | Buffer, salt: Buffer, len: number, opts: object) => Promise<Buffer>;
 
 /** Verschlüsselt Daten mit AES-256-GCM. Ein eigener Schlüssel je Zweck wird per HKDF abgeleitet. */
@@ -38,9 +56,12 @@ export class SecretBox {
   decryptBuffer(purpose: string, token: string): Buffer {
     const [v, iv, data, tag] = token.split('.');
     if (v !== 'v1' || !iv || !data || !tag) throw new Error('Ungültiges Chiffrat');
-    const decipher = createDecipheriv('aes-256-gcm', this.key(purpose), Buffer.from(iv, 'base64url'));
+    const tagBuf = Buffer.from(tag, 'base64url');
+    // Nur volle 16-Byte-Tags (kürzere würden das Fälschen erleichtern)
+    if (tagBuf.length !== 16) throw new Error('Ungültiges Chiffrat');
+    const decipher = createDecipheriv('aes-256-gcm', this.key(purpose), Buffer.from(iv, 'base64url'), { authTagLength: 16 });
     decipher.setAAD(Buffer.from(purpose));
-    decipher.setAuthTag(Buffer.from(tag, 'base64url'));
+    decipher.setAuthTag(tagBuf);
     return Buffer.concat([decipher.update(Buffer.from(data, 'base64url')), decipher.final()]);
   }
 
@@ -58,7 +79,8 @@ export class SecretBox {
   }
 
   decryptBlob(purpose: string, blob: Buffer): Buffer {
-    const decipher = createDecipheriv('aes-256-gcm', this.key(purpose), blob.subarray(0, 12));
+    if (blob.length < 28) throw new Error('Ungültiges Chiffrat');
+    const decipher = createDecipheriv('aes-256-gcm', this.key(purpose), blob.subarray(0, 12), { authTagLength: 16 });
     decipher.setAAD(Buffer.from(purpose));
     decipher.setAuthTag(blob.subarray(12, 28));
     return Buffer.concat([decipher.update(blob.subarray(28)), decipher.final()]);

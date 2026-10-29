@@ -98,3 +98,59 @@ describe('Ticketverlauf (ST-16)', () => {
     assert.equal(htmlToText('a<br>b<table><tr><td>1</td><td>2</td></tr></table><style>x</style>c'), 'a\nb1\t2\nc');
   });
 });
+
+describe('Anmeldung (ST-20, ST-21, ST-32)', () => {
+  const PW = 'Test-Passwort-123!';
+  const SECRET = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
+  const FALSCH = 'falsch-falsch-1';
+
+  test('Step-up: derselbe TOTP-Code wird auch parallel nur einmal angenommen', async () => {
+    const { totpCode, currentStep } = await import('../src/server/auth/totp.ts');
+    await createUser(p.app, { username: 'race', role: 'Super-Admin', totpSecret: SECRET });
+    const c = new Client(p.url);
+    await c.loginLocal('race', PW, SECRET);
+    // vorigen Code verbraucht der Login; für den Step-up den nächsten Schritt nehmen
+    const code = totpCode(SECRET, currentStep() + 1);
+    const [a, b] = await Promise.all([c.post('/api/auth/stepup', { password: PW, code }), c.post('/api/auth/stepup', { password: PW, code })]);
+    assert.deepEqual([a.status, b.status].sort(), [200, 401], `${a.status} ${b.status}`);
+  });
+
+  test('2FA einrichten im laufenden Betrieb verlangt das aktuelle Passwort', async () => {
+    const { totpCode, currentStep } = await import('../src/server/auth/totp.ts');
+    await createUser(p.app, { username: 'ohne2fa' });
+    const c = new Client(p.url);
+    await c.loginLocal('ohne2fa', PW);
+    const setup = await c.get('/api/auth/totp/setup');
+    assert.equal(setup.status, 200);
+    const secret = setup.json.secret.replace(/\s/g, '');
+    const code = totpCode(secret, currentStep());
+    assert.equal((await c.post('/api/auth/totp/enable', { code })).status, 401, 'ohne Passwort');
+    assert.equal((await c.post('/api/auth/totp/enable', { code, password: FALSCH })).status, 401, 'falsches Passwort');
+    assert.equal((await c.post('/api/auth/totp/enable', { code, password: PW })).status, 200);
+  });
+
+  test('/api/me verrät im Zwischenzustand keine Rechte', async () => {
+    await createUser(p.app, { username: 'halb', role: 'Super-Admin', totpSecret: SECRET });
+    const c = new Client(p.url);
+    const r = await c.loginLocal('halb', PW); // ohne Code → mfa_pending
+    assert.equal(r.json.state, 'mfa_pending');
+    const me = await c.get('/api/me');
+    assert.equal(me.json.isAdmin, false);
+    assert.deepEqual(me.json.permissions, { global: [], bySystem: {} });
+    assert.equal(me.json.user.email, null);
+  });
+
+  test('/readyz nennt die Version nur bei direktem Aufruf, nicht über den Proxy', async () => {
+    const c = new Client(p.url);
+    assert.ok((await c.get('/readyz')).json.version);
+    assert.equal((await c.get('/readyz', { 'x-forwarded-for': '10.0.0.1' })).json.version, undefined);
+  });
+
+  test('GCM: verkürzte Tags werden abgelehnt', () => {
+    const token = p.app.box.encrypt('test', 'geheim');
+    const [v, iv, data, tag] = token.split('.');
+    const short = [v, iv, data, Buffer.from(tag, 'base64url').subarray(0, 8).toString('base64url')].join('.');
+    assert.throws(() => p.app.box.decrypt('test', short));
+    assert.equal(p.app.box.decrypt('test', token), 'geheim');
+  });
+});

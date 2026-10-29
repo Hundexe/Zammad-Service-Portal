@@ -27,8 +27,11 @@ const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 export function buildRouter(app: App, deps: ServerDeps): Router {
   const router = new Router();
   router.get('/healthz', { auth: 'public' }, () => ({ status: 'ok' }));
-  router.get('/readyz', { auth: 'public' }, () => {
+  router.get('/readyz', { auth: 'public' }, (ctx: AppCtx) => {
     app.db.get('SELECT 1');
+    // Die genaue Version nur für direkte Aufrufe (Update-Dienst, Monitoring im internen Netz), nicht über den
+    // Reverse Proxy: Caddy setzt immer X-Forwarded-For, ein Aufrufer von außen kann das nicht verhindern.
+    if (ctx.req.headers['x-forwarded-for'] !== undefined) return { status: 'ok' };
     return { status: 'ok', version: app.cfg.version };
   });
   registerAuthRoutes(router, app, deps);

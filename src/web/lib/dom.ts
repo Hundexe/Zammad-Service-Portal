@@ -24,12 +24,25 @@ function append(el: Node, child: Child): void {
   el.appendChild(child instanceof Node ? child : document.createTextNode(String(child)));
 }
 
+/**
+ * Erlaubte URLs für href/src/action: relative Pfade und http(s), mailto, tel, blob (Exporte);
+ * für src zusätzlich data:-Bilder. Steuerzeichen und Leerraum entfernt der Browser vor dem Schema –
+ * deshalb wird genauso normalisiert, bevor das Schema geprüft wird.
+ */
+export function safeUrl(v: string, k = 'href'): boolean {
+  // eslint-disable-next-line no-control-regex
+  const norm = v.replace(/[\u0000-\u0020\u007f-\u009f]/g, '');
+  const m = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(norm);
+  if (!m) return true; // relativ (/pfad, #anker, ?query)
+  const scheme = m[1].toLowerCase();
+  if (['http', 'https', 'mailto', 'tel', 'blob'].includes(scheme)) return true;
+  return k === 'src' && /^data:image\/(png|svg\+xml|jpeg|webp);/i.test(norm);
+}
+
 function setAttr(el: Element, k: string, v: unknown): void {
   if (v === null || v === undefined || v === false) return;
   if (/^on/i.test(k)) throw new Error('Event-Handler nur über "on" setzen');
-  if ((k === 'href' || k === 'src' || k === 'action') && typeof v === 'string' && /^\s*(javascript|data|vbscript):/i.test(v) && !(k === 'src' && /^data:image\/(png|svg\+xml|jpeg|webp);/i.test(v))) {
-    throw new Error('Unsichere URL');
-  }
+  if ((k === 'href' || k === 'src' || k === 'action') && typeof v === 'string' && !safeUrl(v, k)) throw new Error('Unsichere URL');
   el.setAttribute(k, v === true ? '' : String(v));
 }
 

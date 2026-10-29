@@ -1033,12 +1033,12 @@ export function registerAdminRoutes(router: Router, app: App): void {
     return v;
   };
 
-  router.post('/api/admin/transfer/export', admin('system.manage', { stepup: true }), (ctx: AppCtx) => {
+  router.post('/api/admin/transfer/export', admin('system.manage', { stepup: true }), async (ctx: AppCtx) => {
     requireGlobalSystemManage(ctx);
     const b = ctx.body as Body;
     const password = b.includeTokens === true ? exportPassword(b) : undefined;
     if (b.includeTokens === true && !password) throw new HttpError(422, 'Für die Zammad-Tokens ist ein Export-Passwort nötig', 'validation', { password: 'Pflichtfeld' });
-    const file = buildExport(app, password);
+    const file = await buildExport(app, password);
     audit(app.db, actor(ctx), { action: 'transfer.exported', targetType: 'portal', details: { systeme: file.systems.length, tokens: Boolean(password) } });
     return { file };
   });

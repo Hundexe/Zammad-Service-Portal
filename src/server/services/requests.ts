@@ -54,7 +54,7 @@ export function buildTicket(
     if (f.mapping?.target !== 'none') rows.push(`<tr><th align="left" valign="top">${escapeHtml(f.label)}</th><td>${f.type === 'textarea' ? textToHtml(shown) : escapeHtml(shown)}</td></tr>`);
     const m = f.mapping;
     if (!m) continue;
-    const mapOne = (x: string) => m.valueMap?.[x] ?? x;
+    const mapOne = (x: string) => (m.valueMap && Object.hasOwn(m.valueMap, x) ? m.valueMap[x] : x);
     switch (m.target) {
       case 'zammad_field':
         if (!m.name || isProtectedZammadField(m.name) || !released.has(m.name)) {

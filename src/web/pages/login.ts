@@ -139,9 +139,11 @@ export function qrSvg(rows: string[]): SVGElement {
   return svg('svg', { viewBox: `0 0 ${n + 2 * q} ${n + 2 * q}`, width: 200, height: 200, role: 'img', 'aria-label': 'QR-Code für die Authenticator-App', 'shape-rendering': 'crispEdges' }, ...cells);
 }
 
-export async function totpSetupBlock(onDone: () => void): Promise<HTMLElement> {
+/** needPassword: im normalen Betrieb muss das aktuelle Passwort bestätigt werden (Änderung der Anmeldefaktoren). */
+export async function totpSetupBlock(onDone: () => void, needPassword = false): Promise<HTMLElement> {
   const s = await get<{ secret: string; uri: string; qr: string[] }>('/api/auth/totp/setup');
   let code = '';
+  let password = '';
   const msg = h('div', { attrs: { 'aria-live': 'polite' } });
   return h('div', { class: 'stack' },
     h('ol', { class: 'steps' },
@@ -154,9 +156,10 @@ export async function totpSetupBlock(onDone: () => void): Promise<HTMLElement> {
     msg,
     h('form', { class: 'stack', on: { submit: async (e) => {
       e.preventDefault();
-      try { await post('/api/auth/totp/enable', { code }); onDone(); } catch (err) { mount(msg, notice('error', errorText(err))); }
+      try { await post('/api/auth/totp/enable', needPassword ? { code, password } : { code }); onDone(); } catch (err) { mount(msg, notice('error', errorText(err))); }
     } } },
       fieldWrap(input('', (v) => { code = v; }, { inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: 7, required: true, class: 'code-input' }), { label: 'Code aus der App' }),
+      needPassword ? fieldWrap(input('', (v) => { password = v; }, { type: 'password', autocomplete: 'current-password', required: true }), { label: 'Aktuelles Passwort', help: 'Zur Bestätigung, dass Sie es selbst sind' }) : null,
       h('button', { class: ['btn', 'btn-primary', 'btn-block'], attrs: { type: 'submit' } }, 'Zwei-Faktor-Anmeldung aktivieren')),
   );
 }

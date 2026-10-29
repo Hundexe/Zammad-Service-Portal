@@ -48,10 +48,10 @@ Farben, Logos, Texte, Formulare, Rollen und Ticketsysteme werden in der Verwaltu
 ```bash
 docker compose ps                     # alle Dienste "running", app "healthy"
 docker compose logs -f app worker     # Logs als JSON, eine Zeile je Ereignis
-curl -sk https://serviceportal.firma.intern/readyz   # {"status":"ok","version":"…"}
+curl -sk https://serviceportal.firma.intern/readyz   # {"status":"ok"} (Version nur bei direktem Aufruf ohne Proxy)
 ```
 
-Für Monitoring (z. B. Checkmk, Zabbix, Uptime Kuma) eignet sich `/readyz`: HTTP 200 mit Versionsnummer, wenn App und Datenbank laufen. Mehr sagt der Befehl `status` (siehe [Überwachung](#überwachung-und-alarme)). Zusätzlich in der Verwaltung: **Zustellung** (fehlgeschlagene Anfragen) und **Updates** (meldet sich der Updater?).
+Für Monitoring (z. B. Checkmk, Zabbix, Uptime Kuma) eignet sich `/readyz`: HTTP 200, wenn App und Datenbank laufen. Die Versionsnummer steht nur bei direktem Aufruf an der App (ohne Caddy) in der Antwort, z. B. für den Update-Dienst. Mehr sagt der Befehl `status` (siehe [Überwachung](#überwachung-und-alarme)). Zusätzlich in der Verwaltung: **Zustellung** (fehlgeschlagene Anfragen) und **Updates** (meldet sich der Updater?).
 
 Wichtige Log-Meldungen:
 

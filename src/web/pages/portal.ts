@@ -318,7 +318,7 @@ export async function accountPage() {
       sec.push(h('section', { class: 'panel' }, h('h2', null, 'Passwort ändern'), passwordForm(async () => { toast('Passwort geändert. Andere Sitzungen wurden abgemeldet.'); await loadMe(); }, false)));
       if (!state.me!.user.totpEnabled) {
         sec.push(h('section', { class: 'panel' }, h('h2', null, 'Zwei-Faktor-Anmeldung'), h('p', { class: 'muted' }, 'Schützt Ihr Konto zusätzlich mit einem Code aus einer Authenticator-App.'),
-          await totpSetupBlock(async () => { toast('Zwei-Faktor-Anmeldung ist aktiv'); await loadMe(); await draw(); }).catch((err) => notice('error', errorText(err)))));
+          await totpSetupBlock(async () => { toast('Zwei-Faktor-Anmeldung ist aktiv'); await loadMe(); await draw(); }, true).catch((err) => notice('error', errorText(err)))));
       } else {
         sec.push(h('section', { class: 'panel' }, h('h2', null, 'Zwei-Faktor-Anmeldung'), notice('ok', 'Aktiv. Zum Zurücksetzen (z. B. bei neuem Handy) wenden Sie sich an die IT.')));
       }
