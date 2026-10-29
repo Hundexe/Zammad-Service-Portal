@@ -60,7 +60,10 @@ export class StaticFiles {
     res.statusCode = 200;
     res.setHeader('Content-Type', file.type);
     res.setHeader('ETag', file.etag);
-    res.setHeader('Cache-Control', rel === 'index.html' ? 'no-cache' : 'public, max-age=3600');
+    // Schriften ändern sich praktisch nie. Alles andere (index.html, Module unter app/ und shared/, CSS) immer
+    // kurz nachfragen (ETag → 304): Die Module importieren sich gegenseitig ohne Versionsangabe – mit max-age
+    // lief nach einem Update bis zu einer Stunde eine Mischung aus alten Modulen und neuem CSS.
+    res.setHeader('Cache-Control', rel.startsWith('fonts/') ? 'public, max-age=604800' : 'no-cache');
     if (ctx.req.headers['if-none-match'] === file.etag) {
       res.statusCode = 304;
       res.end();

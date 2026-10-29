@@ -1,5 +1,10 @@
 # Änderungen
 
+## 1.9.8 – 29.10.2026
+
+- **Nach einem Update sofort alles neu:** Die Programmteile im Browser wurden bis zu einer Stunde zwischengespeichert, während Startdatei und Gestaltung schon neu waren. Nach einem Update lief so kurzzeitig eine Mischung aus alt und neu (z. B. Ticketverlauf als ein einziger Textblock). Jetzt fragt der Browser bei jedem Aufruf kurz nach, ob sich etwas geändert hat (unverändert: kurze Antwort ohne Inhalt)
+- Ticketverlauf behält Zeilenumbrüche auch in diesem Fall
+
 ## 1.9.7 – 29.10.2026
 
 - **Ticketverlauf im Portal aufgeräumt** (in Zammad bleibt jede Nachricht unverändert)

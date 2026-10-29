@@ -72,3 +72,14 @@ test('Verbindungen zu Zammad werden wiederverwendet (Keep-Alive)', async () => {
   assert.ok(requests >= 4, `${requests} Aufrufe`);
   assert.ok(connections < requests, `${connections} Verbindungen für ${requests} Aufrufe`);
 });
+
+test('Nach einem Update keine Mischung aus alten und neuen Dateien: Module werden immer nachgefragt', async () => {
+  const c = new Client(p.url);
+  const index = await c.get('/');
+  if (index.status !== 200 || !index.text.includes('main.js')) return; // ohne gebautes Frontend nichts zu prüfen
+  const mod = await fetch(`${p.url}/app/main.js`);
+  assert.equal(mod.headers.get('cache-control'), 'no-cache');
+  assert.ok(mod.headers.get('etag'));
+  const again = await fetch(`${p.url}/app/main.js`, { headers: { 'if-none-match': mod.headers.get('etag')! } });
+  assert.equal(again.status, 304);
+});
