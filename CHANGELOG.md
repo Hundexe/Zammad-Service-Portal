@@ -1,5 +1,51 @@
 # Änderungen
 
+## 1.9.0 – 29.10.2026
+
+Behebt die Funde aus dem [Sicherheitstest vom 28.10.2026](docs/SICHERHEITSTEST-2026-10-28.md).
+
+**Bitte beachten beim Update**
+- **Microsoft-Anmeldung:** In der App-Registrierung unter **Tokenkonfiguration** den optionalen Anspruch **`auth_time`** (ID-Token) hinzufügen – sonst ist die erneute Anmeldung vor kritischen Aktionen (Step-up) für Microsoft-Admins nicht möglich.
+- **Mail-Adressen von Microsoft-Konten** werden nur übernommen, wenn ihre Domain zu den verifizierten Domains des Tenants gehört (Graph, Recht `User.Read` genügt) oder in `ENTRA_TENANT_DOMAINS` steht. Konten mit fremder Domain sehen keine Tickets und können nicht freigeben (Alarm im Log `entra_email_rejected`).
+- **Lokale Konten** können nicht mehr freigeben; ihre E-Mail-Adresse setzt nur ein Super-Admin.
+- **Prüfmuster** in Formularen laufen jetzt linear: Rückverweise, Lookarounds und `\p{…}` werden beim Speichern abgelehnt (solche Muster in bestehenden Formularen werden bis zur nächsten Änderung nicht mehr ausgeführt).
+- **Text-Vorlagen** erlauben nur noch einfache Formatierung (keine Bilder, Styles, Skripte; Links nur http(s)/mailto, keine Platzhalter in Tags).
+- **Zammad-Adresse ändern** verlangt jetzt auch das API-Token.
+
+**Verfügbarkeit**
+- JSON-Bodys werden vor dem Parsen linear geprüft (nur Objekte, Tiefe höchstens 64, höchstens 100 000 Elemente) – ein einzelner Request bringt das Portal nicht mehr zum Absturz; `null` u. Ä. ergibt 400 statt 500
+- Body-Grenze für Uploads aus `UPLOAD_MAX_TOTAL_MB` abgeleitet, gemeinsames Speicherbudget für große Requests (`UPLOAD_INFLIGHT_MB`, Standard 64), je Benutzer ein Upload gleichzeitig
+- Prüfmuster in der linearen Regex-Engine von V8 (kein ReDoS), HTML aus Zammad linear in Text umgewandelt
+- Rate-Limiter mit Obergrenze und zeitgesteuertem Aufräumen, IPv6 je /64
+
+**Anmeldung**
+- TOTP-Code bei Step-up und Login atomar verbraucht (auch parallel nur einmal gültig), Sperre nach dem Hash frisch geprüft
+- 2FA im laufenden Betrieb nur mit aktuellem Passwort einrichten
+- Step-up über Microsoft nur mit `auth_time`
+- Im Zwischenzustand (nur Passwort bekannt) keine Rechte-Auskunft; `/readyz` nennt die Version nicht über den Proxy; GCM nur mit vollen 16-Byte-Tags; Export-Passwort per asynchronem scrypt
+
+**Identität und Freigaben**
+- Mail-Adresse nur mit Domain des eigenen Tenants (siehe oben)
+- Freigabe-Feld: optional „Freigeben dürfen nur Mitglieder dieser Gruppen“ (z. B. Führungskräfte), geprüft beim Eintragen und Entscheiden
+- Freigebende Person höchstens dreimal wechseln, die Frist verlängert sich dabei nicht
+
+**Verwaltung**
+- Gespeichertes Zammad-Token geht nie an eine geänderte Adresse (auch nicht beim Import; Vorschau zeigt Adresswechsel)
+- Vier-Augen-Prinzip: Name, Beschreibung, Sichtbarkeit und Aktiv-Status eines Formulars gelten erst nach der Freigabe; abschalten nur durch globale Admins
+- Zammad-Adressen mit `?`/`#` abgelehnt; optional `TICKET_URL_ALLOWED_HOSTS` und `TICKET_URL_BLOCKED_CIDRS`; `ALLOW_PRIVATE_TICKET_URLS` im Docker-Stack wieder einstellbar
+- SVG-Logos per Allowlist bereinigt; Tag „freigegeben“ reserviert; Personensuche nur für Microsoft-Konten ab drei Zeichen; Organisations-Tickets nur lesen
+- Audit: Verbindungstest, Vorlagen und Veröffentlichen per Import
+
+**Daten und Betrieb**
+- Keine Doppel-Tickets nach Verbindungsabbruch oder „Erneut senden“
+- Benachrichtigungen verschlüsselt; Titel und Fehlertexte nach der Aufbewahrungsfrist gelöscht; Abbruchgrund nicht mehr im Audit-Log
+- Löschen eines Ticketsystems entfernt auch gespeicherte Anhänge
+- Sicherungen mit Rechten 0600, nur die letzten drei Sicherungen vor Updates
+- Update-Dienst ohne Docker: systemd-Härtung, keine Paketinstallation beim Update; Installation zeigt den Fingerabdruck des Release-Schlüssels
+- Node.js-Download: Signatur der Prüfsummen mit den Schlüsseln der Node.js-Releaser geprüft (`NODE_SKIP_SIGNATURE=1` als Notausgang)
+- Migrationen 006–008
+- Tests: 37 neue, insgesamt 280
+
 ## 1.8.1 – 28.10.2026
 
 - **Sicherheit (Installation ohne Docker):** Der Update-Dienst läuft als root und setzte den Besitzer der Datenbank- und Backup-Dateien im Datenverzeichnis des Dienstbenutzers – dabei folgte er symbolischen Links. Wer bereits Code als Dienstbenutzer ausführen konnte, hätte so Systemdateien übernehmen können. Jetzt werden Dateien ohne Linkverfolgung geöffnet und nur echte Dateien mit genau einem Link übereignet; liegt dort ein Link, bricht der Update-Dienst ab. Betrifft nur 1.8.0 (Version 1.8.0 wurde nicht als Release veröffentlicht)

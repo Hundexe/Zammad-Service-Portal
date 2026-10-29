@@ -22,6 +22,16 @@ Die Funde liegen fast alle in drei Bereichen:
 
 Der **kritische Fund ST-01** steckte im Update-Dienst ohne Docker, der erst am 28.10. (Version 1.8.0) dazukam: Er hätte einem bereits kompromittierten Dienstbenutzer zu root-Rechten verholfen. Er ist in 1.8.1 behoben, mit Regressionstest. Version 1.8.0 war nicht als Release veröffentlicht.
 
+## Nachtrag 29.10.2026: Behebung in 1.9.0
+
+Alle Funde bis auf vier sind in **Version 1.9.0** behoben, jeweils mit Regressionstest (`test/hardening.test.ts`, `test/identity.test.ts`, `test/admin-hardening.test.ts`, `test/data-hardening.test.ts` und Ergänzungen in bestehenden Tests). Die Nachstell-Tests aus dem Test laufen gegen 1.9.0 nicht mehr durch. Ausnahme ist ST-02: Dessen Test läuft im Simulator weiter durch, weil der Simulator dieselbe Domain für zwei Tenants als verifiziert meldet – bei Microsoft kann eine Domain nur in einem Tenant verifiziert sein. Mit realistisch getrennten Domains ist der Angriff abgewehrt (`test/identity.test.ts`).
+
+| Status | Funde |
+| --- | --- |
+| **behoben** | ST-01 (1.8.1), ST-02 bis ST-08, ST-10 bis ST-13, ST-15 bis ST-27, ST-29, ST-30, ST-34, ST-35 |
+| **teilweise** | **ST-09** Update-Dienst gehärtet (Kernel-, Namespace-, Rechte-Einschränkungen, keine Paketinstallation beim Update), aber ohne Schreibschutz des Dateisystems, weil `install.sh` Systemdateien schreibt; Datenbankzugriff als Dienstbenutzer statt root ist offen. **ST-14** Benachrichtigungen verschlüsselt, Abbruchgrund nicht mehr im Audit-Log, Titel und Fehlertexte nach der Aufbewahrungsfrist gelöscht – bis dahin stehen Titel und Fehlertext im Klartext in der Datenbank. **ST-31** volle GCM-Tags und asynchrones scrypt umgesetzt; AAD mit Datensatzbezug und Schlüsselrotation offen. **ST-32** Version, Zwischenzustand und Entra-Limit behoben; einmalig verwendbarer OIDC-`state` offen (nicht ausnutzbar), `amr` wird über GO-LIVE geprüft statt im Code |
+| **offen** | **ST-28** „Private vulnerability reporting“ muss der Inhaber des Repositorys unter **Settings → Code security** einschalten (über die Schnittstelle dieser Sitzung nicht erlaubt). **ST-33** Rechte des Docker-Socket-Proxys (für das Bauen nötig, dokumentiert) |
+
 ## Funde
 
 | ID | Schwere | Fund | Status |
