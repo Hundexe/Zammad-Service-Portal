@@ -43,7 +43,7 @@ In `.env`:
 
 ### Wer Releases signiert
 
-Die Release-Tags dieses Repositorys sind mit dem Projektschlüssel aus [`deploy/release_signers`](../deploy/release_signers) signiert. `install.sh` übernimmt ihn automatisch nach `deploy/allowed_signers`, wenn dort noch nichts steht. Prüfen von Hand:
+Die Release-Tags dieses Repositorys sind mit dem Projektschlüssel aus [`deploy/release_signers`](../deploy/release_signers) signiert (ed25519, Fingerabdruck **`SHA256:ddbtjFbMXjsaYtgyYjLPXZJMNgCOIWZIfWCok+RGZX8`**). Der Schlüssel wird bei der ersten Installation übernommen und danach nicht mehr aus dem Repository überschrieben – die Integrität hängt also am ersten Bezug: den Fingerabdruck, den die Installation anzeigt, mit diesem Wert vergleichen (am besten über einen zweiten Weg, z. B. die Release-Seite). `install.sh` übernimmt ihn automatisch nach `deploy/allowed_signers`, wenn dort noch nichts steht. Prüfen von Hand:
 
 ```bash
 git -c gpg.ssh.allowedSignersFile=deploy/release_signers verify-tag v1.3.0

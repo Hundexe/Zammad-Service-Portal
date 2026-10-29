@@ -43,7 +43,8 @@ export function notify(app: App, n: NotificationInput): string {
   const email = 'email' in n.to ? n.to.email.toLowerCase() : null;
   app.db.run(
     'INSERT INTO notifications (id, user_id, email, kind, title, body, link, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    id, userId, email, n.kind, n.title.slice(0, 300), n.body?.slice(0, 1000) ?? null, n.link ?? null, createdAt,
+    // Titel und Text enthalten Eingaben (Anfragetitel, Ablehnungsgrund) – verschlüsselt wie die Anfragen selbst
+    id, userId, email, n.kind, app.box.encrypt('notification', n.title.slice(0, 300)), n.body ? app.box.encrypt('notification', n.body.slice(0, 1000)) : null, n.link ?? null, createdAt,
   );
   for (const c of channels) {
     try {
@@ -67,12 +68,19 @@ function mine(app: App, user: AuthUser): { where: string; params: string[] } {
     : { where: 'user_id = ?', params: [user.id] };
 }
 
+/** Entschlüsselt Titel/Text (ältere Einträge sind noch Klartext). */
+function openText(app: App, v: string | null): string | null {
+  if (v === null) return null;
+  if (!v.startsWith('v1.')) return v;
+  try { return app.box.decrypt('notification', v); } catch { return ''; }
+}
+
 export function listNotifications(app: App, user: AuthUser, limit = 50) {
   const m = mine(app, user);
   return app.db.all<{ id: string; kind: string; title: string; body: string | null; link: string | null; created_at: number; read_at: number | null }>(
     `SELECT id, kind, title, body, link, created_at, read_at FROM notifications WHERE ${m.where} ORDER BY created_at DESC LIMIT ?`,
     ...m.params, limit,
-  ).map((n) => ({ id: n.id, kind: n.kind, title: n.title, body: n.body, link: n.link, createdAt: n.created_at, read: n.read_at !== null }));
+  ).map((n) => ({ id: n.id, kind: n.kind, title: openText(app, n.title) ?? '', body: openText(app, n.body), link: n.link, createdAt: n.created_at, read: n.read_at !== null }));
 }
 
 export function unreadCount(app: App, user: AuthUser): number {

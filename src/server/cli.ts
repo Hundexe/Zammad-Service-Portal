@@ -15,7 +15,7 @@
 //   healthcheck
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
-import { mkdirSync, rmSync } from 'node:fs';
+import { chmodSync, mkdirSync, rmSync } from 'node:fs';
 
 const [, , command = 'serve', ...rest] = process.argv;
 
@@ -131,6 +131,8 @@ async function main(): Promise<void> {
         // VACUUM INTO schreibt nicht über vorhandene Dateien – alte Sicherung gleichen Namens ersetzen
         rmSync(out, { force: true });
         app.db.backupTo(out);
+        // Enthält Passwort-Hashes und verschlüsselte Geheimnisse: nur für den Besitzer lesbar
+        chmodSync(out, 0o600);
         console.log(`Sicherung geschrieben: ${out}`);
       });
       return;

@@ -115,12 +115,17 @@ export class ZammadConnector implements Connector {
       try { const j = JSON.parse(text); if (j.error) msg += ` – ${String(j.error).slice(0, 200)}`; } catch { /* kein JSON */ }
       throw new ConnectorError(msg, retryable, res.status);
     }
+    // Abbruch beim Lesen der Antwort (Verbindung weg, Zeitüberschreitung) ist vorübergehend: erneut versuchen.
+    // Die Zustellung prüft dann vor dem nächsten Anlegen, ob das Ticket schon existiert.
+    const readBody = async <T>(fn: () => Promise<T>): Promise<T> => {
+      try { return await fn(); } catch (err) { throw new ConnectorError(`${this.sys.name}: Antwort unvollständig (${(err as Error).message})`, true, res.status); }
+    };
     if (opts.raw) {
-      const buf = Buffer.from(await res.arrayBuffer());
+      const buf = Buffer.from(await readBody(() => res.arrayBuffer()));
       if (buf.length > MAX_RESPONSE) throw new ConnectorError('Antwort von Zammad zu groß', false);
       return { buf, type: res.headers.get('content-type') ?? 'application/octet-stream', disposition: res.headers.get('content-disposition') ?? '' };
     }
-    const text = await res.text();
+    const text = await readBody(() => res.text());
     if (text.length > MAX_RESPONSE) throw new ConnectorError('Antwort von Zammad zu groß', false);
     if (!text) return {};
     try { return JSON.parse(text); } catch { throw new ConnectorError('Zammad lieferte kein JSON', false, res.status); }

@@ -343,7 +343,7 @@ export function cancelRequest(app: App, admin: AuthUser, actor: Actor, requestId
     }
     app.db.run('UPDATE request_files SET stored = 0 WHERE request_id = ?', requestId);
     if (ap) app.db.run("UPDATE approvals SET status = 'cancelled', summary = NULL, decided_by = ?, decided_by_name = ?, decided_at = ? WHERE id = ? AND status = 'pending'", admin.id, admin.displayName, t, ap.id);
-    audit(app.db, actor, { action: 'request.cancelled', targetType: 'request', targetId: requestId, systemId: r.system_id, details: { vorher: r.status, ...(reason ? { grund: reason.slice(0, 300) } : {}) } });
+    audit(app.db, actor, { action: 'request.cancelled', targetType: 'request', targetId: requestId, systemId: r.system_id, details: { vorher: r.status, grundAngegeben: Boolean(reason) } }); // Grund nicht ins (unlöschbare) Audit-Log
   });
   removeRequestFiles(app, requestId);
   const why = reason ? ` Grund: „${reason.slice(0, 300)}${reason.length > 300 ? ' …' : ''}“` : '';

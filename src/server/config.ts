@@ -1,6 +1,7 @@
 // Konfiguration aus Umgebungsvariablen. Geheimnisse werden bevorzugt aus Dateien
 // gelesen (VAR_FILE), wie es Docker Secrets vorsehen.
 import { existsSync, readFileSync } from 'node:fs';
+import { isIP } from 'node:net';
 
 function readSecret(name: string): string | undefined {
   const file = process.env[`${name}_FILE`];
@@ -86,6 +87,9 @@ export interface Config {
   /** Ratenbegrenzung: [Burst, Nachschub pro Sekunde] */
   rateLimits: { api: [number, number]; write: [number, number]; login: [number, number] };
   allowPrivateTicketUrls: boolean;
+  /** Zusätzlich gesperrte Netze und erlaubte Hostnamen für Zammad-Adressen */
+  ticketUrlBlockedCidrs: string[];
+  ticketUrlAllowedHosts: string[];
   /** Ticketsysteme auf 127.0.0.1/localhost erlauben – nur für Demo und Entwicklung */
   allowLoopbackTicketUrls: boolean;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
@@ -170,6 +174,8 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
       login: [range('RATE_LIMIT_LOGIN_BURST', 10, 3, 100000, errors), range('RATE_LIMIT_LOGIN_PER_MINUTE', 10, 1, 100000, errors) / 60],
     },
     allowPrivateTicketUrls: bool('ALLOW_PRIVATE_TICKET_URLS', true),
+    ticketUrlBlockedCidrs: cidrList('TICKET_URL_BLOCKED_CIDRS', errors),
+    ticketUrlAllowedHosts: list('TICKET_URL_ALLOWED_HOSTS').map((h) => h.toLowerCase()),
     allowLoopbackTicketUrls: (overrides.env ?? env) === 'test' || bool('ALLOW_LOOPBACK_TICKET_URLS', false),
     logLevel: (process.env.LOG_LEVEL as Config['logLevel']) || 'info',
     version: process.env.APP_VERSION ?? readVersion(),
@@ -181,6 +187,18 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     throw new Error('Für Entra ID wird ENTRA_CLIENT_SECRET_FILE oder ENTRA_CERT_PRIVATE_KEY_FILE benötigt');
   }
   return cfg;
+}
+
+function cidrList(name: string, errors: string[]): string[] {
+  const out: string[] = [];
+  for (const c of (process.env[name] ?? '').split(',').map((s) => s.trim()).filter(Boolean)) {
+    const [addr, bits] = c.split('/');
+    const v = isIP(addr);
+    const max = v === 6 ? 128 : 32;
+    if (!v || (bits !== undefined && !(Number(bits) >= 0 && Number(bits) <= max))) { errors.push(`${name}: „${c}“ ist kein gültiges Netz`); continue; }
+    out.push(c);
+  }
+  return out;
 }
 
 /** ENTRA_TENANT_DOMAINS=tenant-id=firma-a.de,firma-a.com;tenant-id-2=firma-b.de */

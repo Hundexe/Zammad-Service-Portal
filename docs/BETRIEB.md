@@ -106,7 +106,7 @@ Täglich per Cron (als Benutzer `portal`):
 ```bash
 crontab -e
 # 02:15 Uhr: Datenbank sichern, auf die VM kopieren, Sicherungen älter als 30 Tage löschen
-15 2 * * * cd /opt/zammad-service-portal/deploy && docker compose exec -T app /nodejs/bin/node src/server/cli.ts backup --out /data/backups/taeglich.sqlite && docker compose exec -T app /nodejs/bin/node src/server/cli.ts backup:verify /data/backups/taeglich.sqlite && docker compose cp app:/data/backups/taeglich.sqlite /opt/backup/portal-$(date +\%F).sqlite && find /opt/backup -name 'portal-*.sqlite' -mtime +30 -delete
+15 2 * * * umask 077 && cd /opt/zammad-service-portal/deploy && docker compose exec -T app /nodejs/bin/node src/server/cli.ts backup --out /data/backups/taeglich.sqlite && docker compose exec -T app /nodejs/bin/node src/server/cli.ts backup:verify /data/backups/taeglich.sqlite && docker compose cp app:/data/backups/taeglich.sqlite /opt/backup/portal-$(date +\%F).sqlite && find /opt/backup -name 'portal-*.sqlite' -mtime +30 -delete
 ```
 
 `/opt/backup` sollte vom Proxmox-Backup (oder einem anderen Sicherungssystem) mit erfasst werden. Die VM selbst lässt sich zusätzlich mit Proxmox-Snapshots sichern.

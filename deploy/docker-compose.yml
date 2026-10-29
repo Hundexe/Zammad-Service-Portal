@@ -52,7 +52,8 @@ x-app: &app
     # Nur der eigene Reverse Proxy darf X-Forwarded-For setzen
     TRUST_PROXY_CIDRS: ${PROXY_IP:-172.30.10.2}/32
     CLAMAV_HOST: ${CLAMAV_HOST:-clamav}
-    ALLOW_PRIVATE_TICKET_URLS: "true"
+    # Eigenes Proxy-Netz nie als Zammad-Adresse (weitere Netze/Allowlist in .env, siehe .env.example)
+    TICKET_URL_BLOCKED_CIDRS: ${TICKET_URL_BLOCKED_CIDRS:-172.30.10.0/24}
     DATA_DIR: /data
     PORT: "3000"
   mem_limit: 512m

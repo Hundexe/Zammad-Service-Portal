@@ -8,7 +8,7 @@ import { can } from './rbac.ts';
 import { ZammadConnector } from '../connectors/zammad.ts';
 import type { Connector, TicketSystemConfig } from '../connectors/types.ts';
 import { DEFAULT_BRANDING, type Branding } from '../../shared/branding.ts';
-import { blockedAddress, blockedHostname, guardedFetch } from '../net/guarded-fetch.ts';
+import { hostAllowed, blockedAddress, blockedHostname, guardedFetch } from '../net/guarded-fetch.ts';
 
 export interface SystemRow {
   id: string; slug: string; name: string; type: 'zammad'; base_url: string; api_token: string | null;
@@ -64,7 +64,10 @@ export function setConnectorFetch(f: typeof fetch | undefined): void { fetchOver
 
 /** SSRF-Schutz: Loopback und eigene Dienstnamen nur in Tests oder mit ALLOW_LOOPBACK_TICKET_URLS (Demo). */
 export function guardOptions(app: App) {
-  return { allowPrivate: app.cfg.allowPrivateTicketUrls, allowLoopback: app.cfg.allowLoopbackTicketUrls };
+  return {
+    allowPrivate: app.cfg.allowPrivateTicketUrls, allowLoopback: app.cfg.allowLoopbackTicketUrls,
+    blockedCidrs: app.cfg.ticketUrlBlockedCidrs, allowedHosts: app.cfg.ticketUrlAllowedHosts,
+  };
 }
 
 export function connectorFor(app: App, sys: SystemRow): Connector {
@@ -87,6 +90,7 @@ export async function validateSystemUrl(app: App, url: string): Promise<string |
   if (u.search || u.hash || /[?#]/.test(url)) return 'URL ohne Parameter angeben';
   if (app.cfg.env === 'production' && u.protocol !== 'https:' && !process.env.ALLOW_HTTP_TICKET_URLS) return 'In Produktion nur https:// (oder ALLOW_HTTP_TICKET_URLS setzen)';
   const host = u.hostname.replace(/^\[|\]$/g, '');
+  if (!hostAllowed(host, app.cfg.ticketUrlAllowedHosts)) return `Adresse nicht erlaubt (${host} steht nicht in TICKET_URL_ALLOWED_HOSTS)`;
   const nameProblem = blockedHostname(host, guardOptions(app));
   if (nameProblem) return `Adresse nicht erlaubt (${nameProblem})`;
   let addrs: string[];

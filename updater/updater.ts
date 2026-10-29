@@ -15,7 +15,7 @@
 // "zammad-service-portal-updater". Statt Images zu bauen, checkt er den signierten Tag aus
 // und führt deploy/native/install.sh --ja aus (baut die Oberfläche, startet die Dienste neu).
 import { execFile } from 'node:child_process';
-import { closeSync, constants as fsc, copyFileSync, existsSync, fchownSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, constants as fsc, copyFileSync, existsSync, fchownSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Db } from '../src/server/db/db.ts';
 
@@ -86,6 +86,9 @@ export function setEnvValue(file: string, key: string, value: string): void {
   if (!found) out.push(`${key}=${value}`);
   writeFileSync(file, out.join('\n'));
 }
+
+/** So viele Sicherungen vor Updates bleiben liegen (die neueste ist die für ein Zurücksetzen) */
+const UPDATE_BACKUPS_KEPT = 3;
 
 export class Updater {
   cfg: UpdaterConfig;
@@ -240,6 +243,11 @@ export class Updater {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const file = join(dir, `vor-update-${from}-auf-${to}-${new Date().toISOString().replace(/[:.]/g, '-')}.sqlite`);
     this.db.backupTo(file);
+    try { chmodSync(file, 0o600); } catch { /* best effort */ }
+    // Nur die letzten Sicherungen vor Updates behalten (sie enthalten Inhalte über die Aufbewahrungsfrist hinaus)
+    const old = readdirSync(dir).filter((f) => /^vor-update-.*\.sqlite$/.test(f))
+      .map((f) => ({ f, t: statSync(join(dir, f)).mtimeMs })).sort((a, b) => b.t - a.t).map((x) => x.f);
+    for (const f of old.slice(UPDATE_BACKUPS_KEPT)) rmSync(join(dir, f), { force: true });
     return file;
   }
 

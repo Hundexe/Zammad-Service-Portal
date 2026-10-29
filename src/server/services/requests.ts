@@ -174,7 +174,7 @@ export async function submitRequest(
 
 interface RequestRow {
   id: string; user_id: string; system_id: string; title: string; payload: string | null; status: string;
-  attempts: number; next_attempt_at: number; created_at: number;
+  attempts: number; next_attempt_at: number; created_at: number; create_attempted_at: number | null;
 }
 
 const MAX_ATTEMPTS = 20;
@@ -248,7 +248,10 @@ async function deliver(app: App, row: RequestRow): Promise<void> {
     const connector = connectorFor(app, sys);
     // Wiederholung (Zeitüberschreitung, Absturz während der Zustellung): Zammad hat das Ticket vielleicht
     // schon angelegt. Dann nicht noch einmal anlegen, sondern das vorhandene übernehmen.
-    const existing = row.attempts > 1 ? await connector.findTicketForRequest(customer, row.id, payload.title, row.created_at) : null;
+    // Maßgeblich ist, ob schon einmal angelegt werden sollte – nicht der Versuchszähler (den „Erneut senden“ zurücksetzt)
+    const triedBefore = row.create_attempted_at !== null || row.attempts > 1;
+    const existing = triedBefore ? await connector.findTicketForRequest(customer, row.id, payload.title, row.created_at) : null;
+    if (!existing) app.db.run('UPDATE requests SET create_attempted_at = COALESCE(create_attempted_at, ?) WHERE id = ?', Date.now(), row.id);
     if (existing) log.warn('Anfrage war schon zugestellt – kein zweites Ticket', { request: row.id, ticket: existing.number });
     const ticket = existing ?? await connector.createTicket({
       customer, title: payload.title, group: payload.group, priority: payload.priority,
@@ -279,7 +282,9 @@ async function deliver(app: App, row: RequestRow): Promise<void> {
   }
 }
 
-/** Löscht Inhalte nach Ablauf der Aufbewahrungsfrist. Titel und Ticketnummer bleiben für "Meine Anfragen". */
+export const PURGED_TITLE = 'Inhalt nach Ablauf der Aufbewahrungsfrist gelöscht';
+
+/** Löscht Inhalte nach Ablauf der Aufbewahrungsfrist. Ticketnummer und Status bleiben für "Meine Anfragen". */
 export function purgeOld(app: App): number {
   const rows = app.db.all<{ id: string }>('SELECT id FROM requests WHERE purge_after IS NOT NULL AND purge_after < ? AND (payload IS NOT NULL OR id IN (SELECT request_id FROM request_files WHERE stored = 1))', Date.now());
   for (const r of rows) {
@@ -287,6 +292,8 @@ export function purgeOld(app: App): number {
     app.db.run('UPDATE request_files SET stored = 0 WHERE request_id = ?', r.id);
     removeRequestFiles(app, r.id);
   }
+  // Titel (aus Eingaben gebildet) und Fehler-/Abbruchtexte gehören zum Inhalt: nach der Frist neutralisieren
+  app.db.run('UPDATE requests SET title = ?, last_error = NULL WHERE purge_after IS NOT NULL AND purge_after < ? AND title <> ?', PURGED_TITLE, Date.now(), PURGED_TITLE);
   // Einträge ganz entfernen, wenn sie älter als ein Jahr sind
   app.db.run("DELETE FROM requests WHERE created_at < ? AND status IN ('delivered', 'failed', 'rejected', 'withdrawn', 'expired', 'cancelled')", Date.now() - 365 * 86400_000);
   return rows.length;

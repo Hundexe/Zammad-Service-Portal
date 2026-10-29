@@ -65,10 +65,16 @@ say "1/7 Voraussetzungen prüfen"
 [ "$(id -u)" = 0 ] || fail "Bitte als root starten (sudo)."
 command -v apt-get >/dev/null || fail "Die Installation ohne Docker unterstützt Debian und Ubuntu (apt). Für andere Systeme bitte Docker verwenden."
 command -v systemctl >/dev/null && [ -d /run/systemd/system ] || fail "systemd wird benötigt."
-note "Pakete installieren (curl, git, openssl, xz-utils, iproute2, ca-certificates, gnupg) …"
-DEBIAN_FRONTEND=noninteractive apt-get update -qq
-apt_install ca-certificates curl git openssl xz-utils iproute2 gnupg debian-keyring debian-archive-keyring apt-transport-https || \
-  apt_install ca-certificates curl git openssl xz-utils iproute2 gnupg
+missing=0
+for c in curl git openssl xz ss gpg; do command -v "$c" >/dev/null || missing=1; done
+if [ "${ZSP_FROM_UPDATER:-0}" = 1 ] && [ "$missing" = 0 ]; then
+  note "Update aus der Verwaltung: Pakete sind vorhanden – keine Paketinstallation."
+else
+  note "Pakete installieren (curl, git, openssl, xz-utils, iproute2, ca-certificates, gnupg) …"
+  DEBIAN_FRONTEND=noninteractive apt-get update -qq
+  apt_install ca-certificates curl git openssl xz-utils iproute2 gnupg debian-keyring debian-archive-keyring apt-transport-https || \
+    apt_install ca-certificates curl git openssl xz-utils iproute2 gnupg
+fi
 note "ok"
 
 # ---------------------------------------------------------------- 2. Konfiguration
@@ -88,7 +94,6 @@ DATA_DIR=$DATA_DIR
 SECRET_KEY_FILE=$CONF_DIR/secrets/secret_key
 ENTRA_CLIENT_SECRET_FILE=$CONF_DIR/secrets/entra_client_secret
 TRUST_PROXY_CIDRS=127.0.0.1/32,::1/128
-ALLOW_PRIVATE_TICKET_URLS=true
 CLAMAV_HOST=
 CLAMAV_PORT=3310
 EOF
@@ -132,6 +137,28 @@ port_busy "$APP_PORT" && ! systemctl is-active --quiet "$UNIT" && fail "Port $AP
 note "Portal-Adresse: ${PUBLIC_URL}"
 
 # ---------------------------------------------------------------- 3. Node.js
+# Fingerabdrücke der Node.js-Releaser (https://github.com/nodejs/release-keys, „Active releasers“).
+# Die öffentlichen Schlüssel werden bei Bedarf geladen; maßgeblich ist, dass die Signatur von einem dieser
+# Fingerabdrücke stammt.
+NODE_RELEASE_KEYS="${NODE_RELEASE_KEYS:-5BE8A3F6C8A5C01D106C0AD820B1A390B168D356 DD792F5973C6DE52C432CBDAC77ABFA00DDBF2B7 CC68F5A3106FF448322E48ED27F5E38D5B0A215F 890C08DB8579162FEE0DF9DB8BEAB4DFCF555EF4 C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C 108F52B48DB57BB0CC439B2997B01419BD92F80A 655F3B5C1FB3FA8D1A0CA6BDE4A7D232B936D2FD A363A499291CBBC940DD62E41F10027AF002F8B0 C0D6248439F1D5604AAFFB4021D900FFDB233756}"
+NODE_KEYS_URL="${NODE_KEYS_URL:-https://github.com/nodejs/release-keys/raw/HEAD/keys}"
+
+# verify_node_signature DATEI SIGNATUR – 0, wenn gültig signiert von einem der Fingerabdrücke
+verify_node_signature() {
+  local file="$1" sig="$2" g fp primary
+  command -v gpg >/dev/null || return 1
+  g="$(mktemp -d)"
+  for fp in $NODE_RELEASE_KEYS; do
+    curl -fsSL "$NODE_KEYS_URL/$fp.asc" 2>/dev/null | gpg --homedir "$g" --batch --quiet --import 2>/dev/null || true
+  done
+  # VALIDSIG <Unterschlüssel> … <Hauptschlüssel>: der Hauptschlüssel muss in der Liste stehen
+  primary="$(gpg --homedir "$g" --batch --status-fd 1 --verify "$sig" "$file" 2>/dev/null | awk '$2 == "VALIDSIG" { print $NF }' | tail -n1)"
+  rm -rf "$g"
+  [ -n "$primary" ] || return 1
+  for fp in $NODE_RELEASE_KEYS; do [ "$fp" = "$primary" ] && return 0; done
+  return 1
+}
+
 say "3/7 Node.js $NODE_MAJOR"
 case "$(uname -m)" in x86_64) arch=x64 ;; aarch64|arm64) arch=arm64 ;; *) fail "Prozessor $(uname -m) wird nicht unterstützt." ;; esac
 current="$("$NODE_DIR/bin/node" -v 2>/dev/null || true)"
@@ -141,6 +168,15 @@ else
   tmp="$(mktemp -d)"
   base="https://nodejs.org/dist/latest-v${NODE_MAJOR}.x"
   curl -fsSL "$base/SHASUMS256.txt" -o "$tmp/SHASUMS256.txt" || fail "nodejs.org nicht erreichbar."
+  # Prüfsummenliste mit der GPG-Signatur der Node.js-Releaser prüfen (sonst stammten Paket und Prüfsumme
+  # aus derselben Quelle). Notfalls abschaltbar mit NODE_SKIP_SIGNATURE=1.
+  if [ "${NODE_SKIP_SIGNATURE:-0}" = 1 ]; then
+    note "Achtung: Signatur von Node.js wird nicht geprüft (NODE_SKIP_SIGNATURE=1)."
+  else
+    curl -fsSL "$base/SHASUMS256.txt.sig" -o "$tmp/SHASUMS256.txt.sig" || fail "Signatur von Node.js nicht abrufbar."
+    verify_node_signature "$tmp/SHASUMS256.txt" "$tmp/SHASUMS256.txt.sig" || fail "Signatur der Node.js-Prüfsummen ungültig oder von einem unbekannten Schlüssel – Abbruch. (Neue Releaser: NODE_RELEASE_KEYS in deploy/native/install.sh ergänzen.)"
+    note "Signatur der Node.js-Prüfsummen gültig."
+  fi
   file="$(awk -v a="linux-${arch}.tar.xz" '$2 ~ a"$" { print $2; exit }' "$tmp/SHASUMS256.txt")"
   [ -n "$file" ] || fail "Kein Node.js-Paket für linux-${arch} gefunden."
   note "lade $file …"
@@ -258,6 +294,10 @@ systemctl restart "$UNIT-worker"
 if [ ! -s "$CONF_DIR/allowed_signers" ] && [ -f "$REPO_DIR/deploy/release_signers" ]; then
   grep -v '^#' "$REPO_DIR/deploy/release_signers" > "$CONF_DIR/allowed_signers" || true
   chmod 644 "$CONF_DIR/allowed_signers"
+  # Vertrauensanker für Updates: Fingerabdruck anzeigen, damit er mit der Projektseite verglichen werden kann
+  if command -v ssh-keygen >/dev/null; then
+    note "Release-Schlüssel für Updates: $(awk '{print $2" "$3}' "$CONF_DIR/allowed_signers" | ssh-keygen -lf - 2>/dev/null | awk '{print $2}' | head -n1) (siehe docs/UPDATES.md)"
+  fi
 fi
 cat > "/etc/systemd/system/$UNIT-updater.service" <<EOF
 [Unit]
@@ -278,6 +318,22 @@ RestartSec=10
 # 022: ausgecheckter Code muss für den Dienstbenutzer lesbar bleiben (Daten sind durch 700 geschützt)
 UMask=0022
 PrivateTmp=yes
+# Härtung: Der Dienst braucht root für git, systemctl und install.sh (schreibt Units, Caddy-Konfiguration,
+# Node.js unter /opt). Dateisystem-Schreibschutz (ProtectSystem) ginge nur mit einer langen, fehleranfälligen
+# Liste von Ausnahmen – alles andere ist eingeschränkt.
+NoNewPrivileges=yes
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+SystemCallArchitectures=native
 
 [Install]
 WantedBy=multi-user.target

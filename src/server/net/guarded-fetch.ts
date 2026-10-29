@@ -8,7 +8,7 @@
 import http from 'node:http';
 import https from 'node:https';
 import { lookup as dnsLookup, type LookupAddress } from 'node:dns';
-import { isIP } from 'node:net';
+import { BlockList, isIP } from 'node:net';
 import { Readable } from 'node:stream';
 
 /** Namen der eigenen Dienste (Docker-Compose) – ein Ticketsystem darf nie auf sie zeigen. */
@@ -23,9 +23,38 @@ export interface GuardOptions {
   maxBytes?: number;
   /** Zusätzliche vertrauenswürdige Stammzertifikate (PEM), z. B. interne CA – sonst die des Systems bzw. NODE_EXTRA_CA_CERTS */
   ca?: string | Buffer;
+  /** Zusätzlich gesperrte Netze (z. B. die eigenen Docker-Netze), CIDR-Liste */
+  blockedCidrs?: string[];
+  /** Wenn gesetzt: nur diese Hostnamen (exakt oder „.domain“ für alle Unterdomains) */
+  allowedHosts?: string[];
 }
 
-type AddrOpts = Pick<GuardOptions, 'allowPrivate' | 'allowLoopback'>;
+type AddrOpts = Pick<GuardOptions, 'allowPrivate' | 'allowLoopback' | 'blockedCidrs'>;
+
+const blockLists = new Map<string, BlockList>();
+function extraBlocked(ip: string, cidrs: string[] | undefined): boolean {
+  if (!cidrs?.length) return false;
+  const key = cidrs.join(',');
+  let bl = blockLists.get(key);
+  if (!bl) {
+    bl = new BlockList();
+    for (const c of cidrs) {
+      const [addr, bits] = c.split('/');
+      const type = isIP(addr) === 6 ? 'ipv6' : 'ipv4';
+      bl.addSubnet(addr, Number(bits ?? (type === 'ipv4' ? 32 : 128)), type);
+    }
+    blockLists.set(key, bl);
+  }
+  const plain = ip.replace(/^\[|\]$/g, '').replace(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i, '$1');
+  return isIP(plain) === 4 ? bl.check(plain, 'ipv4') : isIP(plain) === 6 ? bl.check(plain, 'ipv6') : false;
+}
+
+/** Hostname erlaubt? (Allowlist leer = alle) */
+export function hostAllowed(host: string, allowed: string[] | undefined): boolean {
+  if (!allowed?.length) return true;
+  const h = host.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();
+  return allowed.some((a) => { const x = a.toLowerCase(); return x.startsWith('.') ? h.endsWith(x) || h === x.slice(1) : h === x; });
+}
 
 /** IPv6-Adresse als 16 Bytes (auch mit eingebetteter IPv4 am Ende, z. B. ::ffff:127.0.0.1); null, wenn ungültig. */
 export function ipv6Bytes(ip: string): Uint8Array | null {
@@ -75,6 +104,7 @@ function v4Reason(a: number, b: number, opts: AddrOpts): string | null {
  */
 export function blockedAddress(ip: string, opts: AddrOpts): string | null {
   const raw = ip.replace(/^\[|\]$/g, '').toLowerCase();
+  if (extraBlocked(raw, opts.blockedCidrs)) return 'gesperrtes Netz (TICKET_URL_BLOCKED_CIDRS)';
   if (isIP(raw) === 4) {
     const [a, b] = raw.split('.').map(Number);
     return v4Reason(a, b, opts);
@@ -144,7 +174,7 @@ export function guardedFetch(opts: GuardOptions): typeof fetch {
     if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new TypeError('Nur http(s) erlaubt');
     if (url.username || url.password) throw new TypeError('Zugangsdaten in der URL sind nicht erlaubt');
     const host = url.hostname.replace(/^\[|\]$/g, '');
-    const hostProblem = blockedHostname(host, opts) ?? (isIP(host) ? blockedAddress(host, opts) : null);
+    const hostProblem = (hostAllowed(host, opts.allowedHosts) ? null : 'nicht in TICKET_URL_ALLOWED_HOSTS') ?? blockedHostname(host, opts) ?? (isIP(host) ? blockedAddress(host, opts) : null);
     if (hostProblem) throw new BlockedAddressError(`Ziel ${host} ist gesperrt (${hostProblem})`);
 
     const headers: Record<string, string> = {};
