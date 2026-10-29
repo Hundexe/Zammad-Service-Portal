@@ -1,5 +1,11 @@
 # Änderungen
 
+## 1.9.3 – 29.10.2026
+
+- **Große Bildschirme:** Der Farbschein im Hintergrund (Stil „Glas“) wächst mit der Bildschirmgröße, statt nur in den Ecken zu sitzen. Neben dem Inhalt bleibt keine leere schwarze Fläche mehr
+- Die Farbfläche der Startseite geht ab 1500 px Breite nicht mehr über den ganzen Bildschirm, sondern sitzt mittig passend zum Inhalt; der Inhalt wird etwas breiter
+- Kleine Bildschirme unverändert
+
 ## 1.9.2 – 29.10.2026
 
 - **Logos klar zugeordnet:** Die Navigationsleiste nutzt nie mehr das Logo der Farbfläche (das enthält oft mehr, z. B. Partnerlogos)
