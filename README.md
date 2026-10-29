@@ -4,7 +4,7 @@ Self-Service-Portal für IT-Abteilungen mit einem oder mehreren Zammad-Systemen:
 
 **[▶ Demo im Browser ansehen](https://hundexe.github.io/Zammad-Service-Portal/)** – ohne Installation, mit Beispieldaten (Portal und Verwaltung zum Durchklicken).
 
-**Aktuelle Version: 1.9.2** – [Änderungen](CHANGELOG.md), externes Architektur- und Sicherheits-Review: [was geändert wurde](docs/REVIEW-2026-10.md).
+**Aktuelle Version: 1.10.1** – [Änderungen](CHANGELOG.md), externes Architektur- und Sicherheits-Review: [was geändert wurde](docs/REVIEW-2026-10.md).
 
 ![Startseite des Portals im Stil „Glas“](docs/screenshots/31-stil-glas.png)
 
@@ -51,7 +51,7 @@ git clone https://github.com/Hundexe/Zammad-Service-Portal.git && cd Zammad-Serv
 
 und dann <http://localhost:3000> öffnen („Mit Microsoft anmelden“ meldet ohne Passwort als Demo-Admin an).
 
-Die ausführliche Anleitung mit Entra-App-Registrierung, Zammad-API-Benutzer und Zertifikaten steht in [docs/INSTALLATION.md](docs/INSTALLATION.md). Für den Betrieb eine feste Version verwenden: `… | sudo PORTAL_REF=vX.Y.Z bash` mit einem signierten Tag aus **Releases**.
+Die ausführliche Anleitung mit Zammad-API-Benutzer und Zertifikaten steht in [docs/INSTALLATION.md](docs/INSTALLATION.md), die Microsoft-Anmeldung (Entra ID) Schritt für Schritt in [docs/ENTRA.md](docs/ENTRA.md). Für den Betrieb eine feste Version verwenden: `… | sudo PORTAL_REF=vX.Y.Z bash` mit einem signierten Tag aus **Releases**.
 
 ## Vor dem Produktivbetrieb
 
@@ -77,6 +77,7 @@ Mehr dazu, inklusive Alarmregeln, Log-Weiterleitung und Egress-Firewall: [docs/B
 | Dokument | Inhalt |
 | --- | --- |
 | [Installation](docs/INSTALLATION.md) | Ein Befehl oder Schritt für Schritt, mit Docker oder direkt auf Debian |
+| [Microsoft-Anmeldung](docs/ENTRA.md) | Entra ID Schritt für Schritt: App-Registrierung, Rechte, Gruppen, zwei Tenants, Test, Fehler |
 | [Bedienung](docs/BEDIENUNG.md) | Portal für Mitarbeitende und Verwaltung, mit Screenshots |
 | [Architektur](docs/ARCHITEKTUR.md) | Aufbau, Datenfluss, Datenmodell, Zammad-Anbindung |
 | [Sicherheit](docs/SICHERHEIT.md) | Schutzmaßnahmen, Bedrohungsmodell, Abgleich mit OWASP |

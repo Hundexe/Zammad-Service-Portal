@@ -1,5 +1,10 @@
 # Änderungen
 
+## 1.10.1 – 29.10.2026
+
+- **Neue Anleitung [Microsoft-Anmeldung (Entra ID)](docs/ENTRA.md):** jeder Schritt im Entra Admin Center (App-Registrierung, Umleitungs-URIs, Secret oder Zertifikat, genau benötigte Rechte, Gruppen- und `auth_time`-Anspruch, App-Rollen, Zuweisung, bedingter Zugriff), ein oder zwei Tenants, Einrichtung im Portal mit und ohne Docker, Rechte an Gruppen, Test, Secret erneuern, Fehlertabelle mit AADSTS-Codes und Checkliste
+- Installationsanleitung verweist für Entra auf die neue Anleitung; README-Version aktualisiert
+
 ## 1.10.0 – 29.10.2026
 
 - **Benachrichtigung bei Antworten der IT:** Antwortet ein Bearbeiter in Zammad auf ein Ticket, erscheint im Portal unter der Glocke „Neue Antwort: <Ticket>“ mit dem Anfang der Antwort; ein Klick öffnet das Ticket. Mehrere Antworten seit dem letzten Blick werden zu einer Nachricht zusammengefasst

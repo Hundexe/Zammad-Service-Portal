@@ -112,34 +112,15 @@ cp ~/.ssh/serviceportal_deploy deploy/secrets/deploy_key && chmod 600 deploy/sec
 
 ## 4. Microsoft Entra ID: App registrieren
 
-Mit einem Tenant ist das einfach. Bei zwei Tenants mit Vertrauensstellung (z. B. zwei Firmen eines Verbunds) wird die App **in einem Tenant** registriert; Benutzer des anderen Tenants melden sich je nach Einrichtung so an:
+Die ausführliche Anleitung mit allen Klicks, Rechten, zwei Tenants, Zertifikat statt Secret, Test und Fehlertabelle steht in **[docs/ENTRA.md](ENTRA.md)**. Kurzfassung:
 
-| Einrichtung | Wie anmelden | `ENTRA_ALLOWED_TENANTS` |
-| --- | --- | --- |
-| Benutzer des zweiten Tenants sind als **B2B-Gäste** im ersten Tenant | App „nur dieses Verzeichnis“ (Single-Tenant) | nur die Tenant-ID des ersten Tenants |
-| Benutzer melden sich mit dem **eigenen** Tenant an | App „Konten in beliebigem Organisationsverzeichnis“ (Multi-Tenant) und Admin-Zustimmung im zweiten Tenant | beide Tenant-IDs, durch Komma getrennt |
-
-Andere Tenants lehnt das Portal immer ab, auch bei einer Multi-Tenant-App.
-
-**Schritte im Entra Admin Center** (`entra.microsoft.com`):
-
-1. **Anwendungen → App-Registrierungen → Neue Registrierung**
-   - Name: `Service-Portal`
-   - Kontotypen: siehe Tabelle oben
-   - Umleitungs-URI: Plattform **Web**, `https://serviceportal.firma.intern/api/auth/entra/callback`
-2. **Übersicht:** *Anwendungs-ID (Client)* und *Verzeichnis-ID (Tenant)* notieren.
-3. **Zertifikate & Geheimnisse → Neuer geheimer Clientschlüssel**, Laufzeit z. B. 12 Monate. Den **Wert** (nicht die ID) gleich in `deploy/secrets/entra_client_secret` speichern – er wird nur einmal angezeigt. Ablaufdatum im Kalender eintragen.
-   *Alternative ohne Secret:* Zertifikat hochladen und `ENTRA_CERT_PRIVATE_KEY_FILE` + `ENTRA_CERT_THUMBPRINT` setzen (siehe [Betrieb](BETRIEB.md#entra-zertifikat-statt-secret)).
-4. **API-Berechtigungen:** Microsoft Graph, delegiert: `openid`, `profile`, `email`, `User.Read` → **Administratorzustimmung erteilen**.
-5. **Tokenkonfiguration → Gruppenanspruch hinzufügen** → „Der Anwendung zugewiesene Gruppen“, im ID-Token als **Gruppen-ID**.
-   Damit stehen die Gruppen im Token, über die ihr Rechte und sichtbare Ticketsysteme steuert. Die Einschränkung auf zugewiesene Gruppen verhindert, dass bei Benutzern mit sehr vielen Gruppen Einträge fehlen.
-   Außerdem **Tokenkonfiguration → Optionalen Anspruch hinzufügen** → Tokentyp **ID** → **`auth_time`**. Ohne diesen Anspruch ist die „erneute Anmeldung“ vor kritischen Aktionen (Step-up) für Microsoft-Konten nicht möglich – das Portal lehnt sie dann ab, weil nicht belegt ist, dass wirklich neu angemeldet wurde.
-6. *Optional:* **App-Rollen** (z. B. `Portal.Admin`) anlegen. Im Portal heißen sie dann `approle:Portal.Admin` und lassen sich wie Gruppen zuordnen.
-7. **Unternehmensanwendungen → Service-Portal → Eigenschaften:** „Zuweisung erforderlich“ = **Ja**. Unter **Benutzer und Gruppen** die Gruppen zuweisen, die das Portal nutzen dürfen.
-8. **Bedingter Zugriff:** eine Richtlinie für die App `Service-Portal` mit MFA (und ggf. konformem Gerät). Das Portal verlässt sich bei Microsoft-Konten auf diese MFA.
-9. Nur bei Multi-Tenant: Im **zweiten Tenant** als Admin einmal aufrufen und zustimmen:
-   `https://login.microsoftonline.com/<TENANT-ID-2>/adminconsent?client_id=<CLIENT-ID>`
-   Danach dort ebenfalls „Zuweisung erforderlich“ setzen und Gruppen zuweisen.
+1. **App-Registrierung**, Plattform **Web**, Umleitungs-URIs `https://serviceportal.firma.intern/api/auth/entra/callback` und `https://serviceportal.firma.intern/`.
+2. **Client-Secret** (Wert in `deploy/secrets/entra_client_secret`) oder Zertifikat.
+3. **API-Berechtigungen:** nur delegiert `openid`, `profile`, `email`, `User.Read` → **Administratorzustimmung erteilen**. Keine Anwendungsberechtigungen.
+4. **Tokenkonfiguration:** Gruppenanspruch „Der Anwendung zugewiesene Gruppen“ als **Gruppen-ID**; optionaler Anspruch **`auth_time`** im ID-Token.
+5. **Unternehmensanwendung:** „Zuweisung erforderlich“ = Ja, Gruppen zuweisen; **bedingter Zugriff** mit MFA.
+6. Bei zwei Tenants: Kontotyp und `ENTRA_ALLOWED_TENANTS` nach der Tabelle in [ENTRA.md, Abschnitt 3](ENTRA.md#3-ein-oder-zwei-tenants-den-richtigen-kontotyp-wählen).
+7. *Anwendungs-ID (Client)* → `ENTRA_CLIENT_ID`, *Verzeichnis-ID* → `ENTRA_TENANT_ID`.
 
 ## 5. Zammad: API-Benutzer und Token
 
