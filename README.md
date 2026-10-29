@@ -4,7 +4,15 @@ Self-Service-Portal für IT-Abteilungen mit einem oder mehreren Zammad-Systemen:
 
 **[▶ Demo im Browser ansehen](https://hundexe.github.io/Zammad-Service-Portal/)** – ohne Installation, mit Beispieldaten (Portal und Verwaltung zum Durchklicken).
 
-**Aktuelle Version: 1.10.2** – [Änderungen](CHANGELOG.md), externes Architektur- und Sicherheits-Review: [was geändert wurde](docs/REVIEW-2026-10.md).
+## Einführung im Video (2:32)
+
+[![Video-Einführung: Anmeldung, Formulare, Freigabe, Tickets, hell und dunkel, Verwaltung](docs/video/vorschau.gif)](https://hundexe.github.io/Zammad-Service-Portal/video/)
+
+**[▶ Video mit Ton ansehen](https://hundexe.github.io/Zammad-Service-Portal/video/)** · [Video herunterladen](docs/video/service-portal-demo.mp4) · [Untertitel (.srt)](docs/video/service-portal-demo.srt)
+
+Was zu sehen ist: Anmeldung mit Microsoft, Formulare mit Prüfung und bedingten Feldern, Freigabe durch die Führungskraft, Ticketverlauf und Benachrichtigungen, helles und dunkles Design, Formular-Baukasten, fünf Stile, Verwaltung und Sicherheit.
+
+**Aktuelle Version: 1.10.3** – [Änderungen](CHANGELOG.md), externes Architektur- und Sicherheits-Review: [was geändert wurde](docs/REVIEW-2026-10.md).
 
 ![Startseite des Portals im Stil „Glas“](docs/screenshots/31-stil-glas.png)
 

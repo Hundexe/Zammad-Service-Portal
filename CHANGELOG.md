@@ -1,5 +1,10 @@
 # Änderungen
 
+## 1.10.3 – 29.10.2026
+
+- **Video-Einführung (2:32)** mit Sprecher und Untertiteln: in der README als animierte Vorschau, mit Ton unter [hundexe.github.io/Zammad-Service-Portal/video/](https://hundexe.github.io/Zammad-Service-Portal/video/), Datei unter `docs/video/`
+- Demo: Störungsformular lässt sich auch mit „Programm“ und „Sonstiges“ absenden
+
 ## 1.10.2 – 29.10.2026
 
 Restpunkte aus dem Sicherheitstest vom 28.10.2026 (Stand: [Nachtrag in der Auswertung](docs/SICHERHEITSTEST-2026-10-28.md#nachtrag-29102026-nachmittag-stand-nach-1102)):

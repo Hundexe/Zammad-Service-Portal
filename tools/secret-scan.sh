@@ -45,7 +45,7 @@ files() {
 found=0
 while IFS= read -r f; do
   [ -f "$f" ] || continue
-  case "$f" in *.png|*.woff|*.woff2|*.ico|*.jpg|*.gif|tools/secret-scan.sh) continue ;; esac
+  case "$f" in *.png|*.woff|*.woff2|*.ico|*.jpg|*.gif|*.mp4|tools/secret-scan.sh) continue ;; esac
   for p in "${PATTERNS[@]}"; do
     if hits="$(grep -nE -- "$p" "$f" 2>/dev/null | grep -vE -- "$ALLOW" || true)" && [ -n "$hits" ]; then
       printf '\033[31m%s\033[0m\n%s\n' "$f (Muster: $p)" "$(printf '%s\n' "$hits" | cut -c1-200 | head -5)"

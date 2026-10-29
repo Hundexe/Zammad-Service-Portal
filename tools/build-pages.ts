@@ -113,5 +113,7 @@ writeFileSync(join(out, 'index.html'), index);
 writeFileSync(join(out, 'styles.css'), readFileSync(join(out, 'styles.css'), 'utf8').replace(/url\("\/fonts\//g, 'url("fonts/'));
 writeFileSync(join(out, 'demo-data.json'), JSON.stringify({ recordedAt: Date.now(), responses, assets }));
 writeFileSync(join(out, '.nojekyll'), '');
+// Video-Einführung unter /video/ (Seite, Video, Untertitel, Vorschaubild)
+cpSync(join(root, 'docs/video'), join(out, 'video'), { recursive: true });
 console.log(`Demo gebaut: ${out}`);
 process.exit(0);
