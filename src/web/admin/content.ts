@@ -5,7 +5,7 @@ import { badge, button, checkbox, confirmDialog, dialog, errorText, fieldWrap, i
 import { can, navigate, state, curPath, assetUrl, bandLogoId, navBrand } from '../lib/app.ts';
 import { adminSystem, loadAdminSystems } from './common.ts';
 import { exportFormsFile, importFormsDialog } from './forms.ts';
-import { contrastWarnings, effectiveColors, LOGO_LIMITS, NAV_LINKS_MAX, PALETTES, THEMES, THEME_INFO, themeOf, type Branding, type NavLink, type Palette, type ThemeId } from '../../shared/branding.ts';
+import { contrastWarnings, effectiveColors, LOGIN_TITLE_DEFAULT, LOGO_LIMITS, NAV_LINKS_MAX, PALETTES, THEMES, THEME_INFO, themeOf, type Branding, type NavLink, type Palette, type ThemeId } from '../../shared/branding.ts';
 
 const KIND: Record<string, string> = { title: 'Ticket-Titel', body: 'Tickettext', success: 'Text nach dem Absenden' };
 
@@ -167,7 +167,12 @@ function themeMini(id: ThemeId, title: string): HTMLElement {
     h('span', { class: 'tm-btn' }));
 }
 
-export function brandingEditor(initial: Branding, uploadUrl: string, extra: { onChange?: () => void } = {}): { el: HTMLElement; value: Branding } {
+/**
+ * Editor für das Erscheinungsbild. mode 'system': Portal eines Ticketsystems (Navigationsleiste, Startseite).
+ * mode 'login': Anmeldeseite – nur was dort sichtbar ist, mit Vorschau der Anmeldeseite.
+ */
+export function brandingEditor(initial: Branding, uploadUrl: string, extra: { onChange?: () => void; mode?: 'system' | 'login' } = {}): { el: HTMLElement; value: Branding } {
+  const login = extra.mode === 'login';
   const b: Branding = { theme: 'standard', colorMode: 'custom', ...initial };
   const warn = h('div', { attrs: { 'aria-live': 'polite' } });
   const preview = h('div', { class: 'brand-preview', attrs: { 'aria-label': 'Vorschau' } });
@@ -182,6 +187,24 @@ export function brandingEditor(initial: Branding, uploadUrl: string, extra: { on
     preview.setAttribute('data-style', themeOf(b));
     setColors(preview, c);
     for (const [id, mini] of minis) setColors(mini, b.colorMode === 'theme' ? THEME_INFO[id].palette : c);
+    if (login) {
+      // Anmeldeseite im Kleinen: Farbfläche mit Logo, Überschrift, Fußzeile – daneben die Anmeldung
+      mount(preview, h('div', { class: 'bp-login' },
+        h('div', { class: 'bp-login-band' },
+          bandLogoId(b)
+            ? h('img', { attrs: { src: assetUrl(bandLogoId(b)!), alt: '' }, style: { height: `${Math.round(Math.min(b.logoHeroHeight ?? LOGO_LIMITS.hero.default, 120) * 0.45)}px` } })
+            : h('span', { class: 'bp-login-name' }, b.displayName || 'Name'),
+          h('div', null,
+            h('p', { class: 'bp-login-title' }, b.loginTitle || LOGIN_TITLE_DEFAULT),
+            b.loginText ? h('p', { class: 'bp-login-lead' }, b.loginText) : null),
+          b.footerText || b.imprintUrl || b.privacyUrl ? h('p', { class: 'bp-login-foot' }, [b.footerText, b.imprintUrl ? 'Impressum' : '', b.privacyUrl ? 'Datenschutz' : ''].filter(Boolean).join(' · ')) : null),
+        h('div', { class: 'bp-login-card' },
+          h('p', { class: 'bp-login-h' }, 'Anmelden'),
+          h('span', { class: 'bp-input' }), h('span', { class: 'bp-input' }),
+          h('span', { class: ['btn', 'btn-primary'] }, 'Anmelden'))));
+      extra.onChange?.();
+      return;
+    }
     mount(preview,
       // Navigationsleiste wie im Portal (helles bzw. dunkles Design je nach aktueller Ansicht)
       h('div', { class: 'bp-nav' }, h('span', { class: 'bp-brand' }, ...navBrand({ ...b, displayName: b.displayName || 'Name' }, Math.round((b.logoNavHeight ?? LOGO_LIMITS.nav.default) * 0.8))),
@@ -240,10 +263,31 @@ export function brandingEditor(initial: Branding, uploadUrl: string, extra: { on
   }
   drawColors();
 
+  const styleBlock = h('div', null, h('p', { class: 'label' }, 'Stil'), h('p', { class: 'help', style: { marginTop: '0', marginBottom: '.6rem' } }, login
+    ? 'Gilt für die Anmeldeseite. Nach der Anmeldung gilt der Stil des gewählten Ticketsystems. Helles und dunkles Design werden automatisch unterstützt.'
+    : 'Gilt im Portal, solange dieses Ticketsystem gewählt ist (die Anmeldeseite hat ihre eigene Einstellung). Helles und dunkles Design werden automatisch unterstützt.'), picker);
+  const legalFields = h('div', { class: 'grid-2' },
+    fieldWrap(input(b.imprintUrl ?? '', set('imprintUrl'), { type: 'url', placeholder: 'https://' }), { label: 'Link Impressum' }),
+    fieldWrap(input(b.privacyUrl ?? '', set('privacyUrl'), { type: 'url', placeholder: 'https://' }), { label: 'Link Datenschutz' }));
+  const section = (title: string) => h('h3', { class: 'editor-section' }, title);
+  const loginFields = h('div', { class: 'stack' },
+    section('Farbfläche'),
+    logoField('Logo', b.logoDarkId, 'logo', uploadUrl, set('logoDarkId'), 'band', 'Meist helle Schrift auf der Farbe der Fläche. Ohne Logo steht dort der Anzeigename.'),
+    sizeField('Logogröße', b.logoHeroHeight ?? LOGO_LIMITS.hero.default, LOGO_LIMITS.hero, (v) => { b.logoHeroHeight = v; draw(); }),
+    fieldWrap(input(b.loginTitle || LOGIN_TITLE_DEFAULT, set('loginTitle')), { label: 'Überschrift', help: 'Leer lassen für den Standardtext.' }),
+    fieldWrap(textarea(b.loginText ?? '', set('loginText'), { rows: 2 }), { label: 'Text unter der Überschrift (optional)', help: 'z. B. „Bei dringenden Störungen: Telefon 1234“' }),
+    fieldWrap(textarea(b.footerText, set('footerText'), { rows: 2 }), { label: 'Fußzeile (optional)', help: 'Klein unten auf der Farbfläche, z. B. Name der IT oder der Firmen.' }),
+    legalFields,
+    section('Stil und Farben'),
+    styleBlock,
+    h('div', null, h('p', { class: 'label' }, 'Farben'), colorsHost),
+    section('Browser-Tab'),
+    fieldWrap(input(b.displayName, set('displayName')), { label: 'Anzeigename', help: 'Titel im Browser-Tab; auf der Farbfläche, solange kein Logo hinterlegt ist.' }),
+    logoField('Favicon (Symbol im Browser-Tab)', b.faviconId, 'favicon', uploadUrl, set('faviconId')));
   const el = h('div', { class: 'branding-grid' },
-    h('div', { class: 'stack' },
+    login ? loginFields : h('div', { class: 'stack' },
       fieldWrap(input(b.displayName, set('displayName')), { label: 'Anzeigename', help: 'Steht in der Navigationsleiste, wenn kein helles Logo hinterlegt ist, und im Browser-Tab.' }),
-      h('div', null, h('p', { class: 'label' }, 'Stil'), h('p', { class: 'help', style: { marginTop: '0', marginBottom: '.6rem' } }, 'Gilt im Portal, solange dieses Ticketsystem gewählt ist (die Anmeldeseite hat ihre eigene Einstellung). Helles und dunkles Design werden automatisch unterstützt.'), picker),
+      styleBlock,
       h('div', null, h('p', { class: 'label' }, 'Farben'), colorsHost),
       logoField('Logo auf der Farbfläche (Startseite und Anmeldung)', b.logoDarkId, 'logo', uploadUrl, set('logoDarkId'), 'band'),
       logoField('Logo für die Navigationsleiste – helles Design', b.logoLightId, 'logo', uploadUrl, set('logoLightId'), 'light'),
@@ -256,9 +300,7 @@ export function brandingEditor(initial: Branding, uploadUrl: string, extra: { on
       linksField(b.navLinks ?? [], (v) => { b.navLinks = v; draw(); }),
       fieldWrap(input(b.welcomeText, set('welcomeText')), { label: 'Begrüßung auf der Startseite' }),
       fieldWrap(textarea(b.footerText, set('footerText'), { rows: 2 }), { label: 'Fußzeile' }),
-      h('div', { class: 'grid-2' },
-        fieldWrap(input(b.imprintUrl ?? '', set('imprintUrl'), { type: 'url', placeholder: 'https://' }), { label: 'Link Impressum' }),
-        fieldWrap(input(b.privacyUrl ?? '', set('privacyUrl'), { type: 'url', placeholder: 'https://' }), { label: 'Link Datenschutz' })),
+      legalFields,
     ),
     h('div', { class: 'stack sticky-top' }, h('p', { class: 'label' }, 'Vorschau'), preview, warn),
   );
@@ -303,10 +345,10 @@ export async function brandingPage(p: Record<string, string>) {
 
 export async function loginSettingsPage() {
   const d = await get<{ branding: Branding }>('/api/admin/settings/branding');
-  const editor = brandingEditor(d.branding, '/api/admin/assets');
+  const editor = brandingEditor(d.branding, '/api/admin/assets', { mode: 'login' });
   const msg = h('div');
   return h('div', null,
-    pageHead('Anmeldeseite', 'Erscheinungsbild vor der Anmeldung, wenn noch kein Ticketsystem gewählt ist'),
+    pageHead('Anmeldeseite', 'So sieht die Seite aus, auf der sich alle anmelden. Nach der Anmeldung gilt das Erscheinungsbild des jeweiligen Ticketsystems.'),
     msg,
     h('section', { class: 'panel' }, editor.el),
     h('div', { class: 'form-actions sticky' }, button('Speichern', async () => {

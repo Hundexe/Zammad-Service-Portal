@@ -1,5 +1,6 @@
 // Anmeldung und die Schritte danach (zweiter Faktor, Passwort ändern, Authenticator einrichten).
 import { h, mount, svg } from '../lib/dom.ts';
+import { LOGIN_TITLE_DEFAULT } from '../../shared/branding.ts';
 import { ApiError, get, post } from '../lib/api.ts';
 import { button, errorText, fieldWrap, input, notice, copyButton } from '../lib/ui.ts';
 import { applyBranding, assetUrl, bandLogoId, loadMe, loadSystems, logo, logout, navigate, state, themeToggle } from '../lib/app.ts';
@@ -14,13 +15,23 @@ function shell(...content: (Node | null)[]): HTMLElement {
   const b = state.config!.branding;
   applyBranding(b);
   document.body.dataset.layout = 'login';
+  const legal = [
+    b.imprintUrl ? h('a', { attrs: { href: b.imprintUrl, target: '_blank', rel: 'noopener noreferrer' } }, 'Impressum') : null,
+    b.privacyUrl ? h('a', { attrs: { href: b.privacyUrl, target: '_blank', rel: 'noopener noreferrer' } }, 'Datenschutz') : null,
+  ].filter(Boolean) as HTMLElement[];
   return h('div', { class: 'login' },
-    h('aside', { class: 'login-band' },
-      h('div', { class: 'login-brand' }, bandLogoId(b) ? h('img', { class: 'brand-logo', attrs: { src: assetUrl(bandLogoId(b)!), alt: b.displayName } }) : logo({ ...b, logoLightId: null, logoDarkId: null }), bandLogoId(b) ? null : h('span', null, b.displayName)),
-      h('div', null,
-        h('p', { class: 'login-claim' }, 'Anfragen stellen. Tickets im Blick behalten.'),
-        b.footerText ? h('p', { class: 'login-note' }, b.footerText) : null)),
-    h('main', { class: 'login-card', id: 'main' }, ...content),
+    h('div', { class: 'login-frame' },
+      h('aside', { class: 'login-band' },
+        h('div', { class: 'login-brand' }, bandLogoId(b)
+          ? h('img', { class: 'brand-logo', attrs: { src: assetUrl(bandLogoId(b)!), alt: b.displayName } })
+          : h('span', { class: 'login-brand-name' }, logo({ ...b, logoLightId: null, logoDarkId: null }), h('span', null, b.displayName))),
+        h('div', { class: 'login-hello' },
+          h('p', { class: 'login-claim' }, b.loginTitle || LOGIN_TITLE_DEFAULT),
+          b.loginText ? h('p', { class: 'login-lead' }, b.loginText) : null),
+        b.footerText || legal.length ? h('div', { class: 'login-foot' },
+          b.footerText ? h('p', { class: 'login-note' }, b.footerText) : null,
+          legal.length ? h('p', { class: 'login-legal' }, ...legal) : null) : null),
+      h('main', { class: 'login-card', id: 'main' }, ...content)),
     h('div', { class: 'login-theme' }, themeToggle()),
   );
 }

@@ -1,5 +1,12 @@
 # Änderungen
 
+## 1.9.9 – 29.10.2026
+
+- **Neue Anmeldeseite:** Farbfläche und Anmeldung bilden einen gemeinsamen, mittig stehenden Rahmen statt zwei weit auseinanderliegender Hälften. Das Logo nutzt die Logogröße der Farbfläche, Fußzeile sowie Impressum und Datenschutz stehen unten auf der Farbfläche. Auf dem Handy steht die Farbfläche kompakt über der Anmeldung
+- **Einstellungen der Anmeldeseite aufgeräumt:** nur noch, was dort sichtbar ist – gegliedert in *Farbfläche* (Logo, Logogröße, Überschrift, Text darunter, Fußzeile, Impressum/Datenschutz), *Stil und Farben* und *Browser-Tab* (Anzeigename, Favicon). Logos der Navigationsleiste, Navigationslinks und die Begrüßung der Startseite sind dort entfallen (gespeicherte Werte bleiben erhalten)
+- Überschrift und Text unter der Überschrift der Anmeldeseite sind jetzt einstellbar
+- Die Vorschau zeigt die Anmeldeseite statt der Startseite
+
 ## 1.9.8 – 29.10.2026
 
 - **Nach einem Update sofort alles neu:** Die Programmteile im Browser wurden bis zu einer Stunde zwischengespeichert, während Startdatei und Gestaltung schon neu waren. Nach einem Update lief so kurzzeitig eine Mischung aus alt und neu (z. B. Ticketverlauf als ein einziger Textblock). Jetzt fragt der Browser bei jedem Aufruf kurz nach, ob sich etwas geändert hat (unverändert: kurze Antwort ohne Inhalt)

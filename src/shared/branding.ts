@@ -63,6 +63,10 @@ export interface Branding {
   faviconId?: string | null;
   welcomeText: string;
   footerText: string;
+  /** Anmeldeseite: große Überschrift auf der Farbfläche */
+  loginTitle?: string;
+  /** Anmeldeseite: kurzer Text unter der Überschrift (optional) */
+  loginText?: string;
   imprintUrl?: string;
   privacyUrl?: string;
   /** Höhe des Logos in der Navigationsleiste (px) */
@@ -80,6 +84,8 @@ export const NAV_LINKS_MAX = 6;
 /** Erlaubte Ziele: Web-Adressen, E-Mail, Telefon – nie javascript: o. Ä. */
 export const NAV_LINK_RE = /^(https?:\/\/[^\s"'<>]+|mailto:[^\s"'<>]+|tel:[+0-9 ()\/-]+)$/i;
 
+export const LOGIN_TITLE_DEFAULT = 'Anfragen stellen. Tickets im Blick behalten.';
+
 export const DEFAULT_BRANDING: Branding = {
   theme: 'standard',
   colorMode: 'custom',
@@ -94,6 +100,8 @@ export const DEFAULT_BRANDING: Branding = {
   faviconId: null,
   welcomeText: 'Wie können wir helfen?',
   footerText: '',
+  loginTitle: LOGIN_TITLE_DEFAULT,
+  loginText: '',
   imprintUrl: '',
   privacyUrl: '',
   logoNavHeight: LOGO_LIMITS.nav.default,
@@ -211,6 +219,8 @@ export function validateBranding(input: unknown): { branding?: Branding; errors:
     faviconId: id('faviconId'),
     welcomeText: str('welcomeText', 500),
     footerText: str('footerText', 500),
+    loginTitle: str('loginTitle', 120),
+    loginText: str('loginText', 300),
     imprintUrl: url('imprintUrl'),
     privacyUrl: url('privacyUrl'),
     logoNavHeight: size('logoNavHeight', LOGO_LIMITS.nav),

@@ -239,3 +239,11 @@ describe('Statische Demo', () => {
     assert.equal(requestKey('GET', '/api/x?b=2&a=1&refresh=1'), 'GET /api/x?a=1&b=2');
   });
 });
+
+test('Branding: Überschrift und Text der Anmeldeseite werden geprüft', () => {
+  const ok = validateBranding({ ...DEFAULT_BRANDING, loginTitle: 'Willkommen', loginText: 'Telefon 1234' });
+  assert.equal(ok.branding?.loginTitle, 'Willkommen');
+  assert.equal(ok.branding?.loginText, 'Telefon 1234');
+  assert.ok(validateBranding({ ...DEFAULT_BRANDING, loginTitle: 'x'.repeat(121) }).errors.length);
+  assert.equal(validateBranding({ ...DEFAULT_BRANDING, loginTitle: undefined }).branding?.loginTitle, '');
+});
