@@ -252,17 +252,35 @@ export function registerPortalRoutes(router: Router, app: App): void {
     }));
   }
 
+  const ticketLoads = new Map<string, Promise<TicketSummary[]>>();
+  /**
+   * Tickets eines Nutzers. Bis 30 s alt: direkt aus dem Zwischenspeicher. Bis 10 min alt: sofort den
+   * gespeicherten Stand liefern und im Hintergrund erneuern (sonst wartet jede Seite alle 30 s auf Zammad).
+   * Gleichzeitige Abrufe derselben Liste teilen sich einen Aufruf.
+   */
   async function ticketsOf(ctx: AppCtx, sys: SystemRow, refresh: boolean): Promise<TicketSummary[]> {
     const key = `${sys.id}:${ctx.user!.id}`;
     const hit = ticketCache.get(key);
-    if (hit && !refresh && Date.now() - hit.at < 30_000) return hit.tickets;
+    const age = hit ? Date.now() - hit.at : Infinity;
+    if (hit && !refresh && age < 30_000) return hit.tickets;
     if (!ctx.user!.email) return [];
-    const customer = await customerFor(app, sys, ctx.user!.id, ctx.user!.email, ctx.user!.displayName, false);
-    if (!customer) return [];
-    const tickets = await connectorFor(app, sys).listTickets(customer);
-    ticketCache.set(key, { at: Date.now(), tickets });
-    if (ticketCache.size > 5000) ticketCache.clear();
-    return tickets;
+    const u = ctx.user!;
+    let load = ticketLoads.get(key);
+    if (!load) {
+      load = (async () => {
+        const customer = await customerFor(app, sys, u.id, u.email!, u.displayName, false);
+        const tickets = customer ? await connectorFor(app, sys).listTickets(customer) : [];
+        if (ticketCache.size > 5000) ticketCache.clear();
+        ticketCache.set(key, { at: Date.now(), tickets });
+        return tickets;
+      })().finally(() => ticketLoads.delete(key));
+      ticketLoads.set(key, load);
+    }
+    if (hit && !refresh && age < 10 * 60_000) {
+      load.catch((err) => log.warn('Tickets im Hintergrund nicht erneuert', { system: sys.slug, error: (err as Error).message }));
+      return hit.tickets;
+    }
+    return load;
   }
 
   function connectorError(err: unknown): never {

@@ -6,8 +6,13 @@ import {
   type CustomerRef, type SystemMetadata, type TicketSummary, type TicketSystemConfig,
 } from './types.ts';
 import { isProtectedZammadField } from '../../shared/form.ts';
+import { log } from '../log.ts';
 
 const MAX_RESPONSE = 30 * 1024 * 1024;
+/** Aufrufe, die länger dauern, landen mit Dauer im Log – hilft bei „manchmal langsam“ */
+const SLOW_CALL_MS = 2000;
+// Organisation je Kunde – über Connector-Instanzen hinweg (für jede Anfrage entsteht ein neuer Connector)
+const orgCache = new Map<string, { at: number; org: number | null }>();
 
 type Json = any;
 
@@ -75,7 +80,7 @@ export function safeTicketFields(fields: Record<string, unknown>): Record<string
  */
 const UNREACHABLE_PAUSE_MS = 30_000;
 const unreachableUntil = new Map<string, number>();
-export function resetReachability(): void { unreachableUntil.clear(); }
+export function resetReachability(): void { unreachableUntil.clear(); orgCache.clear(); }
 
 export class ZammadConnector implements Connector {
   private sys: TicketSystemConfig;
@@ -108,19 +113,23 @@ export class ZammadConnector implements Connector {
     if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
     if (opts.onBehalfOf) headers['X-On-Behalf-Of'] = opts.onBehalfOf;
     let res: Response;
+    const started = Date.now();
     try {
       res = await this.fetchImpl(this.url(path), {
         method,
         headers,
         body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
         redirect: 'error',
-        signal: AbortSignal.timeout(20000),
+        // Lesen: 10 s reichen, Anlegen mit Anhängen darf länger dauern
+        signal: AbortSignal.timeout(method === 'GET' ? 10_000 : 20_000),
       });
     } catch (err) {
       unreachableUntil.set(key, Date.now() + UNREACHABLE_PAUSE_MS);
       throw new ConnectorError(`${this.sys.name} nicht erreichbar: ${(err as Error).message}`, true);
     }
     unreachableUntil.delete(key);
+    const took = Date.now() - started;
+    if (took > SLOW_CALL_MS) log.warn('Zammad antwortet langsam', { system: this.sys.name, method, path: path.split('?')[0], ms: took });
     const len = Number(res.headers.get('content-length') ?? 0);
     if (len > MAX_RESPONSE) throw new ConnectorError('Antwort von Zammad zu groß', false, res.status);
     if (res.status === 404) return null;
@@ -257,12 +266,11 @@ export class ZammadConnector implements Connector {
     return this.sys.showOrgTickets && org !== null && t.organizationId === org;
   }
 
-  private orgCache = new Map<number, { at: number; org: number | null }>();
-
   /** Organisation des Kunden (nur gebraucht, wenn Organisations-Tickets angezeigt werden). */
   private async organizationOf(customer: CustomerRef): Promise<number | null> {
     if (!this.sys.showOrgTickets) return null;
-    const hit = this.orgCache.get(customer.customerId);
+    const cacheKey = `${this.sys.baseUrl}|${customer.customerId}`;
+    const hit = orgCache.get(cacheKey);
     if (hit && Date.now() - hit.at < 10 * 60_000) return hit.org;
     let u: Json = null;
     try {
@@ -272,9 +280,9 @@ export class ZammadConnector implements Connector {
       if (!(err instanceof ConnectorError) || err.retryable) throw err;
     }
     const org = u?.organization_id === null || u?.organization_id === undefined || u?.organization_id === '' ? null : Number(u.organization_id);
-    this.orgCache.set(customer.customerId, { at: Date.now(), org: Number.isSafeInteger(org) && (org as number) > 0 ? org : null });
-    if (this.orgCache.size > 5000) this.orgCache.clear();
-    return this.orgCache.get(customer.customerId)!.org;
+    if (orgCache.size > 5000) orgCache.clear();
+    orgCache.set(cacheKey, { at: Date.now(), org: Number.isSafeInteger(org) && (org as number) > 0 ? org : null });
+    return orgCache.get(cacheKey)!.org;
   }
 
   private static ticketList(res: Json): Json[] {
@@ -316,10 +324,14 @@ export class ZammadConnector implements Connector {
     // Früher: alle für das Konto sichtbaren Tickets seitenweise (älteste zuerst) und dann filtern. Ist der Kunde in
     // Zammad zugleich Agent, sieht er dort Tausende Tickets – die eigenen neuen lagen dann jenseits der ersten Seiten.
     const onBehalfOf = this.sys.creationMode === 'on_behalf_of' ? this.behalf(customer) : undefined;
-    const org = await this.organizationOf(customer);
+    // Organisation und eigene Tickets gleichzeitig abfragen statt nacheinander
+    const [orgResult, own] = await Promise.allSettled([this.organizationOf(customer), this.searchBy('customer_id', customer.customerId, onBehalfOf)]);
+    if (orgResult.status === 'rejected') throw orgResult.reason;
+    const org = orgResult.value;
     let raw: Json[];
     try {
-      raw = await this.searchBy('customer_id', customer.customerId, onBehalfOf);
+      if (own.status === 'rejected') throw own.reason;
+      raw = own.value;
       if (org !== null) raw.push(...await this.searchBy('organization_id', org, onBehalfOf));
     } catch (err) {
       // Ältere Zammad-Versionen kennen die Suche mit Bedingung nicht – dann wie bisher

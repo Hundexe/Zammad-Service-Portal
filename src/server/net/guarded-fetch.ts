@@ -167,6 +167,22 @@ export function guardedLookup(opts: GuardOptions) {
   };
 }
 
+// Verbindungen wiederverwenden (Keep-Alive): sonst kostet jeder Zammad-Aufruf DNS, TCP- und TLS-Aufbau.
+// Ein Pool je Schutz-Einstellung, damit eine unter anderen Regeln geprüfte Verbindung nie wiederverwendet wird.
+// Die IP-Prüfung läuft beim Aufbau jeder neuen Verbindung (lookup); offene Verbindungen gehen zur geprüften IP.
+const agents = new Map<string, http.Agent>();
+function agentFor(opts: GuardOptions, protocol: string): http.Agent {
+  const key = protocol + JSON.stringify(opts, (_k, v) => (typeof v === 'function' ? undefined : v));
+  let a = agents.get(key);
+  if (!a) {
+    const o = { keepAlive: true, maxSockets: 32, maxFreeSockets: 8, timeout: 15_000 };
+    a = protocol === 'https:' ? new https.Agent(o) : new http.Agent(o);
+    if (agents.size > 50) { for (const x of agents.values()) x.destroy(); agents.clear(); }
+    agents.set(key, a);
+  }
+  return a;
+}
+
 /** fetch-kompatible Funktion mit IP-Prüfung beim Verbindungsaufbau. */
 export function guardedFetch(opts: GuardOptions): typeof fetch {
   const maxBytes = opts.maxBytes ?? 32 * 1024 * 1024;
@@ -186,14 +202,15 @@ export function guardedFetch(opts: GuardOptions): typeof fetch {
     const method = (init.method ?? 'GET').toUpperCase();
     const mod = url.protocol === 'https:' ? https : http;
 
-    return await new Promise<Response>((resolve, reject) => {
+    const agent = agentFor(opts, url.protocol);
+    const send = (retry: boolean) => new Promise<Response>((resolve, reject) => {
       // TLS: Zertifikat und Hostname werden immer geprüft (rejectUnauthorized bleibt an). Bei einem Namen geht er
       // als SNI mit und muss im Zertifikat stehen – auch wenn die Verbindung zur vorher geprüften IP geht.
       // Bei einer IP-Adresse in der URL wird kein SNI gesendet und die IP muss als IP-SAN im Zertifikat stehen.
       const tlsOpts = url.protocol === 'https:'
         ? { rejectUnauthorized: true, ...(isIP(host) ? {} : { servername: host }), ...(opts.ca ? { ca: opts.ca } : {}) }
         : {};
-      const req = mod.request(url, { method, headers, lookup: lookup as any, signal: init.signal ?? undefined, agent: false, ...tlsOpts }, (res) => {
+      const req = mod.request(url, { method, headers, lookup: lookup as any, signal: init.signal ?? undefined, agent, ...tlsOpts }, (res) => {
         const status = res.statusCode ?? 0;
         if (status >= 300 && status < 400) {
           res.resume();
@@ -220,10 +237,18 @@ export function guardedFetch(opts: GuardOptions): typeof fetch {
         sock.once(url.protocol === 'https:' ? 'secureConnect' : 'connect', () => clearTimeout(timer));
         req.once('close', () => clearTimeout(timer));
       });
-      req.on('error', reject);
+      req.on('error', (err: NodeJS.ErrnoException) => {
+        // Vom Server inzwischen geschlossene Keep-Alive-Verbindung: lesende Anfrage einmal auf neuer Verbindung wiederholen
+        if (retry && req.reusedSocket && (method === 'GET' || method === 'HEAD') && ['ECONNRESET', 'EPIPE'].includes(err.code ?? '') && !init.signal?.aborted) {
+          send(false).then(resolve, reject);
+          return;
+        }
+        reject(err);
+      });
       if (body !== undefined) req.write(body);
       req.end();
     });
+    return await send(true);
   };
   return fn as typeof fetch;
 }

@@ -60,6 +60,7 @@ Wichtige Log-Meldungen:
 | `Zustellung fehlgeschlagen, neuer Versuch geplant` | Zammad kurz nicht erreichbar – erledigt sich meist selbst |
 | `Zustellung endgültig fehlgeschlagen` | z. B. Gruppe in Zammad umbenannt → korrigieren, unter **Zustellung** erneut senden |
 | `Virenscanner nicht erreichbar` | ClamAV läuft nicht oder lädt noch Signaturen (nach dem Start bis zu 2 Minuten) |
+| `Zammad antwortet langsam` | ein Aufruf an Zammad dauerte über 2 s (`ms` und `path` stehen dabei) – Zammad selbst oder die Suche (Elasticsearch) ist ausgelastet |
 | `Microsoft-Anmeldung abgelehnt` | Grund steht dabei (z. B. Tenant nicht erlaubt, Secret abgelaufen) |
 | `Entra liefert zu viele Gruppen im Token` | Gruppenanspruch auf „der Anwendung zugewiesene Gruppen“ umstellen |
 | `Lokale Anmeldung` (mit `"alert":true`) | Jemand hat sich mit einem lokalen Konto angemeldet – im Normalbetrieb nur das Notfallkonto, also **immer prüfen** |
@@ -313,6 +314,7 @@ openssl x509 -in entra_cert.crt -outform DER | openssl dgst -sha256 -binary | op
 | Verwaltung: „aus diesem Netz nicht erreichbar“ | `ADMIN_ALLOWED_CIDRS` enthält das Netz nicht |
 | Formular: „keine Zammad-Gruppe festgelegt“ | im Formular unter **Ticket** eine Gruppe wählen oder Standard-Gruppe des Systems setzen |
 | Mitarbeitende sehen keine Tickets | E-Mail-Adresse im Portal und im Zammad-Kunden müssen übereinstimmen; API-Benutzer braucht `admin.user` |
+| Seiten laden mal schnell, mal langsam | Log nach `Zammad antwortet langsam` und `nicht erreichbar` durchsuchen. Ist Zammad aus, wartet das Portal höchstens 5 s und fragt danach 30 s lang nicht mehr nach. Die Startseite wartet nicht auf Zammad, Ticketlisten kommen bis 10 Minuten aus dem Zwischenspeicher |
 | Zammad-Objekte leer | API-Token ohne `admin.object` |
 | Uploads werden abgelehnt („Virenscanner nicht erreichbar“) | `docker compose logs clamav`; ClamAV braucht etwa 1,5 GB RAM |
 | `app` startet nicht: „SECRET_KEY … fehlt“ oder „nicht lesbar“ | `secrets/secret_key` fehlt oder gehört nicht Benutzer 65532 → `sudo chown 65532:65532 secrets/*` |

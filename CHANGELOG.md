@@ -1,5 +1,16 @@
 # Änderungen
 
+## 1.9.5 – 29.10.2026
+
+- **Schnellere Seiten, auch wenn Zammad langsam ist**
+  - Die Startseite wartet nicht mehr auf Zammad: Formulare erscheinen sofort, „Offene Tickets“ wird nachgeladen
+  - Ticketlisten: bis 30 s alt direkt aus dem Zwischenspeicher, bis 10 Minuten alt sofort mit dem gespeicherten Stand und im Hintergrund erneuert. Bisher wartete alle 30 s eine Seite auf Zammad – daher „mal schnell, mal langsam“
+  - Verbindungen zu Zammad werden wiederverwendet (Keep-Alive), statt für jeden Aufruf neu aufgebaut zu werden (DNS, TCP, TLS)
+  - Organisation und eigene Tickets werden gleichzeitig abgefragt; die Organisation wird wirklich 10 Minuten zwischengespeichert (vorher bei jedem Aufruf neu)
+  - Lesende Zammad-Aufrufe brechen nach 10 s ab (vorher 20 s)
+  - Neue Log-Meldung `Zammad antwortet langsam` mit Dauer, wenn ein Aufruf über 2 s braucht
+- **Logo auf der Farbfläche:** Abstand zur Überschrift wächst mit der Logogröße, oben weniger Leerraum – große Logos wirken nicht mehr gequetscht
+
 ## 1.9.4 – 29.10.2026
 
 - **Startseite:** Die Farbfläche schließt links und rechts genau mit Logo, Navigationsleiste und Formularliste ab, statt über die ganze Bildschirmbreite zu laufen. Auf großen Monitoren wirkt die Seite dadurch nicht mehr auseinandergezogen

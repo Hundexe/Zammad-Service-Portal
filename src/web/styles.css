@@ -256,7 +256,11 @@ h1[tabindex="-1"]:focus { outline: none; }
 }
 .hero h1 { color: inherit; font-size: clamp(2.25rem, 5.2vw, 3.5rem); letter-spacing: -0.032em; margin-bottom: .3em; }
 .hero-sub { font-size: clamp(1.0625rem, 1.8vw, 1.3125rem); line-height: 1.4; margin: 0 auto; max-width: 36em; opacity: .78; letter-spacing: -0.014em; }
-.hero-logo { height: var(--logo-hero-h, 44px); width: auto; max-width: min(80vw, calc(var(--logo-hero-h, 44px) * 6)); object-fit: contain; margin: 0 auto 1.75rem; display: block; }
+.hero-logo { height: var(--logo-hero-h, 44px); width: auto; max-width: min(80vw, calc(var(--logo-hero-h, 44px) * 6)); object-fit: contain; display: block;
+  /* Abstand zur Überschrift wächst mit der Logogröße: große Logos brauchen mehr Luft */
+  margin: 0 auto clamp(1.75rem, calc(var(--logo-hero-h, 44px) * .5), 3.25rem); }
+/* Mit Logo oben weniger Innenabstand, sonst wirkt der Block nach unten gedrückt */
+.hero:has(.hero-logo) { padding-top: clamp(2.5rem, 5vw, 4rem); }
 .hero .switch { margin-top: 2rem; }
 .hero .search-wrap { margin: 1.75rem auto 0; }
 

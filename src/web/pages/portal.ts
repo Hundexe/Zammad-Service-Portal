@@ -49,10 +49,9 @@ function formIcon(f: FormListItem): string {
 export async function homePage(p: Record<string, string>) {
   const sys = await systemOrDefault(p.systemId);
   if (!sys) return noSystems();
-  const [forms, tickets] = await Promise.all([
-    get<{ forms: FormListItem[] }>(`/api/portal/systems/${sys.id}/forms`),
-    get<{ tickets: Ticket[]; pending: PendingRequest[]; unavailable: boolean }>(`/api/portal/systems/${sys.id}/tickets`).catch(() => null),
-  ]);
+  // Formulare kommen aus dem Portal selbst und sind sofort da. Die Tickets kommen aus Zammad und werden
+  // nachgeladen – die Seite wartet nicht darauf.
+  const forms = await get<{ forms: FormListItem[] }>(`/api/portal/systems/${sys.id}/forms`);
   let filter = '';
   const listHost = h('div');
   const drawList = () => {
@@ -76,7 +75,19 @@ export async function homePage(p: Record<string, string>) {
 
   const b = sys.branding;
   const switcher = systemSwitch((id) => `/s/${id}`);
-  const open = tickets?.tickets ?? [];
+  const side = h('div', null, h('p', { class: 'muted' }, 'Wird geladen …'));
+  get<{ tickets: Ticket[]; pending: PendingRequest[]; unavailable: boolean }>(`/api/portal/systems/${sys.id}/tickets`)
+    .catch(() => null)
+    .then((tickets) => {
+      const open = (tickets?.tickets ?? []).filter((t) => !t.closed);
+      mount(side,
+        !tickets || tickets.unavailable ? notice('warn', 'Tickets können gerade nicht geladen werden.') : null,
+        (tickets?.pending ?? []).length ? h('ul', { class: 'mini-list' }, ...tickets!.pending.map((r) => h('li', null, h('span', { class: 'mini-title' }, r.title), statusBadge(r.status)))) : null,
+        open.length
+          ? h('ul', { class: 'mini-list' }, ...open.slice(0, 6).map((t) => h('li', null, link(`/s/${sys.id}/tickets/${t.id}`,
+            h('span', { class: 'mini-title' }, t.title), h('span', { class: 'mini-meta' }, h('span', { class: 'num' }, `#${t.number}`), ticketState(t.state, t.closed), h('span', null, relTime(t.updatedAt)))))))
+          : tickets && !tickets.unavailable && !tickets.pending.length ? h('p', { class: 'muted' }, 'Keine offenen Tickets.') : null);
+    });
   return h('div', { class: 'home' },
     h('section', { class: 'hero', attrs: { 'aria-labelledby': 'h-forms' } },
       bandLogoId(b) ? h('img', { class: 'hero-logo', attrs: { src: assetUrl(bandLogoId(b)!), alt: b.displayName } }) : null,
@@ -91,12 +102,7 @@ export async function homePage(p: Record<string, string>) {
         h('section', { class: 'home-main', attrs: { 'aria-label': 'Formulare' } }, listHost),
         h('aside', { class: 'home-side', attrs: { 'aria-labelledby': 'h-open' } },
           h('div', { class: 'side-head' }, h('h2', { id: 'h-open' }, 'Offene Tickets'), link(`/s/${sys.id}/tickets`, 'Alle anzeigen')),
-          tickets?.unavailable ? notice('warn', 'Tickets können gerade nicht geladen werden.') : null,
-          (tickets?.pending ?? []).length ? h('ul', { class: 'mini-list' }, ...tickets!.pending.map((r) => h('li', null, h('span', { class: 'mini-title' }, r.title), statusBadge(r.status)))) : null,
-          open.length
-            ? h('ul', { class: 'mini-list' }, ...open.slice(0, 6).map((t) => h('li', null, link(`/s/${sys.id}/tickets/${t.id}`,
-              h('span', { class: 'mini-title' }, t.title), h('span', { class: 'mini-meta' }, h('span', { class: 'num' }, `#${t.number}`), ticketState(t.state, t.closed), h('span', null, relTime(t.updatedAt)))))))
-            : !tickets?.pending.length ? h('p', { class: 'muted' }, 'Keine offenen Tickets.') : null))),
+          side))),
   );
 }
 
