@@ -12,6 +12,7 @@
 // (Feld-Einstellung approverGroups) – das verhindert Freigaben über ein beliebiges Zweitkonto.
 // Für alle anderen gibt es die Freigabe nicht (404).
 import type { App } from '../app.ts';
+import { openTitle } from './request-title.ts';
 import { uuid } from '../db/db.ts';
 import { HttpError } from '../http/core.ts';
 import { log } from '../log.ts';
@@ -47,6 +48,16 @@ interface ApprovalRow {
 interface JoinedRow extends ApprovalRow {
   r_user_id: string; r_system_id: string; r_title: string; r_status: string; r_created_at: number;
   requester_name: string; system_name: string;
+}
+
+/** Zeilen mit Anfragetitel: Titel entschlüsseln (siehe request-title.ts) */
+function jget(app: App, sql: string, ...params: unknown[]): JoinedRow | undefined {
+  const r = app.db.get<JoinedRow>(sql, ...(params as never[]));
+  if (r) r.r_title = openTitle(app.box, r.r_title);
+  return r;
+}
+function jall(app: App, sql: string, ...params: unknown[]): JoinedRow[] {
+  return app.db.all<JoinedRow>(sql, ...(params as never[])).map((r) => ({ ...r, r_title: openTitle(app.box, r.r_title) }));
 }
 
 const JOIN = `SELECT a.*, r.user_id AS r_user_id, r.system_id AS r_system_id, r.title AS r_title, r.status AS r_status, r.created_at AS r_created_at,
@@ -130,7 +141,7 @@ export function insertApproval(app: App, requestId: string, choice: ApproverChoi
 }
 
 export function notifyRequested(app: App, approvalId: string, reminder = false): void {
-  const a = app.db.get<JoinedRow>(`${JOIN} WHERE a.id = ?`, approvalId);
+  const a = jget(app, `${JOIN} WHERE a.id = ?`, approvalId);
   if (!a) return;
   notify(app, {
     to: { email: a.approver_email },
@@ -147,7 +158,7 @@ export function notifyRequested(app: App, approvalId: string, reminder = false):
 
 function forApprover(app: App, user: AuthUser, id: string): JoinedRow {
   const email = approverEmailOf(app, user);
-  const a = email && /^[0-9a-f-]{36}$/.test(id) ? app.db.get<JoinedRow>(`${JOIN} WHERE a.id = ? AND a.approver_email = ? AND r.user_id <> ?`, id, email, user.id) : undefined;
+  const a = email && /^[0-9a-f-]{36}$/.test(id) ? jget(app, `${JOIN} WHERE a.id = ? AND a.approver_email = ? AND r.user_id <> ?`, id, email, user.id) : undefined;
   // Gruppenbindung gilt auch beim Entscheiden (Mitgliedschaft frisch aus der letzten Anmeldung)
   if (!a || !inGroups(user.groups, a.approver_groups ? parseGroups(a.approver_groups) : null)) throw new HttpError(404, 'Freigabe nicht gefunden', 'not_found');
   return a;
@@ -171,7 +182,7 @@ function publicApproval(app: App, a: JoinedRow) {
 export function listForApprover(app: App, user: AuthUser, which: 'open' | 'done') {
   const email = approverEmailOf(app, user);
   if (!email) return [];
-  const rows = app.db.all<JoinedRow>(
+  const rows = jall(app, 
     `${JOIN} WHERE a.approver_email = ? AND r.user_id <> ? AND ${which === 'open' ? "a.status = 'pending'" : "a.status <> 'pending'"}
       ORDER BY ${which === 'open' ? 'a.created_at ASC' : 'COALESCE(a.decided_at, a.created_at) DESC'} LIMIT 200`,
     email, user.id,
@@ -262,7 +273,7 @@ export function decide(app: App, user: AuthUser, actor: Actor, id: string, decis
 // ---------------------------------------------------------------- Aktionen der anfragenden Person
 
 function forRequester(app: App, user: AuthUser, requestId: string): JoinedRow {
-  const a = /^[0-9a-f-]{36}$/.test(requestId) ? app.db.get<JoinedRow>(`${JOIN} WHERE a.request_id = ? AND r.user_id = ?`, requestId, user.id) : undefined;
+  const a = /^[0-9a-f-]{36}$/.test(requestId) ? jget(app, `${JOIN} WHERE a.request_id = ? AND r.user_id = ?`, requestId, user.id) : undefined;
   if (!a) throw new HttpError(404, 'Anfrage nicht gefunden', 'not_found');
   if (a.status !== 'pending' || a.r_status !== 'awaiting_approval') throw new HttpError(409, 'Die Anfrage wartet nicht mehr auf eine Freigabe', 'conflict');
   return a;
@@ -330,6 +341,7 @@ export function cancelRequest(app: App, admin: AuthUser, actor: Actor, requestId
   const reason = typeof rawReason === 'string' ? rawReason.replace(/\r\n/g, '\n').trim() : '';
   if (reason.length > COMMENT_MAX) throw new HttpError(422, `Höchstens ${COMMENT_MAX} Zeichen`, 'validation', { reason: `Höchstens ${COMMENT_MAX} Zeichen` });
   const r = app.db.get<{ id: string; user_id: string; system_id: string; title: string; status: string }>('SELECT id, user_id, system_id, title, status FROM requests WHERE id = ?', requestId)!;
+  r.title = openTitle(app.box, r.title);
   const ap = app.db.get<ApprovalRow>("SELECT * FROM approvals WHERE request_id = ? AND status = 'pending'", requestId);
   const t = Date.now();
   app.db.tx(() => {
@@ -358,7 +370,7 @@ export function cancelRequest(app: App, admin: AuthUser, actor: Actor, requestId
 export function approvalHousekeeping(app: App): { expired: number; reminded: number } {
   const t = Date.now();
   let expired = 0;
-  for (const a of app.db.all<JoinedRow>(`${JOIN} WHERE a.status = 'pending' AND a.expires_at <= ? LIMIT 500`, t)) {
+  for (const a of jall(app, `${JOIN} WHERE a.status = 'pending' AND a.expires_at <= ? LIMIT 500`, t)) {
     const done = app.db.tx(() => {
       const upd = app.db.run("UPDATE approvals SET status = 'expired', summary = NULL, decided_at = ? WHERE id = ? AND status = 'pending'", t, a.id);
       if (!upd.changes) return false;

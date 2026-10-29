@@ -1,4 +1,5 @@
 // Anmeldung: Microsoft Entra ID (SSO) und lokale Konten (mit TOTP für Admins).
+import { createHash } from 'node:crypto';
 import type { App } from '../app.ts';
 import type { Config } from '../config.ts';
 import { HttpError, RateLimiter, appendCookie, limiterKey, redirect, serializeCookie, type Router } from '../http/core.ts';
@@ -338,6 +339,11 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
     if (tx.exp < Date.now()) return fail('abgelaufen');
     if (!state || state !== tx.state) return fail('state');
     if (!code || code.length > 4000) return fail('code');
+    // Einmalwert sperren: dieselbe Transaktion lässt sich nicht ein zweites Mal einlösen
+    const stateHash = createHash('sha256').update(state).digest('base64url');
+    app.db.run('DELETE FROM oidc_used_states WHERE expires_at < ?', Date.now());
+    const fresh = app.db.get<{ n: number }>('INSERT OR IGNORE INTO oidc_used_states (state_hash, expires_at) VALUES (?, ?) RETURNING 1 AS n', stateHash, tx.exp + 60_000);
+    if (!fresh) return fail('state_bereits_verwendet');
     try {
       const { claims, accessToken } = await deps.entra.exchange(code, tx);
       const profile = await deps.entra.profile(accessToken);

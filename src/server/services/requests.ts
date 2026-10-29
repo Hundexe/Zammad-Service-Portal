@@ -6,6 +6,7 @@ import { uuid } from '../db/db.ts';
 import { HttpError } from '../http/core.ts';
 import { log } from '../log.ts';
 import { sha256 } from '../crypto.ts';
+import { openTitle, PURGED_TITLE, sealTitle } from './request-title.ts';
 import { displayValue, isProtectedZammadField, isVisible, LIMITS, validateSubmission, type FormDefinition, type FormValues, type FileMeta } from '../../shared/form.ts';
 import { escapeHtml, renderTemplate, textToHtml, type TemplateVars } from '../../shared/template.ts';
 import type { AuthUser } from './rbac.ts';
@@ -153,7 +154,7 @@ export async function submitRequest(
     app.db.run(
       `INSERT INTO requests (id, user_id, system_id, form_id, form_version_id, title, payload, status, attempts, next_attempt_at, created_at, queued_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
-      id, user.id, sys.id, form.id, version.id, payload.title, app.box.encrypt('request', JSON.stringify(payload)),
+      id, user.id, sys.id, form.id, version.id, sealTitle(app.box, payload.title), app.box.encrypt('request', JSON.stringify(payload)),
       approval ? 'awaiting_approval' : 'queued', t, t, approval ? null : t,
     );
     if (approval) approvalId = insertApproval(app, id, approval, buildSummary(def, result.values, user, form.name, sys.name));
@@ -282,7 +283,7 @@ async function deliver(app: App, row: RequestRow): Promise<void> {
   }
 }
 
-export const PURGED_TITLE = 'Inhalt nach Ablauf der Aufbewahrungsfrist gelöscht';
+export { PURGED_TITLE } from './request-title.ts';
 
 /** Löscht Inhalte nach Ablauf der Aufbewahrungsfrist. Ticketnummer und Status bleiben für "Meine Anfragen". */
 export function purgeOld(app: App): number {
@@ -310,6 +311,6 @@ export function requestsOfUser(app: App, userId: string, systemId?: string) {
     `SELECT id, system_id, title, status, ticket_number, ticket_id, created_at, delivered_at FROM requests
       WHERE user_id = ? ${systemId ? 'AND system_id = ?' : ''} ORDER BY created_at DESC LIMIT 100`,
     ...(systemId ? [userId, systemId] : [userId]),
-  );
+  ).map((r) => ({ ...r, title: openTitle(app.box, r.title) }));
 }
 

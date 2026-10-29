@@ -12,7 +12,7 @@ Dieses Dokument beschreibt, wie das Portal geschützt ist, gegen welche Angriffe
 | Bösartige Webseite im Browser eines Mitarbeitenden | Aktionen im Namen des Opfers (CSRF), Clickjacking | CSRF-Token, Herkunftsprüfung, nur JSON, `frame-ancestors 'none'` |
 | Manipulierte Inhalte (Uploads, Ticket-Antworten) | Schadcode verteilen, XSS | Dateityp am Inhalt, Virenscan, Anhänge immer als Download, HTML aus Zammad nur als Text, strenge CSP |
 | Kompromittierte Abhängigkeit | Code einschleusen | keine npm-Laufzeitpakete, distroless-Image, gepinnte Images, signierte Updates |
-| Diebstahl der VM-Festplatte oder eines Backups | Zugangsdaten auslesen | Tokens, 2FA-Geheimnisse, Anfrageinhalte und Uploads mit AES-256-GCM verschlüsselt; Schlüssel getrennt |
+| Diebstahl der VM-Festplatte oder eines Backups | Zugangsdaten auslesen | Tokens, 2FA-Geheimnisse, Anfrageinhalte samt Titel, Benachrichtigungstexte und Uploads mit AES-256-GCM verschlüsselt; Schlüssel getrennt |
 
 ## Maßnahmen im Überblick
 
@@ -118,7 +118,7 @@ Code: `src/server/auth/oidc.ts`, Tests: `test/review-oidc.test.ts` (Einzelprüfu
 | `nonce` | Pflicht, muss zur Transaktion passen | `Nonce fehlt`, `Nonce falsch` |
 | `oid` | Pflicht, UUID – Portal-Konten werden **nur** über `oid` zugeordnet, nie über Name oder Mail. Die Mail-Adresse (für Zammad-Kunde und Freigaben) wird nur übernommen, wenn ihre Domain zum Tenant gehört (siehe unten) | `Objekt-ID fehlt` |
 | `auth_time` (Step-up) | höchstens 10 Minuten alt | `Step-up: alte Anmeldung` |
-| `state` | Pflicht, muss zum verschlüsselten Transaktions-Cookie passen | `state-Parameter muss passen` (security-auth) |
+| `state` | Pflicht, muss zum verschlüsselten Transaktions-Cookie passen; nach der Verwendung gesperrt (einmal einlösbar) | `state-Parameter muss passen` (security-auth), `dieselbe Transaktion lässt sich nicht zweimal einlösen` (identity) |
 | Redirect-URI | fest aus `PUBLIC_URL`, nie aus der Anfrage | `keine offene Weiterleitung über returnTo` (security-auth) |
 | Gruppen | zu viele Gruppen (`_claim_names`) oder falscher Typ → keine Gruppen, nicht raten | `Gruppen-Überlauf` |
 

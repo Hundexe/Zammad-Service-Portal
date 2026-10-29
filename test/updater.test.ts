@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { Db, uuid } from '../src/server/db/db.ts';
 import { Updater, compareVersions, setEnvValue, readEnvFile, type Exec, type UpdaterConfig } from '../updater/updater.ts';
 
-function setup(opts: { healthyVersion: (call: number) => string | null; failCmd?: RegExp; mode?: 'docker' | 'native' }) {
+function setup(opts: { healthyVersion: (call: number) => string | null; failCmd?: RegExp; mode?: 'docker' | 'native'; dbAccess?: UpdaterConfig['dbAccess'] }) {
   const dir = mkdtempSync(join(tmpdir(), 'zsp-upd-'));
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ version: '1.0.0' }));
   mkdirSync(join(dir, '.git'));
@@ -37,9 +37,10 @@ function setup(opts: { healthyVersion: (call: number) => string | null; failCmd?
     gitRemote: 'origin', requireSignedTags: true, registryImage: 'ghcr.io/x/y', cosignIdentityRegexp: '.*', cosignIssuer: 'x',
     healthUrl: 'http://app/readyz', healthTimeoutMs: 50, checkIntervalMs: 3600_000, appUid: 65532, appGid: 65532,
     mode: opts.mode ?? 'docker', installScript: join(dir, 'deploy/native/install.sh'), services: ['zsp-web', 'zsp-worker'],
+    dbAccess: opts.dbAccess,
   };
   const u = new Updater(cfg, exec, fetchImpl);
-  return { u, dir, calls, envFile, cleanup: () => { u.db.close(); rmSync(dir, { recursive: true, force: true }); } };
+  return { u, dir, calls, envFile, cleanup: async () => { await u.store.close(); rmSync(dir, { recursive: true, force: true }); } };
 }
 
 function addJob(u: Updater, version: string): string {
@@ -210,4 +211,43 @@ test('ohne Docker: Links im Datenverzeichnis werden nie übereignet (Schutz vor 
     assert.equal(s.u.db.get<{ status: string }>('SELECT status FROM update_jobs WHERE id = ?', id)!.status, 'requested');
     assert.ok(!s.calls.some((c) => c.includes('install.sh')));
   } finally { s.cleanup(); rmSync(victimDir, { recursive: true, force: true }); }
+});
+
+test('ohne Docker: Datenbank nur über den Helfer-Prozess – Update und Zurückrollen funktionieren', async () => {
+  const s = setup({ healthyVersion: () => '1.0.0', mode: 'native', dbAccess: 'agentAsSelf' });
+  const peek = <T>(sql: string, ...p: string[]) => { const d = new Db(join(s.dir, 'portal.sqlite')); try { return d.get<T>(sql, ...p); } finally { d.close(); } };
+  try {
+    assert.throws(() => s.u.db, /Helfer-Prozess/);
+    const id = uuid();
+    const d = new Db(join(s.dir, 'portal.sqlite'));
+    d.run("INSERT INTO update_jobs (id, target_version, status, created_at) VALUES (?, '1.2.0', 'requested', ?)", id, Date.now());
+    d.close();
+    const origSwitch = (s.u as any).switchTo.bind(s.u);
+    (s.u as any).switchTo = async (v: string, log: (x: string) => void) => {
+      await origSwitch(v, log);
+      const x = new Db(join(s.dir, 'portal.sqlite'));
+      x.run("UPDATE settings SET value = 'kaputt-migriert' WHERE key = 'marker'");
+      x.close();
+    };
+    assert.equal(await s.u.tick(), true);
+    const job = peek<{ status: string; log: string }>('SELECT status, log FROM update_jobs WHERE id = ?', id)!;
+    assert.equal(job.status, 'rolled_back', job.log);
+    assert.match(job.log, /Datenbank gesichert: .*vor-update-1\.0\.0-auf-1\.2\.0/);
+    assert.equal(peek<{ value: string }>("SELECT value FROM settings WHERE key = 'marker'")!.value, 'vorher', 'Datenbank wiederhergestellt');
+    assert.ok(peek<{ checked_at: number }>('SELECT checked_at FROM update_state WHERE id = 1')!.checked_at > 0, 'Zustand über den Helfer geschrieben');
+  } finally { await s.cleanup(); }
+});
+
+test('Datenbank-Helfer lehnt untergeschobene Namen für Sicherungen ab', async () => {
+  const { AgentStore } = await import('../updater/store.ts');
+  const dir = mkdtempSync(join(tmpdir(), 'zsp-agent-'));
+  const d = new Db(join(dir, 'portal.sqlite')); d.migrate(); d.close();
+  const st = new AgentStore(dir, null);
+  try {
+    await assert.rejects(st.backup('../../etc/passwd', 3), /Ungültiger Name/);
+    await assert.rejects(st.restore('../portal.sqlite'), /Ungültiger Name/);
+    const ok = await st.backup('vor-update-1.0.0-auf-1.1.0-2026-10-29T15-00-00-000Z.sqlite', 3);
+    assert.ok(statSync(ok).isFile());
+    assert.equal(statSync(ok).mode & 0o777, 0o600);
+  } finally { await st.close(); rmSync(dir, { recursive: true, force: true }); }
 });

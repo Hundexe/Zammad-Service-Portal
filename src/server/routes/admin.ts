@@ -1,6 +1,7 @@
 // Admin-Oberfläche (API). Jede Route prüft ihr Recht – global oder für das Ticketsystem
 // aus der URL – und schreibt Änderungen mit Vorher/Nachher ins Audit-Log.
 import type { App } from '../app.ts';
+import { openTitle } from '../services/request-title.ts';
 import { HttpError, type Router, type RouteOptions } from '../http/core.ts';
 import type { AppCtx } from '../server.ts';
 import { parseJson, uuid } from '../db/db.ts';
@@ -1061,8 +1062,8 @@ export function registerAdminRoutes(router: Router, app: App): void {
          FROM requests r JOIN ticket_systems s ON s.id = r.system_id JOIN users u ON u.id = r.user_id
         ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY r.created_at DESC LIMIT 200`,
       ...params,
-    );
-    return { requests: rows };
+    ) as { title: string }[];
+    return { requests: rows.map((r) => ({ ...r, title: openTitle(app.box, r.title) })) };
   });
 
   router.post('/api/admin/requests/:requestId/retry', admin(), (ctx: AppCtx) => {

@@ -125,3 +125,25 @@ test('Abbruchgrund steht nicht im Audit-Log', async () => {
   assert.equal(p.app.db.get("SELECT 1 FROM audit_log WHERE details LIKE '%Diagnose-ABC%'"), undefined);
 });
 
+
+test('Anfragetitel liegt verschlüsselt in der Datenbank, Listen zeigen ihn lesbar', async () => {
+  const { sealLegacyTitles, openTitle } = await import('../src/server/services/request-title.ts');
+  const sys = createSystem(p.app, p.zammad.url, { slug: 'titel' });
+  const formId = createForm(p.app, sys);
+  const c = new Client(p.url);
+  await c.loginEntra(p, ENTRA_USERS[0].oid);
+  const r = await c.post(`/api/portal/forms/${formId}/submit`, { values: { betreff: 'Vertraulicher-Betreff-77', beschreibung: 'x', standort: 'nord' } });
+  assert.equal(r.status, 201, r.text);
+  const raw = p.app.db.get<{ title: string }>('SELECT title FROM requests WHERE id = ?', r.json.id)!;
+  assert.ok(raw.title.startsWith('v1.') && !raw.title.includes('Vertraulicher'));
+  const list = await c.get('/api/portal/requests');
+  assert.ok(list.json.requests.some((x: { title: string }) => x.title.includes('Vertraulicher-Betreff-77')));
+  // Altbestand aus früheren Versionen wird beim Start nachträglich verschlüsselt
+  p.app.db.run('UPDATE requests SET title = ? WHERE id = ?', 'Alter-Klartext-Titel', r.json.id);
+  assert.ok(sealLegacyTitles(p.app.db, p.app.box) >= 1);
+  const again = p.app.db.get<{ title: string }>('SELECT title FROM requests WHERE id = ?', r.json.id)!;
+  assert.ok(again.title.startsWith('v1.'));
+  assert.equal(openTitle(p.app.box, again.title), 'Alter-Klartext-Titel');
+  p.app.db.raw.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+  assert.equal(readFileSync(join(p.cfg.dataDir, 'portal.sqlite')).includes(Buffer.from('Vertraulicher-Betreff-77')), false);
+});

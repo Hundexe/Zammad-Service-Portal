@@ -32,6 +32,29 @@ Alle Funde bis auf vier sind in **Version 1.9.0** behoben, jeweils mit Regressio
 | **teilweise** | **ST-09** Update-Dienst gehärtet (Kernel-, Namespace-, Rechte-Einschränkungen, keine Paketinstallation beim Update), aber ohne Schreibschutz des Dateisystems, weil `install.sh` Systemdateien schreibt; Datenbankzugriff als Dienstbenutzer statt root ist offen. **ST-14** Benachrichtigungen verschlüsselt, Abbruchgrund nicht mehr im Audit-Log, Titel und Fehlertexte nach der Aufbewahrungsfrist gelöscht – bis dahin stehen Titel und Fehlertext im Klartext in der Datenbank. **ST-31** volle GCM-Tags und asynchrones scrypt umgesetzt; AAD mit Datensatzbezug und Schlüsselrotation offen. **ST-32** Version, Zwischenzustand und Entra-Limit behoben; einmalig verwendbarer OIDC-`state` offen (nicht ausnutzbar), `amr` wird über GO-LIVE geprüft statt im Code |
 | **offen** | **ST-28** „Private vulnerability reporting“ muss der Inhaber des Repositorys unter **Settings → Code security** einschalten (über die Schnittstelle dieser Sitzung nicht erlaubt). **ST-33** Rechte des Docker-Socket-Proxys (für das Bauen nötig, dokumentiert) |
 
+## Nachtrag 29.10.2026, Nachmittag: Stand nach 1.10.2
+
+Was seit 1.9.0 passiert ist:
+
+| Version | Was | Fund |
+| --- | --- | --- |
+| 1.9.1 | Nicht erreichbares Zammad bremst die Verwaltung nicht mehr aus (Verbindungs-Timeout 5 s, 30 s Pause nach einem Ausfall, Stammdaten aus dem Zwischenspeicher) | Betrieb |
+| 1.9.5 | Ticketlisten aus dem Zwischenspeicher, Verbindungen zu Zammad wiederverwendet, Log-Meldung bei langsamen Aufrufen | Betrieb |
+| 1.9.7 | Nachrichten aus Zammad werden ohne fremdes HTML angezeigt: linearer Tokenizer erzeugt nur Text-Blöcke; Zitate eingeklappt | ergänzt ST-16 |
+| 1.9.8, 1.9.10 | Nach Updates keine Mischung aus alten und neuen Programmteilen im Browser | Betrieb |
+| 1.10.0 | Benachrichtigung bei Antworten: liest Nachrichten nur für Tickets bekannter Personen, nie interne Notizen | neu, mit Tests |
+| **1.10.2** | **ST-32:** OIDC-`state` wird nach der Verwendung gesperrt (Tabelle `oidc_used_states`, gehasht); ein abgefangenes Transaktions-Cookie lässt sich kein zweites Mal einlösen | ST-32 behoben |
+| **1.10.2** | **ST-14:** Anfragetitel verschlüsselt gespeichert (Zweck `request-title`); Bestand wird beim Start nachträglich verschlüsselt und die Datenbankdatei danach mit `VACUUM` bereinigt | ST-14 behoben |
+| **1.10.2** | **ST-09:** Der Update-Dienst ohne Docker öffnet die Datenbank nicht mehr als root. Ein Helfer-Prozess (`updater/db-agent.ts`) mit den Rechten des Dienstbenutzers übernimmt Lesen, Schreiben, Sicherung und Wiederherstellung; root bleibt nur für `git`, `systemctl` und `install.sh` | ST-09 behoben (Test auf echter VM steht aus) |
+| **1.10.2** | **ST-33:** Rechte des Socket-Proxys begründet, Restrisiko offen benannt, `UPDATER_ALLOW_BUILD=0` für Registry-Updates dokumentiert ([UPDATES.md](UPDATES.md#sicherheit-des-updaters)) | ST-33 dokumentiert |
+
+| Status | Funde |
+| --- | --- |
+| **behoben** | ST-01 bis ST-27, ST-29, ST-30, ST-32, ST-34, ST-35 |
+| **dokumentiert (Restrisiko)** | **ST-33** Die Docker-API lässt sich über einen Socket-Proxy nicht feiner begrenzen; wer den Updater-Container übernimmt, hat root auf der VM. Empfehlung: Updater zum Start weglassen, sonst Registry-Images mit `UPDATER_ALLOW_BUILD=0` |
+| **zurückgestellt** | **ST-31 (Rest)** Bindung der verschlüsselten Werte an ihren Datensatz (AAD) und Schlüsselrotation. Braucht eine Migration aller verschlüsselten Werte; das Risiko eines Fehlers dabei ist größer als der Nutzen, solange der Hauptschlüssel geschützt liegt. Volle GCM-Tags und asynchrones scrypt sind umgesetzt |
+| **beim Inhaber** | **ST-28** „Private vulnerability reporting“ unter **Settings → Advanced Security** einschalten. **ST-09** einmal Update und Zurückrollen auf einer Test-VM durchspielen, sobald ein signierter Release-Tag existiert |
+
 ## Funde
 
 | ID | Schwere | Fund | Status |

@@ -136,3 +136,23 @@ test('Freigebende Person wechseln: Frist läuft weiter, höchstens drei Wechsel'
   assert.equal((await anna.post(`/api/portal/requests/${r.json.id}/approver`, { email: ALEX.email })).status, 409, 'vierter Wechsel abgelehnt');
 });
 
+
+test('Microsoft-Anmeldung: dieselbe Transaktion lässt sich nicht zweimal einlösen', async () => {
+  const c = new Client(p.url);
+  p.entra.loginAs(ENTRA_USERS[0].oid);
+  const start = await c.get('/api/auth/entra/login?returnTo=%2F');
+  assert.equal(start.status, 302);
+  const txCookie = [...c.cookies].find(([k]) => k.endsWith('zsp_oidc'))!;
+  const authorize = await fetch(start.headers.get('location')!, { redirect: 'manual' });
+  const cb = new URL(authorize.headers.get('location')!);
+  const first = await c.get(cb.pathname + cb.search);
+  assert.equal(first.status, 302);
+  assert.ok(!first.headers.get('location')!.includes('fehler'), 'erste Einlösung klappt');
+  // Abgefangenes Cookie und Rücksprung-Adresse erneut verwenden
+  const replay = new Client(p.url);
+  replay.cookies.set(txCookie[0], txCookie[1]);
+  const second = await replay.get(cb.pathname + cb.search);
+  assert.equal(second.status, 302);
+  assert.match(second.headers.get('location')!, /fehler=sso/);
+  assert.ok(p.app.db.get("SELECT 1 FROM audit_log WHERE action = 'login.failed' AND details LIKE '%state_bereits_verwendet%'"));
+});

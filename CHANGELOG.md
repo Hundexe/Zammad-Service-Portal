@@ -1,5 +1,15 @@
 # Änderungen
 
+## 1.10.2 – 29.10.2026
+
+Restpunkte aus dem Sicherheitstest vom 28.10.2026 (Stand: [Nachtrag in der Auswertung](docs/SICHERHEITSTEST-2026-10-28.md#nachtrag-29102026-nachmittag-stand-nach-1102)):
+
+- **Microsoft-Anmeldung (ST-32):** Der Einmalwert (`state`) wird nach der Verwendung gesperrt – ein abgefangenes Transaktions-Cookie lässt sich nicht ein zweites Mal einlösen (Migration 010)
+- **Anfragetitel verschlüsselt (ST-14):** Titel stehen nicht mehr im Klartext in der Datenbank. Vorhandene Titel werden beim ersten Start einmalig verschlüsselt, danach wird die Datenbankdatei bereinigt (`VACUUM`, kann bei großen Datenbanken einige Sekunden dauern)
+- **Update-Dienst ohne Docker (ST-09):** Öffnet die Datenbank nicht mehr als root. Aufträge, Status, Sicherung und Wiederherstellung laufen über einen Helfer-Prozess mit den Rechten des Dienstbenutzers; root bleibt nur für `git`, `systemctl` und `install.sh`
+- **Docker-Updater (ST-33):** Rechte des Socket-Proxys begründet, Restrisiko dokumentiert, `UPDATER_ALLOW_BUILD=0` für Updates aus der Registry
+- Auswertung des Sicherheitstests um den aktuellen Stand ergänzt
+
 ## 1.10.1 – 29.10.2026
 
 - **Neue Anleitung [Microsoft-Anmeldung (Entra ID)](docs/ENTRA.md):** jeder Schritt im Entra Admin Center (App-Registrierung, Umleitungs-URIs, Secret oder Zertifikat, genau benötigte Rechte, Gruppen- und `auth_time`-Anspruch, App-Rollen, Zuweisung, bedingter Zugriff), ein oder zwei Tenants, Einrichtung im Portal mit und ohne Docker, Rechte an Gruppen, Test, Secret erneuern, Fehlertabelle mit AADSTS-Codes und Checkliste

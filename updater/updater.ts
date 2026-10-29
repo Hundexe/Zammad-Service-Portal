@@ -15,9 +15,10 @@
 // "zammad-service-portal-updater". Statt Images zu bauen, checkt er den signierten Tag aus
 // und führt deploy/native/install.sh --ja aus (baut die Oberfläche, startet die Dienste neu).
 import { execFile } from 'node:child_process';
-import { chmodSync, closeSync, constants as fsc, copyFileSync, existsSync, fchownSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { Db } from '../src/server/db/db.ts';
+import { closeSync, constants as fsc, existsSync, fchownSync, fstatSync, lstatSync, openSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
+import type { Db } from '../src/server/db/db.ts';
+import { AgentStore, LocalStore, type Store } from './store.ts';
 
 export interface ExecResult { code: number; stdout: string; stderr: string }
 export type Exec = (cmd: string, args: string[], opts?: { cwd?: string; timeoutMs?: number; env?: Record<string, string> }) => Promise<ExecResult>;
@@ -48,6 +49,11 @@ export interface UpdaterConfig {
   /** nur native: Installationsskript und systemd-Units von Web und Worker */
   installScript: string;
   services: string[];
+  /**
+   * Datenbankzugriff: local = im eigenen Prozess (Docker, Tests); agent = über db-agent.ts mit den Rechten
+   * des Dienstbenutzers (ohne Docker – der Updater selbst läuft dort als root). agentAsSelf nur für Tests.
+   */
+  dbAccess?: 'local' | 'agent' | 'agentAsSelf';
 }
 
 export const realExec: Exec = (cmd, args, opts = {}) => new Promise((resolve) => {
@@ -94,7 +100,7 @@ export class Updater {
   cfg: UpdaterConfig;
   exec: Exec;
   fetchImpl: typeof fetch;
-  db: Db;
+  store: Store;
   private lastCheck = 0;
 
   constructor(cfg: UpdaterConfig, exec: Exec = realExec, fetchImpl: typeof fetch = fetch) {
@@ -102,8 +108,16 @@ export class Updater {
     this.exec = exec;
     this.fetchImpl = fetchImpl;
     this.assertNoLinks();
-    this.db = new Db(join(cfg.dataDir, 'portal.sqlite'));
+    this.store = cfg.dbAccess === 'agent' ? new AgentStore(cfg.dataDir, { uid: cfg.appUid, gid: cfg.appGid })
+      : cfg.dbAccess === 'agentAsSelf' ? new AgentStore(cfg.dataDir, null)
+      : new LocalStore(cfg.dataDir);
     this.fixOwnership();
+  }
+
+  /** Nur bei Zugriff im eigenen Prozess (Docker, Tests): die Datenbankverbindung */
+  get db(): Db {
+    if (!(this.store instanceof LocalStore)) throw new Error('Datenbank läuft über den Helfer-Prozess');
+    return this.store.db;
   }
 
   get native(): boolean { return this.cfg.mode === 'native'; }
@@ -184,9 +198,9 @@ export class Updater {
     return (this.cfg.source === 'git' ? env.get('APP_VERSION') : env.get('IMAGE_TAG')) ?? '0.0.0';
   }
 
-  heartbeat(): void {
+  async heartbeat(): Promise<void> {
     try { writeFileSync('/tmp/updater-heartbeat', String(Date.now())); } catch { /* nur im Container relevant */ }
-    this.db.run('UPDATE update_state SET updater_seen_at = ?, current_version = ? WHERE id = 1', Date.now(), this.currentVersion());
+    await this.store.run('UPDATE update_state SET updater_seen_at = ?, current_version = ? WHERE id = 1', Date.now(), this.currentVersion());
   }
 
   // ------------------------------------------------------------ Prüfen
@@ -223,43 +237,29 @@ export class Updater {
       const { versions, changelog } = await this.availableVersions();
       const current = this.currentVersion();
       const available = versions.filter((v) => compareVersions(v, current) >= 0).slice(-10);
-      this.db.run('UPDATE update_state SET available = ?, latest_version = ?, changelog = ?, checked_at = ?, last_error = NULL, current_version = ? WHERE id = 1',
+      await this.store.run('UPDATE update_state SET available = ?, latest_version = ?, changelog = ?, checked_at = ?, last_error = NULL, current_version = ? WHERE id = 1',
         JSON.stringify(available), versions.at(-1) ?? null, changelog, Date.now(), current);
     } catch (err) {
-      this.db.run('UPDATE update_state SET checked_at = ?, last_error = ? WHERE id = 1', Date.now(), (err as Error).message.slice(0, 500));
+      await this.store.run('UPDATE update_state SET checked_at = ?, last_error = ? WHERE id = 1', Date.now(), (err as Error).message.slice(0, 500));
     }
     this.lastCheck = Date.now();
   }
 
-  checkDue(): boolean {
-    const requested = Number(this.db.get<{ value: string }>("SELECT value FROM settings WHERE key = 'update.check_requested'")?.value ?? 0);
+  async checkDue(): Promise<boolean> {
+    const requested = Number((await this.store.get<{ value: string }>("SELECT value FROM settings WHERE key = 'update.check_requested'"))?.value ?? 0);
     return Date.now() - this.lastCheck > this.cfg.checkIntervalMs || requested > this.lastCheck;
   }
 
   // ------------------------------------------------------------ Update
-  private backupFile(from: string, to: string): string {
-    const dir = join(this.cfg.dataDir, 'backups');
+  private async backupFile(from: string, to: string): Promise<string> {
     this.assertNoLinks();
-    mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const file = join(dir, `vor-update-${from}-auf-${to}-${new Date().toISOString().replace(/[:.]/g, '-')}.sqlite`);
-    this.db.backupTo(file);
-    try { chmodSync(file, 0o600); } catch { /* best effort */ }
-    // Nur die letzten Sicherungen vor Updates behalten (sie enthalten Inhalte über die Aufbewahrungsfrist hinaus)
-    const old = readdirSync(dir).filter((f) => /^vor-update-.*\.sqlite$/.test(f))
-      .map((f) => ({ f, t: statSync(join(dir, f)).mtimeMs })).sort((a, b) => b.t - a.t).map((x) => x.f);
-    for (const f of old.slice(UPDATE_BACKUPS_KEPT)) rmSync(join(dir, f), { force: true });
-    return file;
+    const name = `vor-update-${from}-auf-${to}-${new Date().toISOString().replace(/[:.]/g, '-')}.sqlite`;
+    return await this.store.backup(name, UPDATE_BACKUPS_KEPT);
   }
 
-  private restoreDb(backup: string): void {
-    this.db.close();
-    const target = join(this.cfg.dataDir, 'portal.sqlite');
-    // Erst entfernen (auch einen evtl. untergeschobenen Link), dann exklusiv neu anlegen – nie in ein Linkziel schreiben
-    for (const ext of ['', '-wal', '-shm']) rmSync(target + ext, { force: true });
-    copyFileSync(backup, target, fsc.COPYFILE_EXCL);
-    this.ownSafe(target, 'file');
+  private async restoreDb(backup: string): Promise<void> {
+    await this.store.restore(basename(backup));
     this.assertNoLinks();
-    this.db = new Db(target);
     this.fixOwnership();
   }
 
@@ -326,48 +326,53 @@ export class Updater {
     const target = job.target_version;
     if (!SEMVER.test(target)) throw new Error('Ungültige Version');
     const lines: string[] = [];
+    // Protokoll in Reihenfolge schreiben (asynchron, ohne die Schritte aufzuhalten)
+    let pendingLog: Promise<void> = Promise.resolve();
     const log = (s: string) => {
       lines.push(`[${new Date().toISOString().slice(11, 19)}] ${s}`);
-      this.db.run('UPDATE update_jobs SET log = ? WHERE id = ?', lines.join('\n').slice(-60000), job.id);
+      const text = lines.join('\n').slice(-60000);
+      pendingLog = pendingLog.then(() => this.store.run('UPDATE update_jobs SET log = ? WHERE id = ?', text, job.id)).catch(() => undefined);
     };
-    this.db.run("UPDATE update_jobs SET status = 'running', started_at = ? WHERE id = ?", Date.now(), job.id);
+    const finish = async (status: 'succeeded' | 'rolled_back' | 'failed') => {
+      await pendingLog;
+      await this.store.run('UPDATE update_jobs SET status = ?, finished_at = ? WHERE id = ?', status, Date.now(), job.id);
+      return status;
+    };
+    await this.store.run("UPDATE update_jobs SET status = 'running', started_at = ? WHERE id = ?", Date.now(), job.id);
     const from = this.currentVersion();
     const prevRef = this.cfg.source === 'git' || this.native ? (await this.exec('git', this.git('rev-parse', 'HEAD'))).stdout.trim() : '';
     let backup = '';
     try {
       log(`Update von ${from} auf ${target}`);
       await this.verify(target, log);
-      backup = this.backupFile(from, target);
+      backup = await this.backupFile(from, target);
       log(`Datenbank gesichert: ${backup}`);
       await this.switchTo(target, log);
       await this.waitHealthy(target, log);
-      this.db.run('UPDATE update_state SET current_version = ? WHERE id = 1', target);
-      this.db.run("UPDATE update_jobs SET status = 'succeeded', finished_at = ? WHERE id = ?", Date.now(), job.id);
+      await this.store.run('UPDATE update_state SET current_version = ? WHERE id = 1', target);
       log('Update erfolgreich.');
-      return 'succeeded';
+      return await finish('succeeded');
     } catch (err) {
       log(`FEHLER: ${(err as Error).message}`);
       if (!backup) {
-        this.db.run("UPDATE update_jobs SET status = 'failed', finished_at = ? WHERE id = ?", Date.now(), job.id);
         log('Es wurde nichts verändert.');
-        return 'failed';
+        return await finish('failed');
       }
       log('Rolle zurück …');
       try {
         if (this.native) {
           if (!prevRef) throw new Error('Vorheriger Stand unbekannt');
           await this.must('systemctl', ['stop', ...this.cfg.services], log);
-          this.restoreDb(backup);
+          await this.restoreDb(backup);
           log('Datenbank wiederhergestellt.');
           await this.must('git', this.git('checkout', '--detach', '--force', prevRef), log);
           await this.runInstall(log);
           await this.waitHealthy(from, log);
-          this.db.run("UPDATE update_jobs SET status = 'rolled_back', finished_at = ? WHERE id = ?", Date.now(), job.id);
           log(`Zurückgerollt auf ${from}.`);
-          return 'rolled_back';
+          return await finish('rolled_back');
         }
         await this.must('docker', this.compose('stop', 'app', 'worker'), log);
-        this.restoreDb(backup);
+        await this.restoreDb(backup);
         log('Datenbank wiederhergestellt.');
         if (this.cfg.source === 'git') {
           await this.must('git', this.git('checkout', '--detach', '--force', prevRef), log);
@@ -378,13 +383,11 @@ export class Updater {
         }
         await this.must('docker', this.compose('up', '-d', '--no-deps', 'app', 'worker'), log);
         await this.waitHealthy(from, log);
-        this.db.run("UPDATE update_jobs SET status = 'rolled_back', finished_at = ? WHERE id = ?", Date.now(), job.id);
         log(`Zurückgerollt auf ${from}.`);
-        return 'rolled_back';
+        return await finish('rolled_back');
       } catch (rollbackErr) {
         log(`ROLLBACK FEHLGESCHLAGEN: ${(rollbackErr as Error).message} – bitte manuell eingreifen (siehe docs/BETRIEB.md).`);
-        this.db.run("UPDATE update_jobs SET status = 'failed', finished_at = ? WHERE id = ?", Date.now(), job.id);
-        return 'failed';
+        return await finish('failed');
       }
     }
   }
@@ -393,9 +396,9 @@ export class Updater {
   async tick(): Promise<boolean> {
     try {
       this.assertNoLinks();
-      this.heartbeat();
-      if (this.checkDue()) await this.check();
-      const job = this.db.get<{ id: string; target_version: string }>("SELECT id, target_version FROM update_jobs WHERE status = 'requested' ORDER BY created_at LIMIT 1");
+      await this.heartbeat();
+      if (await this.checkDue()) await this.check();
+      const job = await this.store.get<{ id: string; target_version: string }>("SELECT id, target_version FROM update_jobs WHERE status = 'requested' ORDER BY created_at LIMIT 1");
       if (!job) return false;
       await this.runJob(job);
       await this.check();
@@ -438,6 +441,8 @@ export function configFromEnv(): UpdaterConfig {
     appGid: owner.gid,
     installScript: join(portalDir, 'deploy/native/install.sh'),
     services: ['zammad-service-portal', 'zammad-service-portal-worker'],
+    // Ohne Docker: Datenbank nur mit den Rechten des Dienstbenutzers öffnen, nie als root
+    dbAccess: native && owner.uid !== 0 ? 'agent' : 'local',
   };
 }
 
@@ -456,5 +461,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (didJob && u.native) break;
     await new Promise((r) => setTimeout(r, 30_000));
   }
-  u.db.close();
+  await u.store.close();
 }

@@ -71,7 +71,7 @@ Die E-Mail muss zur Git-Konfiguration (`user.email`) passen, mit der der Tag ers
 
 ## Installation ohne Docker
 
-`deploy/native/install.sh` richtet den systemd-Dienst `zammad-service-portal-updater` ein (läuft als root, hat keinen offenen Port). Er arbeitet wie der Docker-Updater, nur ohne Images:
+`deploy/native/install.sh` richtet den systemd-Dienst `zammad-service-portal-updater` ein (läuft als root, hat keinen offenen Port). root braucht er nur für `git`, `systemctl` und `install.sh`; die Datenbank (Aufträge, Status, Sicherung, Wiederherstellung) öffnet ein Helfer-Prozess mit den Rechten des Dienstbenutzers (`updater/db-agent.ts`). Er arbeitet wie der Docker-Updater, nur ohne Images:
 
 1. prüft alle 6 Stunden (oder nach **Jetzt nach Updates suchen**) die Tags `vX.Y.Z` im Repository,
 2. prüft die **Signatur des Tags** gegen `/etc/zammad-service-portal/allowed_signers` (beim ersten Lauf aus `deploy/release_signers` übernommen),
@@ -160,4 +160,19 @@ Wer nicht auf der VM bauen möchte: `UPDATE_SOURCE=registry` und `REGISTRY_IMAGE
 
 - Der Updater hat **keinen** offenen Port. Er liest nur Aufträge aus der Datenbank, die ausschließlich Benutzer mit dem Recht `update.install` nach frischer Anmeldung anlegen können, und nur für Versionen, die er selbst gefunden hat.
 - Versionsangaben werden streng geprüft (`x.y.z`); Befehle werden ohne Shell ausgeführt.
-- Docker spricht er nur über den Socket-Proxy an (kein `exec`, keine Secrets, kein Swarm). Das Bauen von Images ist dort erlaubt – wer den Updater übernimmt, hätte damit weitgehende Rechte auf der VM. Wer das nicht möchte, lässt das Profil `updater` weg und aktualisiert manuell.
+- Docker spricht er nur über den Socket-Proxy an. Der Proxy lässt nur die Teile der Docker-API durch, die `docker compose build/pull/up/stop` braucht:
+
+  | Bereich | erlaubt | Warum |
+  | --- | --- | --- |
+  | Container, Start/Stop/Neustart | ja | `app` und `worker` neu erstellen und starten |
+  | Images | ja | neues Image bauen bzw. laden |
+  | Build | ja bei `UPDATE_SOURCE=git`, sonst mit `UPDATER_ALLOW_BUILD=0` abschaltbar | auf der VM bauen |
+  | Netzwerke, Volumes | ja (nur weil Compose sie prüft) | `up` kontrolliert die vorhandenen Netze und das Datenvolume |
+  | `exec`, Secrets, Swarm, Plugins, Anmeldedaten, System | **nein** | – |
+
+- **Restrisiko, ehrlich benannt:** Die Docker-API lässt sich an dieser Stelle nicht feiner begrenzen – ein Socket-Proxy kann nur ganze Bereiche erlauben, nicht den Inhalt eines Aufrufs prüfen. Wer den Updater-Container selbst übernimmt, könnte über die erlaubten Aufrufe einen Container mit Zugriff auf das Dateisystem der VM starten und hätte damit **root-Rechte auf der VM**. Der Updater ist deshalb so klein wie möglich gehalten: kein offener Port, keine Shell, feste Befehle, nur signierte Versionen.
+- **Wie man das Risiko verkleinert:**
+  1. Am sichersten: Profil `updater` weglassen und manuell aktualisieren (Go-Live-Empfehlung für den Start).
+  2. Mit Updater: fertige, signierte Images aus der Registry nutzen (`UPDATE_SOURCE=registry`) und `UPDATER_ALLOW_BUILD=0` setzen – dann fällt das Bauen über die API weg.
+  3. Die Docker-VM nur für das Portal nutzen, damit „root auf der VM“ nichts anderes betrifft.
+- Ohne Docker gibt es keinen Socket-Proxy; dort läuft der Update-Dienst als systemd-Dienst (siehe [Installation ohne Docker](#installation-ohne-docker)).
