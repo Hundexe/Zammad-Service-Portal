@@ -245,7 +245,9 @@ h1[tabindex="-1"]:focus { outline: none; }
 
 /* ---------------------------------------------------------------- Startseite: Farbfläche des Ticketsystems */
 .hero {
-  margin: 12px 12px 0;
+  /* bündig mit Navigationsleiste und Inhalt (gleicher Rand links und rechts) */
+  width: min(var(--wide), 100% - 48px);
+  margin: 12px auto 0;
   border-radius: var(--r-lg);
   background: var(--band);
   color: var(--band-text);
@@ -258,11 +260,9 @@ h1[tabindex="-1"]:focus { outline: none; }
 .hero .switch { margin-top: 2rem; }
 .hero .search-wrap { margin: 1.75rem auto 0; }
 
-/* Große Bildschirme: Farbfläche bündig zum Inhalt statt über die ganze Breite, Inhalt etwas breiter */
-@media (min-width: 1500px) {
-  :root { --wide: 1180px; }
-  .hero { max-width: calc(var(--wide) + 48px + 12rem); margin: 16px auto 0; }
-}
+/* Große Bildschirme: Inhalt (und damit Farbfläche und Navigationsleiste) etwas breiter */
+@media (min-width: 1500px) { :root { --wide: 1180px; } .hero { margin-top: 16px; } }
+@media (min-width: 2100px) { :root { --wide: 1320px; } }
 
 /* Segmentierte Auswahl: an welches Ticketsystem geht die Anfrage */
 .switch { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 2px; padding: 4px; border-radius: var(--pill); background: color-mix(in srgb, var(--band-text) 14%, transparent); }
@@ -647,7 +647,7 @@ details.more > * + * { margin-top: .85rem; }
   .links-menu summary { padding: .4rem .5rem; }
   .user-menu.links-menu { position: static; }
   .user-menu.links-menu .menu { left: 12px; right: 12px; top: 3.1rem; min-width: 0; }
-  .hero { margin: 8px 8px 0; border-radius: 22px; padding: 2.75rem 1.25rem 2.25rem; }
+  .hero { width: calc(100% - 16px); margin: 8px auto 0; border-radius: 22px; padding: 2.75rem 1.25rem 2.25rem; }
   .switch-item { padding: .45rem .85rem; font-size: .875rem; }
   .container { padding: 2rem 16px 1.5rem; }
   .grid-2, .stats { grid-template-columns: 1fr; }

@@ -1,5 +1,11 @@
 # Änderungen
 
+## 1.9.4 – 29.10.2026
+
+- **Startseite:** Die Farbfläche schließt links und rechts genau mit Logo, Navigationsleiste und Formularliste ab, statt über die ganze Bildschirmbreite zu laufen. Auf großen Monitoren wirkt die Seite dadurch nicht mehr auseinandergezogen
+- Auf sehr breiten Bildschirmen (ab 2100 px) wird der Inhalt etwas breiter
+- Handy-Ansicht unverändert
+
 ## 1.9.3 – 29.10.2026
 
 - **Große Bildschirme:** Der Farbschein im Hintergrund (Stil „Glas“) wächst mit der Bildschirmgröße, statt nur in den Ecken zu sitzen. Neben dem Inhalt bleibt keine leere schwarze Fläche mehr
