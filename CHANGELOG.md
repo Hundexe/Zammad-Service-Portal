@@ -1,5 +1,9 @@
 # Änderungen
 
+## 1.9.10 – 29.10.2026
+
+- **Updates kommen immer vollständig im Browser an:** Alle Programmteile laden sich gegenseitig mit der Build-Kennung. Nach einem Update holt der Browser damit den ganzen Stand neu, auch wenn er einzelne Dateien von früher noch zwischengespeichert hat. Kein Strg+F5 mehr nötig
+
 ## 1.9.9 – 29.10.2026
 
 - **Neue Anmeldeseite:** Farbfläche und Anmeldung bilden einen gemeinsamen, mittig stehenden Rahmen statt zwei weit auseinanderliegender Hälften. Das Logo nutzt die Logogröße der Farbfläche, Fußzeile sowie Impressum und Datenschutz stehen unten auf der Farbfläche. Auf dem Handy steht die Farbfläche kompakt über der Anmeldung

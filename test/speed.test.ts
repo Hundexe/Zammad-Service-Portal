@@ -83,3 +83,13 @@ test('Nach einem Update keine Mischung aus alten und neuen Dateien: Module werde
   const again = await fetch(`${p.url}/app/main.js`, { headers: { 'if-none-match': mod.headers.get('etag')! } });
   assert.equal(again.status, 304);
 });
+
+test('Module importieren sich mit Build-Kennung – nach einem Update lädt der ganze Baum neu', async () => {
+  const index = await fetch(`${p.url}/`).then((r) => r.text());
+  const m = /main\.js\?v=([0-9a-f]+)/.exec(index);
+  if (!m) return; // ohne gebautes Frontend nichts zu prüfen
+  const main = await fetch(`${p.url}/app/main.js`).then((r) => r.text());
+  const imports = [...main.matchAll(/from\s+'(\.{1,2}\/[^']+)'/g)].map((x) => x[1]);
+  assert.ok(imports.length > 0);
+  for (const i of imports) assert.ok(i.endsWith(`?v=${m[1]}`), i);
+});
