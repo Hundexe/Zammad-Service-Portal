@@ -456,7 +456,18 @@ input:disabled, select:disabled, textarea:disabled { background: var(--canvas); 
 .msg-it { border-bottom-left-radius: 6px; }
 .msg-head { display: flex; gap: .75rem; justify-content: space-between; font-size: .8125rem; margin-bottom: .4rem; color: var(--ink-3); }
 .msg-head strong { color: var(--ink); font-weight: 600; }
-.msg-body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+.msg-body { overflow-wrap: anywhere; line-height: 1.55; display: grid; gap: .75rem; }
+.msg-text { white-space: pre-wrap; }
+/* Formularangaben als Feldliste statt Tabelle mit Tabulatoren */
+.msg-fields { display: grid; grid-template-columns: minmax(8rem, max-content) 1fr; gap: .35rem 1rem; margin: 0; }
+.msg-fields dt { color: var(--ink-3); font-weight: 500; }
+.msg-fields dd { margin: 0; white-space: pre-wrap; }
+.msg-sig { white-space: pre-wrap; font-size: .8125rem; color: var(--ink-3); border-top: 1px solid var(--line); padding-top: .6rem; }
+.msg-meta { font-size: .75rem; color: var(--ink-3); }
+.msg-quoted summary { cursor: pointer; font-size: .8125rem; color: var(--ink-3); width: max-content; }
+.msg-quoted[open] summary { margin-bottom: .5rem; }
+.msg-quoted .msg-text { font-size: .875rem; color: var(--ink-3); border-left: 3px solid var(--line); padding-left: .75rem; }
+@media (max-width: 640px) { .msg-fields { grid-template-columns: 1fr; gap: .1rem; } .msg-fields dd { margin-bottom: .5rem; } }
 .attachments { list-style: none; padding: 0; margin: .75rem 0 0; display: flex; gap: .5rem; flex-wrap: wrap; }
 .attachments a { display: inline-flex; gap: .35rem; align-items: center; font-size: .875rem; padding: .35rem .8rem; background: var(--fill); border-radius: var(--pill); color: var(--ink); }
 .attachments a:hover { background: var(--fill-2); text-decoration: none; }

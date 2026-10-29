@@ -17,6 +17,7 @@ import { audit } from '../services/audit.ts';
 import { approvalDetail, approvalFile, approvalsOfRequests, decide, listForApprover, openCountForApprover, reassign, withdraw } from '../services/approvals.ts';
 import { listNotifications, markRead, markReadByLink, unreadCount } from '../services/notifications.ts';
 import { log } from '../log.ts';
+import { formatHtmlArticle, formatTextArticle, blocksToText } from '../services/article-format.ts';
 
 export const OVERVIEW_COLUMNS = ['number', 'title', 'state', 'priority', 'group', 'created_at', 'updated_at'] as const;
 
@@ -325,11 +326,15 @@ export function registerPortalRoutes(router: Router, app: App): void {
         ticket: detail.ticket,
         // Tickets der Organisation sind nur lesbar
         allowReplies: sys.allow_replies === 1 && detail.ticket.customerId === customer!.customerId,
-        articles: detail.articles.map((a) => ({
-          id: a.id, from: a.from, sender: a.sender, createdAt: a.createdAt,
-          text: a.contentType.includes('html') ? htmlToText(a.body) : a.body.slice(0, 200_000),
-          attachments: a.attachments,
-        })),
+        articles: detail.articles.map((a) => {
+          // Aufbereitet für den Verlauf: Zitate früherer Nachrichten abgetrennt, Tabellen als Feldliste (in Zammad unverändert)
+          const f = a.contentType.includes('html') ? formatHtmlArticle(a.body) : formatTextArticle(a.body);
+          return {
+            id: a.id, from: a.from, sender: a.sender, createdAt: a.createdAt,
+            text: blocksToText(f.blocks), blocks: f.blocks, quoted: f.quoted,
+            attachments: a.attachments,
+          };
+        }),
       };
     } catch (err) {
       if (err instanceof HttpError) throw err;

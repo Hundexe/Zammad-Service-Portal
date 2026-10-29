@@ -202,12 +202,25 @@ export async function ticketsPage(p: Record<string, string>, q: URLSearchParams)
   return host;
 }
 
+type Block = { t: 'text' | 'signature' | 'meta'; text: string } | { t: 'fields'; rows: [string, string][] };
+interface Article { id: number; from: string; sender: string; createdAt: string; text: string; blocks?: Block[]; quoted?: string | null; attachments: { id: number; filename: string; size: number }[] }
+
+/** Nachricht im Verlauf: nur Text-Knoten, nie fremdes HTML. Zitierter Verlauf aufklappbar. */
+function articleBody(a: Article) {
+  const blocks = a.blocks ?? [{ t: 'text', text: a.text } as Block];
+  return h('div', { class: 'msg-body' },
+    ...blocks.map((b) => b.t === 'fields'
+      ? h('dl', { class: 'msg-fields' }, ...b.rows.flatMap(([k, v]) => [h('dt', null, k), h('dd', null, v)]))
+      : h('div', { class: b.t === 'text' ? 'msg-text' : b.t === 'signature' ? 'msg-sig' : 'msg-meta' }, b.text)),
+    a.quoted ? h('details', { class: 'msg-quoted' }, h('summary', null, 'Zitierten Verlauf anzeigen'), h('div', { class: 'msg-text' }, a.quoted)) : null);
+}
+
 export async function ticketDetailPage(p: Record<string, string>) {
   const sys = await systemOrDefault(p.systemId);
   if (!sys) return noSystems();
   const host = h('div', { class: 'container narrow' });
   const load = async () => {
-    const d = await get<{ ticket: Ticket; allowReplies: boolean; articles: { id: number; from: string; sender: string; createdAt: string; text: string; attachments: { id: number; filename: string; size: number }[] }[] }>(`/api/portal/systems/${sys.id}/tickets/${p.ticketId}`);
+    const d = await get<{ ticket: Ticket; allowReplies: boolean; articles: Article[] }>(`/api/portal/systems/${sys.id}/tickets/${p.ticketId}`);
     let reply = '';
     const replyFiles: File[] = [];
     const fileInput = h('input', { attrs: { type: 'file', multiple: true, class: 'visually-hidden', id: 'reply-files' } });
@@ -223,7 +236,7 @@ export async function ticketDetailPage(p: Record<string, string>) {
         h('p', { class: 'ticket-meta' }, h('span', { class: 'num' }, `#${d.ticket.number}`), ticketState(d.ticket.state, d.ticket.closed), h('span', { class: 'muted' }, `erstellt ${fmtDate(d.ticket.createdAt)}`))),
       h('ol', { class: 'thread' }, ...d.articles.map((a) => h('li', { class: ['msg', a.sender === 'Customer' ? 'msg-me' : 'msg-it'] },
         h('div', { class: 'msg-head' }, h('strong', null, a.sender === 'Customer' ? 'Sie' : a.from || 'IT-Service'), h('span', { class: 'muted' }, fmtDate(a.createdAt))),
-        h('div', { class: 'msg-body' }, a.text),
+        articleBody(a),
         a.attachments.length ? h('ul', { class: 'attachments' }, ...a.attachments.map((f) => h('li', null,
           h('a', { attrs: { href: `/api/portal/systems/${sys.id}/tickets/${d.ticket.id}/articles/${a.id}/attachments/${f.id}`, download: f.filename } }, icon('file', 14), f.filename)))) : null))),
       d.allowReplies ? h('form', { class: 'reply', on: { submit: async (e) => {

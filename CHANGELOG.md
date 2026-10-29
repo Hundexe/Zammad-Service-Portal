@@ -1,5 +1,14 @@
 # Änderungen
 
+## 1.9.7 – 29.10.2026
+
+- **Ticketverlauf im Portal aufgeräumt** (in Zammad bleibt jede Nachricht unverändert)
+  - Antworten aus Zammad zeigen nicht mehr die komplette zitierte Anfrage darunter. Der zitierte Verlauf (`<blockquote>`, Outlook „Von: … Gesendet: …“, „Am … schrieb …:“) ist eingeklappt unter **Zitierten Verlauf anzeigen**
+  - Signaturen stehen klein und abgesetzt unter der Nachricht
+  - Die Angaben aus dem Formular erscheinen als übersichtliche Feldliste statt als Text mit Tabulatoren; die Zeile „Erstellt über das Service-Portal · Anfrage …“ klein darunter
+  - Zeilenumbrüche aus dem HTML-Quelltext erzeugen keine falschen Umbrüche mehr
+- Kommentar bei einer Freigabe steht im Ticket als normaler Absatz („Kommentar: …“) statt als Zitat
+
 ## 1.9.6 – 29.10.2026
 
 - **Status auf der Server-Konsole** (Installation ohne Docker): Vor `login:` stehen jetzt Version, Adresse und IP des Portals, der Zustand aller Dienste (Portal, Zustellung, Updates, Caddy, Virenscanner), ob jedes Zammad erreichbar ist und wie viele Anfragen warten oder fehlgeschlagen sind. Aktualisiert sich jede Minute, die Anmeldung wird nur bei Änderungen neu gezeichnet. Abschalten mit `CONSOLE_STATUS=false` in `portal.env`
