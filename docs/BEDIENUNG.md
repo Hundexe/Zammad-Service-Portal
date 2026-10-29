@@ -54,7 +54,7 @@ Manche Formulare – z. B. **Hardware anfordern** oder kostenpflichtige Software
 
    Hat sich die Person noch nie im Portal angemeldet, weist das Portal darauf hin – dann am besten kurz Bescheid geben.
 
-3. Unter **Meine Anfragen** steht, bei wem die Anfrage liegt und bis wann entschieden werden muss. Dort lässt sie sich **zurückziehen** oder an eine **andere Person** geben (z. B. bei Urlaub).
+3. Unter **Meine Anfragen** steht, bei wem die Anfrage liegt und bis wann entschieden werden muss. Dort lässt sie sich **zurückziehen** oder an eine **andere Person** geben (z. B. bei Urlaub) – höchstens dreimal; die Frist läuft dabei weiter.
 
    ![Meine Anfragen](screenshots/44-freigabe-meine-anfragen.png)
 
@@ -194,6 +194,8 @@ Ablauf: **Entwurf speichern** → **Veröffentlichen** (bzw. **Zur Freigabe send
 
 - Das Feld ist immer Pflicht, sobald es sichtbar ist. Mit **Nur anzeigen, wenn …** wird die Freigabe bedingt, z. B. nur bei „Ja, Lizenz nötig“ oder bei einer bestimmten Hardware.
 - **Nur Personen, die sich schon im Portal angemeldet haben:** schützt vor Tippfehlern und erfundenen Adressen.
+- **Freigeben dürfen nur Mitglieder dieser Gruppen:** z. B. die Entra-Gruppe der Führungskräfte. Dann lässt sich die Freigabe nicht über ein eigenes Zweitkonto oder eine beliebige Kollegin erteilen. Die Mitgliedschaft wird beim Eintragen und beim Entscheiden geprüft.
+- Freigeben können nur **Microsoft-Konten**, keine lokalen Konten.
 - **Übernahme ins Ticket:** „Nur im Tickettext“ (Standard) oder „Nicht übernehmen“. Den Vermerk „Freigegeben von … am …“ und den Tag `freigegeben` setzt das Portal immer.
 - Fristen (Erinnerung nach 3, Ablauf nach 14 Tagen) stellt die IT in `deploy/.env` ein ([Betrieb](BETRIEB.md#einstellungen-ändern-deployenv)).
 - Nicht zu verwechseln mit dem **Vier-Augen-Prinzip** für Formulare: Das betrifft die Veröffentlichung eines Formulars durch Admins, nicht einzelne Anfragen.

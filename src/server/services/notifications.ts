@@ -60,7 +60,8 @@ export function notify(app: App, n: NotificationInput): string {
  * wirklich gehört: ein lokales Konto mit der Adresse eines Microsoft-Kontos bekommt sie nicht.
  */
 function mine(app: App, user: AuthUser): { where: string; params: string[] } {
-  const byMail = user.email && !localEmailTaken(app, user.id, user.email);
+  // Nachrichten an eine Adresse (Freigaben) nur für Microsoft-Konten – lokale Konten können nicht freigeben
+  const byMail = user.kind === 'entra' && user.email && !localEmailTaken(app, user.id, user.email);
   return byMail
     ? { where: '(user_id = ? OR (user_id IS NULL AND email = ?))', params: [user.id, user.email!.toLowerCase()] }
     : { where: 'user_id = ?', params: [user.id] };

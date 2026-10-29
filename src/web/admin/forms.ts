@@ -338,6 +338,10 @@ export async function formEditorPage(p: Record<string, string>) {
       items.push(notice('info', 'Die anfragende Person gibt hier ihre Vorgesetzte bzw. ihren Vorgesetzten an. Die Anfrage wartet im Portal, bis diese Person sie unter „Freigaben“ freigibt – erst dann landet sie im Ticketsystem. Bei Ablehnung oder ohne Entscheidung wird sie gelöscht.'),
         checkbox(f.knownOnly === true, 'Nur Personen, die sich schon im Portal angemeldet haben', (x) => upd(() => { f.knownOnly = x || undefined; }),
           'Schützt vor Tippfehlern und erfundenen Adressen. Wer sich noch nie angemeldet hat, kann dann nicht gewählt werden.'),
+        fieldWrap(listInput(f.approverGroups ?? [], (x) => upd(() => { f.approverGroups = x.length ? x : undefined; })), {
+          label: 'Freigeben dürfen nur Mitglieder dieser Gruppen',
+          help: 'Entra-Gruppen (Objekt-IDs) oder App-Rollen (approle:…), z. B. die Gruppe der Führungskräfte. Leer = jedes Microsoft-Konto. Verhindert Freigaben über ein eigenes Zweitkonto.',
+        }),
         h('p', { class: 'small muted' }, 'Das Feld ist immer Pflicht, sobald es sichtbar ist. Mit „Nur anzeigen, wenn …“ lässt sich die Freigabe auf bestimmte Fälle beschränken, z. B. nur bei teurer Hardware.'));
     }
     if (f.type !== 'info' && f.type !== 'approver') {

@@ -282,6 +282,36 @@ export class EntraClient {
     }
   }
 
+  private domainCache = new Map<string, { domains: string[]; at: number }>();
+  clearDomainCache(): void { this.domainCache.clear(); }
+
+  /**
+   * Verifizierte Domains des Tenants (Graph /organization, Recht User.Read). Eine Domain kann nur in
+   * einem Tenant verifiziert sein – darüber lässt sich prüfen, ob eine Mail-Adresse zum Tenant gehört.
+   * null = unbekannt (Graph nicht erreichbar und nichts im Zwischenspeicher).
+   */
+  async verifiedDomains(accessToken: string | undefined, tid: string): Promise<string[] | null> {
+    const cached = this.domainCache.get(tid);
+    if (cached && Date.now() - cached.at < 6 * 3600_000) return cached.domains;
+    if (!accessToken) return cached?.domains ?? null;
+    try {
+      const r = await this.fetchImpl(`${this.cfg.entra.graphUrl}/v1.0/organization?$select=id,verifiedDomains`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = (await r.json()) as { value?: { id?: string; verifiedDomains?: { name?: string }[] }[] };
+      const org = (j.value ?? []).find((o) => !o.id || o.id.toLowerCase() === tid.toLowerCase());
+      const domains = (org?.verifiedDomains ?? []).map((d) => String(d.name ?? '').toLowerCase()).filter(Boolean);
+      if (!domains.length) throw new Error('keine verifizierten Domains');
+      this.domainCache.set(tid, { domains, at: Date.now() });
+      return domains;
+    } catch (err) {
+      log.warn('Verifizierte Domains des Tenants nicht abrufbar', { tenant: tid, error: (err as Error).message });
+      return cached?.domains ?? null;
+    }
+  }
+
   logoutUrl(): string | undefined {
     return this.meta?.end_session_endpoint
       ? `${this.meta.end_session_endpoint}?post_logout_redirect_uri=${encodeURIComponent(this.cfg.publicUrl + '/')}`

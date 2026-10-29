@@ -69,6 +69,8 @@ export interface Config {
     certPrivateKey?: string;
     certThumbprint?: string;
     allowedTenants: string[];
+    /** Erlaubte Mail-Domains je Tenant (ENTRA_TENANT_DOMAINS). Ohne Eintrag: verifizierte Domains aus Graph. */
+    tenantDomains?: Record<string, string[]>;
     authority: string;
     graphUrl: string;
     /** Wie lange die Signaturschlüssel von Microsoft höchstens ohne erfolgreiche Erneuerung genutzt werden (Stunden) */
@@ -141,6 +143,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
       certPrivateKey: readSecret('ENTRA_CERT_PRIVATE_KEY'),
       certThumbprint: process.env.ENTRA_CERT_THUMBPRINT,
       allowedTenants: list('ENTRA_ALLOWED_TENANTS').length ? list('ENTRA_ALLOWED_TENANTS') : tenantId ? [tenantId] : [],
+      tenantDomains: parseTenantDomains(process.env.ENTRA_TENANT_DOMAINS ?? '', errors),
       authority: (process.env.ENTRA_AUTHORITY ?? 'https://login.microsoftonline.com').replace(/\/$/, ''),
       graphUrl: (process.env.ENTRA_GRAPH_URL ?? 'https://graph.microsoft.com').replace(/\/$/, ''),
       jwksMaxStaleHours: range('ENTRA_JWKS_MAX_STALE_HOURS', 72, 25, 168, errors),
@@ -178,6 +181,21 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     throw new Error('Für Entra ID wird ENTRA_CLIENT_SECRET_FILE oder ENTRA_CERT_PRIVATE_KEY_FILE benötigt');
   }
   return cfg;
+}
+
+/** ENTRA_TENANT_DOMAINS=tenant-id=firma-a.de,firma-a.com;tenant-id-2=firma-b.de */
+function parseTenantDomains(raw: string, errors: string[]): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const part of raw.split(';').map((s) => s.trim()).filter(Boolean)) {
+    const [tid, list] = part.split('=');
+    const domains = (list ?? '').split(',').map((d) => d.trim().toLowerCase()).filter(Boolean);
+    if (!/^[0-9a-f-]{36}$/i.test(tid?.trim() ?? '') || !domains.length || domains.some((d) => !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(d))) {
+      errors.push(`ENTRA_TENANT_DOMAINS: „${part}“ ist ungültig (Format: Tenant-ID=domain1,domain2;…)`);
+      continue;
+    }
+    out[tid.trim().toLowerCase()] = domains;
+  }
+  return out;
 }
 
 function readVersion(): string {

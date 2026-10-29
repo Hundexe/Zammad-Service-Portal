@@ -132,6 +132,16 @@ export function registerAdminRoutes(router: Router, app: App): void {
     if (!coversPerms(ctx.user!, toAuthUser(app.db, target).perms)) throw new HttpError(403, RIGHTS_ERROR, 'insufficient_rights');
   }
 
+  /**
+   * Die E-Mail-Adresse eines lokalen Kontos verbindet es mit dem Zammad-Kunden dieser Adresse – also mit
+   * allen Tickets der Person. Das darf nur, wer selbst alle Rechte hat (Super-Admin).
+   */
+  function assertMaySetLocalEmail(ctx: AppCtx): void {
+    if (!coversRole(ctx.user!, ['*'], null)) {
+      throw new HttpError(403, 'Eine E-Mail-Adresse verbindet das lokale Konto mit den Tickets dieser Person in Zammad – das darf nur ein Super-Admin setzen', 'insufficient_rights');
+    }
+  }
+
   function assertCoversRole(ctx: AppCtx, rolePerms: string[], systemId: string | null): void {
     if (!coversRole(ctx.user!, rolePerms, systemId)) throw new HttpError(403, RIGHTS_ERROR, 'insufficient_rights');
   }
@@ -935,6 +945,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
     if (roleRow) assertCoversRole(ctx, parseJson<string[]>(roleRow.permissions, []), null);
     const email = str(b, 'email', 254);
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(422, 'E-Mail ungültig', 'validation');
+    if (email) assertMaySetLocalEmail(ctx);
     try {
       const created = await createLocalUser(app.db, {
         username: str(b, 'username', 64, true), displayName: str(b, 'displayName', 120), email, department: str(b, 'department', 120),
@@ -962,6 +973,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
       disabled: disabled ? 1 : 0,
     };
     if (next.email && next.email !== u.email && emailInUse(app.db, next.email, u.id)) throw new HttpError(409, 'Diese E-Mail-Adresse gehört schon einem anderen Konto', 'conflict');
+    if (u.kind === 'local' && (next.email ?? null) !== (u.email ?? null) && next.email) assertMaySetLocalEmail(ctx);
     app.db.run('UPDATE users SET display_name = ?, email = ?, department = ?, disabled = ? WHERE id = ?', next.display_name, next.email, next.department, next.disabled, u.id);
     if (disabled) destroyUserSessions(app, u.id);
     audit(app.db, actor(ctx), { action: 'user.updated', targetType: 'user', targetId: u.id, details: diff(u as any, { ...u, ...next } as any) });

@@ -6,8 +6,10 @@
 // Erst nach der Freigabe geht sie in die Warteschlange und damit ins Ticketsystem. Bei Ablehnung,
 // Zurückziehen oder Ablauf der Frist werden Inhalt und Anhänge gelöscht; nichts erreicht Zammad.
 //
-// Wer freigeben darf: genau das Konto, dem die eingetragene E-Mail-Adresse gehört – nie die
-// anfragende Person selbst und nie ein lokales Konto, dessen Adresse einem Microsoft-Konto gehört.
+// Wer freigeben darf: genau das Microsoft-Konto, dem die eingetragene E-Mail-Adresse gehört – nie die
+// anfragende Person selbst und nie ein lokales Konto (lokale Konten legen Admins an, die Adresse ist dort
+// nicht von Microsoft bestätigt). Optional muss die Person Mitglied bestimmter Entra-Gruppen sein
+// (Feld-Einstellung approverGroups) – das verhindert Freigaben über ein beliebiges Zweitkonto.
 // Für alle anderen gibt es die Freigabe nicht (404).
 import type { App } from '../app.ts';
 import { uuid } from '../db/db.ts';
@@ -24,7 +26,9 @@ import { localEmailTaken, type TicketPayload } from './requests.ts';
 export const APPROVED_TAG = 'freigegeben';
 const COMMENT_MAX = 2000;
 
-export interface ApproverChoice { email: string; name: string | null; known: boolean; knownOnly: boolean }
+export interface ApproverChoice { email: string; name: string | null; known: boolean; knownOnly: boolean; groups: string[] | null }
+
+const MAX_REASSIGN = 3;
 
 interface Summary {
   form: string;
@@ -37,6 +41,7 @@ interface ApprovalRow {
   id: string; request_id: string; approver_email: string; approver_name: string | null; known_only: number;
   status: string; summary: string | null; comment: string | null; decided_by: string | null; decided_by_name: string | null;
   decided_at: number | null; created_at: number; expires_at: number; reminded_at: number | null;
+  approver_groups: string | null; reassign_count: number;
 }
 
 interface JoinedRow extends ApprovalRow {
@@ -51,33 +56,43 @@ const JOIN = `SELECT a.*, r.user_id AS r_user_id, r.system_id AS r_system_id, r.
 const fmt = (t: number) => new Date(t).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 const fmtDay = (t: number) => new Date(t).toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' });
 
-/** Konto, dem eine E-Mail-Adresse gehört (Microsoft vor lokal; gesperrte Konten zählen nicht). */
-export function accountForEmail(app: App, email: string): { id: string; name: string; kind: string } | null {
-  const rows = app.db.all<{ id: string; display_name: string; kind: string }>(
-    "SELECT id, display_name, kind FROM users WHERE email = ? AND disabled = 0 ORDER BY CASE kind WHEN 'entra' THEN 0 ELSE 1 END, last_login_at DESC",
+/** Microsoft-Konto, dem eine E-Mail-Adresse gehört (gesperrte und lokale Konten zählen nicht). */
+export function accountForEmail(app: App, email: string): { id: string; name: string; kind: string; groups: string[] } | null {
+  const row = app.db.get<{ id: string; display_name: string; kind: string; groups_json: string | null }>(
+    "SELECT id, display_name, kind, groups_json FROM users WHERE lower(email) = lower(?) AND disabled = 0 AND kind = 'entra' ORDER BY last_login_at DESC LIMIT 1",
     email,
   );
-  const entra = rows.find((r) => r.kind === 'entra');
-  const pick = entra ?? rows[0];
-  return pick ? { id: pick.id, name: pick.display_name, kind: pick.kind } : null;
+  return row ? { id: row.id, name: row.display_name, kind: row.kind, groups: parseGroups(row.groups_json) } : null;
 }
 
-/** Darf dieses Konto Freigaben über seine E-Mail-Adresse sehen und entscheiden? */
+function parseGroups(json: string | null): string[] {
+  try { const v = JSON.parse(json ?? '[]'); return Array.isArray(v) ? v.map(String) : []; } catch { return []; }
+}
+
+function inGroups(memberOf: string[], allowed: string[] | null): boolean {
+  if (!allowed || !allowed.length) return true;
+  const set = new Set(memberOf.map((g) => g.toLowerCase()));
+  return allowed.some((g) => set.has(g.toLowerCase()));
+}
+
+/** Darf dieses Konto Freigaben über seine E-Mail-Adresse sehen und entscheiden? Nur Microsoft-Konten. */
 function approverEmailOf(app: App, user: AuthUser): string | null {
-  if (!user.email) return null;
+  if (!user.email || user.kind !== 'entra') return null;
   if (localEmailTaken(app, user.id, user.email)) return null;
   return user.email.toLowerCase();
 }
 
 /** Prüft die eingetragene freigebende Person. Wirft 422 mit Feldfehler, wenn sie nicht in Frage kommt. */
-export function checkApprover(app: App, user: AuthUser, fieldId: string, email: string, knownOnly: boolean): ApproverChoice {
+export function checkApprover(app: App, user: AuthUser, fieldId: string, email: string, knownOnly: boolean, groups: string[] | null = null): ApproverChoice {
   const fail = (msg: string): never => { throw new HttpError(422, msg, 'validation', { [fieldId]: msg }); };
   const e = email.toLowerCase();
   if (user.email && e === user.email.toLowerCase()) fail('Sie können Ihre eigene Anfrage nicht selbst freigeben');
   const acc = accountForEmail(app, e);
   if (acc?.id === user.id) fail('Sie können Ihre eigene Anfrage nicht selbst freigeben');
-  if (knownOnly && !acc) fail('Diese Person hat sich noch nie im Portal angemeldet. Bitte eine andere Person wählen oder sie bitten, sich einmal anzumelden.');
-  return { email: e, name: acc?.name ?? null, known: Boolean(acc), knownOnly };
+  const restricted = Boolean(groups && groups.length);
+  if ((knownOnly || restricted) && !acc) fail('Diese Person hat sich noch nie im Portal angemeldet. Bitte eine andere Person wählen oder sie bitten, sich einmal anzumelden.');
+  if (restricted && !inGroups(acc!.groups, groups)) fail('Diese Person darf Anfragen dieses Formulars nicht freigeben. Bitte die zuständige Führungskraft eintragen.');
+  return { email: e, name: acc?.name ?? null, known: Boolean(acc), knownOnly: knownOnly || restricted, groups: restricted ? groups : null };
 }
 
 /** Freigabe-Angaben einer Einsendung, falls das Formular für diese Eingaben eine Freigabe verlangt. */
@@ -86,7 +101,7 @@ export function approverFor(app: App, user: AuthUser, def: FormDefinition, value
   if (!f) return null;
   const v = values[f.id];
   if (typeof v !== 'string' || !v) throw new HttpError(422, 'Bitte die freigebende Person angeben', 'validation', { [f.id]: 'Bitte die freigebende Person angeben' });
-  return checkApprover(app, user, f.id, v, f.knownOnly === true);
+  return checkApprover(app, user, f.id, v, f.knownOnly === true, f.approverGroups?.length ? f.approverGroups : null);
 }
 
 /** Inhalt, den die freigebende Person sieht: dieselben Felder, die auch ins Ticket gehen. */
@@ -106,10 +121,10 @@ export function insertApproval(app: App, requestId: string, choice: ApproverChoi
   const id = uuid();
   const t = Date.now();
   app.db.run(
-    `INSERT INTO approvals (id, request_id, approver_email, approver_name, known_only, status, summary, created_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
-    id, requestId, choice.email, choice.name, choice.knownOnly ? 1 : 0, app.box.encrypt('approval', JSON.stringify(summary)), t,
-    t + app.cfg.approval.expireDays * 86400_000,
+    `INSERT INTO approvals (id, request_id, approver_email, approver_name, known_only, approver_groups, status, summary, created_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+    id, requestId, choice.email, choice.name, choice.knownOnly ? 1 : 0, choice.groups ? JSON.stringify(choice.groups) : null,
+    app.box.encrypt('approval', JSON.stringify(summary)), t, t + app.cfg.approval.expireDays * 86400_000,
   );
   return id;
 }
@@ -133,7 +148,8 @@ export function notifyRequested(app: App, approvalId: string, reminder = false):
 function forApprover(app: App, user: AuthUser, id: string): JoinedRow {
   const email = approverEmailOf(app, user);
   const a = email && /^[0-9a-f-]{36}$/.test(id) ? app.db.get<JoinedRow>(`${JOIN} WHERE a.id = ? AND a.approver_email = ? AND r.user_id <> ?`, id, email, user.id) : undefined;
-  if (!a) throw new HttpError(404, 'Freigabe nicht gefunden', 'not_found');
+  // Gruppenbindung gilt auch beim Entscheiden (Mitgliedschaft frisch aus der letzten Anmeldung)
+  if (!a || !inGroups(user.groups, a.approver_groups ? parseGroups(a.approver_groups) : null)) throw new HttpError(404, 'Freigabe nicht gefunden', 'not_found');
   return a;
 }
 
@@ -269,12 +285,13 @@ export function reassign(app: App, user: AuthUser, actor: Actor, requestId: stri
   const email = typeof rawEmail === 'string' ? rawEmail.replace(/\s+/g, '').toLowerCase() : '';
   if (!/^[^\s@<>()[\]\\,;:"]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,63}$/.test(email)) throw new HttpError(422, 'Bitte eine gültige E-Mail-Adresse angeben', 'validation', { email: 'Bitte eine gültige E-Mail-Adresse angeben' });
   if (email === a.approver_email.toLowerCase()) throw new HttpError(422, 'Diese Person ist bereits eingetragen', 'validation', { email: 'Diese Person ist bereits eingetragen' });
-  const choice = checkApprover(app, user, 'email', email, a.known_only === 1);
-  const t = Date.now();
+  if (a.reassign_count >= MAX_REASSIGN) throw new HttpError(409, `Die freigebende Person wurde schon ${MAX_REASSIGN}-mal geändert. Bitte die Anfrage zurückziehen und neu stellen.`, 'conflict');
+  const choice = checkApprover(app, user, 'email', email, a.known_only === 1, a.approver_groups ? parseGroups(a.approver_groups) : null);
   app.db.tx(() => {
+    // Die Frist läuft ab Erstellung weiter – ein Wechsel verlängert sie nicht
     const upd = app.db.run(
-      "UPDATE approvals SET approver_email = ?, approver_name = ?, expires_at = ?, reminded_at = NULL WHERE id = ? AND status = 'pending'",
-      choice.email, choice.name, t + app.cfg.approval.expireDays * 86400_000, a.id,
+      "UPDATE approvals SET approver_email = ?, approver_name = ?, reminded_at = NULL, reassign_count = reassign_count + 1 WHERE id = ? AND status = 'pending' AND reassign_count < ?",
+      choice.email, choice.name, a.id, MAX_REASSIGN,
     );
     if (!upd.changes) throw new HttpError(409, 'Die Anfrage wartet nicht mehr auf eine Freigabe', 'conflict');
     audit(app.db, actor, { action: 'approval.reassigned', targetType: 'request', targetId: a.request_id, systemId: a.r_system_id });

@@ -14,6 +14,10 @@ export interface MockEntra {
   loginAs: (oid: string) => void;
   /** Manipulationen für Sicherheitstests */
   tamper: Partial<{ wrongAud: boolean; wrongIss: boolean; expired: boolean; wrongNonce: boolean; badSignature: boolean; algNone: boolean; otherTenant: string }>;
+  /** Verifizierte Domains je Tenant (Graph /organization); ohne Eintrag: Domains der Benutzer dieses Tenants */
+  verifiedDomains: Record<string, string[]>;
+  /** Mail-Attribut in Graph abweichend setzen (wie ein Tenant-Admin es kann), je oid */
+  graphMail: Record<string, string>;
   close: () => Promise<void>;
 }
 
@@ -27,6 +31,8 @@ export async function startMockEntra(users: MockEntraUser[], opts: { port?: numb
   const codes = new Map<string, { user: MockEntraUser; nonce: string; challenge: string; redirect: string }>();
   let current = users[0];
   const tamper: MockEntra['tamper'] = {};
+  const verifiedDomains: MockEntra['verifiedDomains'] = {};
+  const graphMail: MockEntra['graphMail'] = {};
   let base = '';
 
   const sign = (header: object, payload: object, key: KeyObject) => {
@@ -95,7 +101,12 @@ export async function startMockEntra(users: MockEntraUser[], opts: { port?: numb
     }
     if (p === '/v1.0/me') {
       if (req.headers.authorization !== 'Bearer mock-access-token') return json(401, { error: 'unauthorized' });
-      return json(200, { department: current.groups?.includes('it-admins') ? 'IT' : 'Vertrieb', mail: current.email });
+      return json(200, { department: current.groups?.includes('it-admins') ? 'IT' : 'Vertrieb', mail: graphMail[current.oid] ?? current.email });
+    }
+    if (p === '/v1.0/organization') {
+      if (req.headers.authorization !== 'Bearer mock-access-token') return json(401, { error: 'unauthorized' });
+      const domains = verifiedDomains[current.tid] ?? [...new Set(users.filter((u) => u.tid === current.tid).map((u) => u.email.split('@')[1].toLowerCase()))];
+      return json(200, { value: [{ id: current.tid, verifiedDomains: domains.map((name) => ({ name })) }] });
     }
     if (/\/oauth2\/v2\.0\/logout$/.test(p)) {
       res.writeHead(302, { Location: url.searchParams.get('post_logout_redirect_uri') ?? '/' });
@@ -107,7 +118,7 @@ export async function startMockEntra(users: MockEntraUser[], opts: { port?: numb
   const addr = server.address();
   base = `http://${opts.publicHost ?? '127.0.0.1'}:${typeof addr === 'object' && addr ? addr.port : opts.port}`;
   return {
-    url: base, server, clientId, clientSecret, tamper,
+    url: base, server, clientId, clientSecret, tamper, verifiedDomains, graphMail,
     loginAs: (oid) => { current = users.find((u) => u.oid === oid) ?? current; },
     close: () => new Promise((r) => server.close(() => r())),
   };

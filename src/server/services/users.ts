@@ -106,9 +106,23 @@ export interface EntraClaims {
   roles?: string[];
 }
 
-/** Legt einen Entra-Benutzer beim ersten Login an oder aktualisiert ihn. */
-export function upsertEntraUser(db: Db, c: EntraClaims, profile: { department?: string | null; mail?: string | null } = {}): UserRow {
-  const email = (profile.mail || c.email || c.preferred_username || '').toLowerCase() || null;
+/**
+ * Mail-Adresse eines Microsoft-Kontos nur übernehmen, wenn ihre Domain zum Tenant gehört. Über die Adresse
+ * findet das Portal den Zammad-Kunden (alle Tickets) und Freigaben – das Graph-Attribut „mail“ kann der
+ * Administrator eines Tenants aber beliebig setzen, auch auf Adressen eines anderen Tenants.
+ *   allowed: erlaubte Domains (Konfiguration oder verifizierte Domains aus Graph), null = unbekannt
+ *   singleTenant: nur ein Tenant erlaubt – dann ist dessen Administrator ohnehin vertrauenswürdig
+ */
+export function vetEntraEmail(email: string | null, allowed: string[] | null, singleTenant: boolean): { email: string | null; reason?: string } {
+  if (!email) return { email: null };
+  const domain = email.slice(email.lastIndexOf('@') + 1).toLowerCase();
+  if (allowed === null) return singleTenant ? { email } : { email: null, reason: 'domains_unbekannt' };
+  return allowed.includes(domain) ? { email } : { email: null, reason: 'fremde_domain' };
+}
+
+/** Legt einen Entra-Benutzer beim ersten Login an oder aktualisiert ihn. vet prüft die Mail-Adresse (siehe vetEntraEmail). */
+export function upsertEntraUser(db: Db, c: EntraClaims, profile: { department?: string | null; mail?: string | null } = {}, vet: (email: string | null) => string | null = (e) => e): UserRow {
+  const email = vet((profile.mail || c.email || c.preferred_username || '').toLowerCase() || null);
   const groups = [...(c.groups ?? []), ...(c.roles ?? []).map((r) => `approle:${r}`)];
   const existing = db.get<UserRow>('SELECT * FROM users WHERE entra_oid = ?', c.oid);
   const t = Date.now();

@@ -69,6 +69,8 @@ export interface FormField {
   allowedValues?: string[];
   /** Freigabe-Feld: nur Personen erlauben, die sich schon einmal im Portal angemeldet haben */
   knownOnly?: boolean;
+  /** Freigabe-Feld: freigebende Person muss Mitglied einer dieser Entra-Gruppen (bzw. approle:…) sein */
+  approverGroups?: string[];
   /** Feld nur für Mitglieder dieser Entra-Gruppen anzeigen (leer = alle) */
   groups?: string[];
   visibleIf?: VisibleIf;
@@ -326,6 +328,7 @@ export function validateDefinition(def: unknown): string[] {
       if (f.mapping && !['article', 'none'].includes(f.mapping.target)) problems.push(`${where}: Die freigebende Person kann nur in den Tickettext übernommen werden`);
     }
     if (f.knownOnly !== undefined && typeof f.knownOnly !== 'boolean') problems.push(`${where}: Einstellung „nur bekannte Personen“ ungültig`);
+    if (f.approverGroups !== undefined && (!Array.isArray(f.approverGroups) || f.approverGroups.length > 20 || f.approverGroups.some((g) => typeof g !== 'string' || !g.trim() || g.length > 200))) problems.push(`${where}: Gruppen der freigebenden Person ungültig (höchstens 20)`);
     if (f.visibleIf) {
       if (!d.fields.some((o) => o?.id === f.visibleIf!.field && o !== f)) problems.push(`${where}: Sichtbarkeitsregel verweist auf unbekanntes Feld`);
       if (!['eq', 'neq', 'in', 'notEmpty'].includes(f.visibleIf.op)) problems.push(`${where}: Sichtbarkeitsregel ungültig`);

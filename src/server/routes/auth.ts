@@ -6,7 +6,7 @@ import type { AppCtx, ServerDeps } from '../server.ts';
 import {
   createSession, destroySession, destroyUserSessions, secureCookies, setSessionState, type SessionState,
 } from '../auth/sessions.ts';
-import { getUser, toAuthUser, upsertEntraUser, type UserRow } from '../services/users.ts';
+import { getUser, toAuthUser, upsertEntraUser, vetEntraEmail, type UserRow } from '../services/users.ts';
 import { hashPassword, hashSemaphore, passwordProblems, verifyPassword } from '../crypto.ts';
 import { generateTotpSecret, otpauthUri, verifyTotp } from '../auth/totp.ts';
 import { qrMatrix } from '../qr.ts';
@@ -341,6 +341,16 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
     try {
       const { claims, accessToken } = await deps.entra.exchange(code, tx);
       const profile = await deps.entra.profile(accessToken);
+      // Mail-Adresse nur übernehmen, wenn ihre Domain zum Tenant gehört (sie entscheidet über Tickets und Freigaben)
+      const allowedDomains = app.cfg.entra.tenantDomains?.[claims.tid.toLowerCase()] ?? await deps.entra.verifiedDomains(accessToken, claims.tid);
+      const vet = (email: string | null) => {
+        const r = vetEntraEmail(email, allowedDomains, app.cfg.entra.allowedTenants.length <= 1);
+        if (r.reason) {
+          log.warn('Mail-Adresse eines Microsoft-Kontos nicht übernommen', { alert: true, event: 'entra_email_rejected', reason: r.reason, oid: claims.oid, tenant: claims.tid, domain: email?.split('@')[1] ?? '' });
+          audit(app.db, { ip: ctx.ip, name: claims.name ?? null }, { action: 'login.email_rejected', details: { reason: r.reason, tenant: claims.tid } });
+        }
+        return r.email;
+      };
       if (tx.stepup) {
         // Das Sitzungscookie (SameSite=Strict) fehlt beim Rücksprung von Microsoft – die Sitzung steht in der Transaktion.
         const sess = app.db.get<{ user_id: string }>('SELECT user_id FROM sessions WHERE id_hash = ?', tx.sessionHash ?? '');
@@ -349,7 +359,7 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
         if (row.entra_oid !== claims.oid) return fail('stepup_anderer_benutzer');
         // Gruppen, Rollen und Profil bei jeder Bestätigung frisch aus Entra übernehmen – wer eine Admin-Gruppe
         // verloren hat, bekommt die Rechte nicht durch eine Bestätigung zurück.
-        const fresh = upsertEntraUser(app.db, claims, profile);
+        const fresh = upsertEntraUser(app.db, claims, profile, vet);
         if (fresh.disabled) {
           app.db.run('DELETE FROM sessions WHERE user_id = ?', fresh.id);
           return fail('deaktiviert');
@@ -358,7 +368,7 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
         audit(app.db, actor(ctx, row), { action: 'stepup.success', targetType: 'user', targetId: row.id, details: { method: 'entra' } });
         return redirect(ctx, tx.returnTo);
       }
-      const row = upsertEntraUser(app.db, claims, profile);
+      const row = upsertEntraUser(app.db, claims, profile, vet);
       if (row.disabled) return fail('deaktiviert');
       createSession(app, ctx, row.id, { state: 'active', mfa: true, authTime: Date.now() });
       audit(app.db, actor(ctx, row), { action: 'login.success', targetType: 'user', targetId: row.id, details: { method: 'entra', tenant: claims.tid } });

@@ -33,6 +33,7 @@ export interface Portal {
   cfg: Config;
   zammad: MockZammad;
   entra: MockEntra;
+  entraClient: EntraClient;
   close: () => Promise<void>;
 }
 
@@ -60,11 +61,12 @@ export async function startPortal(over: Partial<Config> = {}): Promise<Portal> {
     ...over,
   });
   const app = createApp(cfg);
-  const { server } = createServer(app, { entra: new EntraClient(cfg) });
+  const entraClient = new EntraClient(cfg);
+  const { server } = createServer(app, { entra: entraClient });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   return {
-    url, app, cfg, zammad, entra,
+    url, app, cfg, zammad, entra, entraClient,
     close: async () => {
       await new Promise<void>((r) => server.close(() => r()));
       server.closeAllConnections?.();
