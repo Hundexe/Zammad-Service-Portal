@@ -103,11 +103,11 @@ export async function seedDemo(app: App, urls: { zentral: string; nord: string }
   const groups = ['IT-Support', 'IT-Support::Hardware', 'IT-Support::Netzwerk'];
   const zentral = addSystem(app, {
     slug: 'zentrale-it', name: 'Zentrale IT', url: urls.zentral, sort: 1, released, groups,
-    branding: { theme: 'glas', displayName: 'Zentrale IT', headerColor: '#0e3a5d', headerTextColor: '#ffffff', primaryColor: '#1662a8', accentColor: '#0f8a6a', logoDarkId: addAsset(app, wordmark('Zentrale IT', '#ffffff')), logoLightId: addAsset(app, wordmark('Zentrale IT', '#0e3a5d')), welcomeText: 'Wie können wir helfen?', footerText: 'Zentrale IT – Service-Desk für alle Standorte. Telefon 1234' },
+    branding: { theme: 'glas', displayName: 'Zentrale IT', headerColor: '#0e3a5d', headerTextColor: '#ffffff', primaryColor: '#1662a8', accentColor: '#0f8a6a', ...((w) => ({ logoDarkId: w, logoNavDarkId: w }))(addAsset(app, wordmark('Zentrale IT', '#ffffff'))), logoLightId: addAsset(app, wordmark('Zentrale IT', '#0e3a5d')), welcomeText: 'Wie können wir helfen?', footerText: 'Zentrale IT – Service-Desk für alle Standorte. Telefon 1234' },
   });
   const nord = addSystem(app, {
     slug: 'it-nord', name: 'IT Nord', url: urls.nord, sort: 2, groups: ['IT-Support'], released: [{ name: 'standort', allowedValues: ['nord', 'homeoffice'] }],
-    branding: { theme: 'fluent', displayName: 'IT Nord', headerColor: '#7a1f2b', headerTextColor: '#ffffff', primaryColor: '#9b2335', accentColor: '#b5651d', logoDarkId: addAsset(app, wordmark('Nord', '#ffffff')), logoLightId: addAsset(app, wordmark('Nord', '#7a1f2b')), welcomeText: 'IT-Service Standort Nord' },
+    branding: { theme: 'fluent', displayName: 'IT Nord', headerColor: '#7a1f2b', headerTextColor: '#ffffff', primaryColor: '#9b2335', accentColor: '#b5651d', ...((w) => ({ logoDarkId: w, logoNavDarkId: w }))(addAsset(app, wordmark('Nord', '#ffffff'))), logoLightId: addAsset(app, wordmark('Nord', '#7a1f2b')), welcomeText: 'IT-Service Standort Nord' },
   });
 
   const forms: Record<string, string> = {};

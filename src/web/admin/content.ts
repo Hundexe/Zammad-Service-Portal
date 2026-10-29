@@ -2,7 +2,7 @@
 import { h, icon, mount, fmtDate } from '../lib/dom.ts';
 import { fileToBase64, get, post, put, del } from '../lib/api.ts';
 import { badge, button, checkbox, confirmDialog, dialog, errorText, fieldWrap, input, notice, pageHead, select, statusBadge, table, textarea, toast } from '../lib/ui.ts';
-import { can, navigate, state, curPath, assetUrl, bandLogoId } from '../lib/app.ts';
+import { can, navigate, state, curPath, assetUrl, bandLogoId, navBrand } from '../lib/app.ts';
 import { adminSystem, loadAdminSystems } from './common.ts';
 import { exportFormsFile, importFormsDialog } from './forms.ts';
 import { contrastWarnings, effectiveColors, LOGO_LIMITS, NAV_LINKS_MAX, PALETTES, THEMES, THEME_INFO, themeOf, type Branding, type NavLink, type Palette, type ThemeId } from '../../shared/branding.ts';
@@ -103,8 +103,8 @@ function colorField(label: string, value: string, onChange: (v: string) => void,
   return wrap;
 }
 
-function logoField(label: string, id: string | null | undefined, kind: 'logo' | 'favicon', uploadUrl: string, onChange: (id: string | null) => void, onBand = false): HTMLElement {
-  const preview = h('div', { class: ['logo-preview', onBand && 'on-band'] });
+function logoField(label: string, id: string | null | undefined, kind: 'logo' | 'favicon', uploadUrl: string, onChange: (id: string | null) => void, surface: 'band' | 'light' | 'dark' = 'light', help?: string): HTMLElement {
+  const preview = h('div', { class: ['logo-preview', surface === 'band' && 'on-band', surface === 'dark' && 'on-dark'] });
   const draw = (cur: string | null | undefined) => mount(preview, cur ? h('img', { attrs: { src: assetUrl(cur), alt: '' } }) : h('span', { class: 'muted small' }, 'kein Bild'));
   draw(id);
   const fileInput = h('input', { attrs: { type: 'file', accept: kind === 'logo' ? '.png,.jpg,.jpeg,.webp,.svg' : '.png,.ico,.svg', class: 'visually-hidden' } });
@@ -119,7 +119,7 @@ function logoField(label: string, id: string | null | undefined, kind: 'logo' | 
     } catch (err) { toast(errorText(err), 'error'); }
     fileInput.value = '';
   });
-  return h('div', { class: 'field' }, h('p', { class: 'label' }, label),
+  return h('div', { class: 'field' }, h('p', { class: 'label' }, label), help ? h('p', { class: 'small muted' }, help) : null,
     h('div', { class: 'logo-row' }, preview, fileInput, h('label', { class: ['btn', 'btn-secondary'], attrs: { for: fid } }, 'Datei wählen'),
       button('Entfernen', () => { draw(null); onChange(null); }, { kind: 'ghost' })));
 }
@@ -183,7 +183,8 @@ export function brandingEditor(initial: Branding, uploadUrl: string, extra: { on
     setColors(preview, c);
     for (const [id, mini] of minis) setColors(mini, b.colorMode === 'theme' ? THEME_INFO[id].palette : c);
     mount(preview,
-      h('div', { class: 'bp-nav' }, b.logoLightId ? h('img', { attrs: { src: assetUrl(b.logoLightId), alt: '' }, style: { height: `${Math.round((b.logoNavHeight ?? LOGO_LIMITS.nav.default) * 0.8)}px`, maxWidth: '70%' } }) : h('span', { class: 'brand-mark' }, (b.displayName || '?').slice(0, 1)), b.logoLightId ? null : h('span', null, b.displayName || 'Name'),
+      // Navigationsleiste wie im Portal (helles bzw. dunkles Design je nach aktueller Ansicht)
+      h('div', { class: 'bp-nav' }, h('span', { class: 'bp-brand' }, ...navBrand({ ...b, displayName: b.displayName || 'Name' }, Math.round((b.logoNavHeight ?? LOGO_LIMITS.nav.default) * 0.8))),
         (b.navLinks ?? []).length ? h('span', { class: 'bp-links' }, ...(b.navLinks ?? []).map((l) => h('span', null, l.label || '…'))) : null),
       h('div', { class: 'bp-hero' },
         bandLogoId(b) ? h('img', { attrs: { src: assetUrl(bandLogoId(b)!), alt: '' }, style: { height: `${Math.round((b.logoHeroHeight ?? LOGO_LIMITS.hero.default) * 0.64)}px`, maxWidth: '85%' } }) : null,
@@ -244,8 +245,10 @@ export function brandingEditor(initial: Branding, uploadUrl: string, extra: { on
       fieldWrap(input(b.displayName, set('displayName')), { label: 'Anzeigename', help: 'Steht in der Navigationsleiste, wenn kein helles Logo hinterlegt ist, und im Browser-Tab.' }),
       h('div', null, h('p', { class: 'label' }, 'Stil'), h('p', { class: 'help', style: { marginTop: '0', marginBottom: '.6rem' } }, 'Gilt im Portal, solange dieses Ticketsystem gewählt ist (die Anmeldeseite hat ihre eigene Einstellung). Helles und dunkles Design werden automatisch unterstützt.'), picker),
       h('div', null, h('p', { class: 'label' }, 'Farben'), colorsHost),
-      logoField('Logo auf der Farbfläche', b.logoDarkId, 'logo', uploadUrl, set('logoDarkId'), true),
-      logoField('Logo für die Navigationsleiste (helle Fläche, optional)', b.logoLightId, 'logo', uploadUrl, set('logoLightId')),
+      logoField('Logo auf der Farbfläche (Startseite und Anmeldung)', b.logoDarkId, 'logo', uploadUrl, set('logoDarkId'), 'band'),
+      logoField('Logo für die Navigationsleiste – helles Design', b.logoLightId, 'logo', uploadUrl, set('logoLightId'), 'light'),
+      logoField('Logo für die Navigationsleiste – dunkles Design (optional)', b.logoNavDarkId, 'logo', uploadUrl, set('logoNavDarkId'), 'dark',
+        'Helle Schrift für die dunkle Leiste. Ohne eigenes Logo steht das Logo des hellen Designs auf einem weißen Feld.'),
       logoField('Favicon', b.faviconId, 'favicon', uploadUrl, set('faviconId')),
       h('div', { class: 'stack' },
         sizeField('Logogröße in der Navigationsleiste', b.logoNavHeight ?? LOGO_LIMITS.nav.default, LOGO_LIMITS.nav, (v) => { b.logoNavHeight = v; draw(); }),

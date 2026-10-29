@@ -26,7 +26,7 @@ export const EXPORT_PASSWORD_MIN = 12;
 const OVERVIEW_COLUMNS = ['number', 'title', 'state', 'priority', 'group', 'created_at', 'updated_at'];
 const SLUG = /^[a-z0-9][a-z0-9-]{0,47}$/;
 const KDF = { N: 2 ** 17, r: 8, p: 1 };
-const LOGO_FIELDS = { logoLightId: 'logo', logoDarkId: 'logo', faviconId: 'favicon' } as const;
+const LOGO_FIELDS = { logoLightId: 'logo', logoDarkId: 'logo', logoNavDarkId: 'logo', faviconId: 'favicon' } as const;
 
 interface Sealed { iv: string; tag: string; data: string }
 type Json = any;

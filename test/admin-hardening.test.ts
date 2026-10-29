@@ -168,3 +168,14 @@ test('Ticketsystem löschen entfernt auch gespeicherte Anhänge', async () => {
   assert.equal((await s.del(`/api/admin/systems/${sysC}`)).status, 200);
   assert.equal(existsSync(dir), false);
 });
+
+test('Branding: eigenes Logo für die Navigationsleiste im dunklen Design wird gespeichert und geprüft', async () => {
+  const { validateBranding, DEFAULT_BRANDING } = await import('../src/shared/branding.ts');
+  const id = '0f0f0f0f-1111-4222-8333-444444444444';
+  const ok = validateBranding({ ...DEFAULT_BRANDING, displayName: 'X', logoNavDarkId: id });
+  assert.equal(ok.branding?.logoNavDarkId, id);
+  const s = await local('super');
+  const cur = (await s.get(`/api/admin/systems/${sysA}/branding`)).json;
+  const r = await s.put(`/api/admin/systems/${sysA}/branding/draft`, { branding: { ...(cur.draft ?? cur.published), logoNavDarkId: id } });
+  assert.equal(r.status, 422, 'unbekanntes Logo abgelehnt');
+});

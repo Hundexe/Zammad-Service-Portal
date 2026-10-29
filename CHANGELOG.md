@@ -1,5 +1,14 @@
 # Änderungen
 
+## 1.9.2 – 29.10.2026
+
+- **Logos klar zugeordnet:** Die Navigationsleiste nutzt nie mehr das Logo der Farbfläche (das enthält oft mehr, z. B. Partnerlogos)
+  - **Logo auf der Farbfläche** – Startseite und Anmeldung
+  - **Logo für die Navigationsleiste – helles Design**
+  - **Logo für die Navigationsleiste – dunkles Design** (neu, optional, helle Schrift). Fehlt es, steht im dunklen Design das Logo des hellen Designs auf einem weißen Feld, statt unlesbar oder zu groß zu sein
+- Vorschau unter **Stil, Farben und Logo** zeigt die Navigationsleiste genau wie im Portal (passend zum hellen bzw. dunklen Design); jede Logo-Vorschau auf der passenden Fläche
+- Export/Import übernimmt das neue Logo mit
+
 ## 1.9.1 – 29.10.2026
 
 - **Nicht erreichbares Zammad bremst die Seiten nicht mehr aus:**

@@ -93,7 +93,7 @@ for (const r of Object.values(responses)) {
 // Logos und Favicons als data:-URLs mitliefern
 const assets: Record<string, string> = {};
 const ids = new Set<string>();
-JSON.stringify(responses, (k, v) => { if (/^(logoLightId|logoDarkId|faviconId)$/.test(k) && typeof v === 'string') ids.add(v); return v; });
+JSON.stringify(responses, (k, v) => { if (/^(logoLightId|logoDarkId|logoNavDarkId|faviconId)$/.test(k) && typeof v === 'string') ids.add(v); return v; });
 for (const id of ids) {
   const res = await fetch(`${BASE}/api/assets/${id}`);
   if (!res.ok) continue;

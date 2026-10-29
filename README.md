@@ -4,7 +4,7 @@ Self-Service-Portal für IT-Abteilungen mit einem oder mehreren Zammad-Systemen:
 
 **[▶ Demo im Browser ansehen](https://hundexe.github.io/Zammad-Service-Portal/)** – ohne Installation, mit Beispieldaten (Portal und Verwaltung zum Durchklicken).
 
-**Aktuelle Version: 1.9.1** – [Änderungen](CHANGELOG.md), externes Architektur- und Sicherheits-Review: [was geändert wurde](docs/REVIEW-2026-10.md).
+**Aktuelle Version: 1.9.2** – [Änderungen](CHANGELOG.md), externes Architektur- und Sicherheits-Review: [was geändert wurde](docs/REVIEW-2026-10.md).
 
 ![Startseite des Portals im Stil „Glas“](docs/screenshots/31-stil-glas.png)
 
@@ -96,7 +96,7 @@ TypeScript auf Node.js 24 ohne externe Laufzeitpakete (HTTP, Krypto, SQLite und 
 ## Tests
 
 ```bash
-npm test                        # 282 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
+npm test                        # 283 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
 npm run typecheck
 node tools/loadtest.ts          # Lasttest: 50 Logins, 50 Ticketansichten, 20 Anfragen mit Anhang
 bash tools/secret-scan.sh       # vor jeder Veröffentlichung: keine Geheimnisse im Repository

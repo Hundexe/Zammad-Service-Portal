@@ -781,7 +781,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
     const s = sysOr404(ctx.params.systemId);
     const { branding, errors } = validateBranding((ctx.body as Body).branding);
     if (!branding) throw new HttpError(422, errors.join('; '), 'validation', errors);
-    for (const id of [branding.logoLightId, branding.logoDarkId, branding.faviconId]) {
+    for (const id of [branding.logoLightId, branding.logoDarkId, branding.logoNavDarkId, branding.faviconId]) {
       if (id && !app.db.get('SELECT 1 FROM assets WHERE id = ?', id)) throw new HttpError(422, 'Logo nicht gefunden', 'validation');
     }
     const latest = app.db.get<{ id: string; version: number; status: string }>('SELECT id, version, status FROM branding_versions WHERE system_id = ? ORDER BY version DESC LIMIT 1', s.id);

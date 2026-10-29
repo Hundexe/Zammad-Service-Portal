@@ -91,15 +91,19 @@ export function logo(b: Branding, dark = false): HTMLElement {
     : h('span', { class: 'brand-mark', attrs: { 'aria-hidden': 'true' } }, b.displayName.slice(0, 1));
 }
 
-/** Marke in der Navigationsleiste. Hell: Logo für helle Flächen, dunkel: Logo für die Farbfläche
- *  (meist hell/weiß). Fehlt das passende Logo, erscheinen Farbkachel und Name. */
-export function navBrand(b: Branding): Child[] {
+/**
+ * Marke in der Navigationsleiste – unabhängig vom Logo der Farbfläche (das enthält oft mehr, z. B. Partnerlogos):
+ *   hell:   „Logo für die Navigationsleiste – helles Design“
+ *   dunkel: „… – dunkles Design“; fehlt es, steht das helle Logo auf einem weißen Feld (bleibt lesbar)
+ * Ohne Logo erscheinen Farbkachel und Name. style: optionale Höhe (Vorschau in der Verwaltung).
+ */
+export function navBrand(b: Branding, height?: number): Child[] {
   const fallback = (): Child[] => [h('span', { class: 'brand-mark', attrs: { 'aria-hidden': 'true' } }, b.displayName.slice(0, 1)), h('span', { class: 'brand-name' }, b.displayName)];
-  const img = (id: string) => h('img', { class: 'brand-logo', attrs: { src: assetUrl(id), alt: b.displayName } });
-  if (!b.logoLightId && !b.logoDarkId) return fallback();
+  const img = (id: string) => h('img', { class: 'brand-logo', attrs: { src: assetUrl(id), alt: b.displayName }, style: height ? { height: `${height}px` } : undefined });
+  const dark: Child[] = b.logoNavDarkId ? [img(b.logoNavDarkId)] : b.logoLightId ? [h('span', { class: 'brand-logo-chip' }, img(b.logoLightId))] : fallback();
   return [
     h('span', { class: 'theme-light-only' }, ...(b.logoLightId ? [img(b.logoLightId)] : fallback())),
-    h('span', { class: 'theme-dark-only' }, ...(b.logoDarkId ? [img(b.logoDarkId)] : fallback())),
+    h('span', { class: 'theme-dark-only' }, ...dark),
   ];
 }
 

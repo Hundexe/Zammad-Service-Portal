@@ -54,8 +54,12 @@ export interface Branding {
   accentColor: string;
   headerColor: string;
   headerTextColor: string;
+  /** Navigationsleiste im hellen Design (dunkle Schrift); bei heller Farbfläche auch dort */
   logoLightId?: string | null;
+  /** Farbfläche (Startseite, Anmeldung) – meist helle Schrift auf Farbe */
   logoDarkId?: string | null;
+  /** Navigationsleiste im dunklen Design (helle Schrift). Fehlt es, steht das helle Logo auf einem weißen Feld */
+  logoNavDarkId?: string | null;
   faviconId?: string | null;
   welcomeText: string;
   footerText: string;
@@ -86,6 +90,7 @@ export const DEFAULT_BRANDING: Branding = {
   headerTextColor: '#ffffff',
   logoLightId: null,
   logoDarkId: null,
+  logoNavDarkId: null,
   faviconId: null,
   welcomeText: 'Wie können wir helfen?',
   footerText: '',
@@ -202,6 +207,7 @@ export function validateBranding(input: unknown): { branding?: Branding; errors:
     headerTextColor: color('headerTextColor'),
     logoLightId: id('logoLightId'),
     logoDarkId: id('logoDarkId'),
+    logoNavDarkId: id('logoNavDarkId'),
     faviconId: id('faviconId'),
     welcomeText: str('welcomeText', 500),
     footerText: str('footerText', 500),
