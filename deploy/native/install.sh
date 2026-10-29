@@ -18,6 +18,8 @@
 #                     nur signierte Release-Tags; abschalten mit UPDATER_ENABLED=false in portal.env
 #   Reverse Proxy     Caddy (TLS, Weiterleitung HTTP → HTTPS)
 #   Virenscanner      clamav-daemon (optional)
+#   Konsolenstatus    Status vor „login:“ auf der Server-Konsole (/etc/issue.d), jede Minute aktualisiert;
+#                     abschalten mit CONSOLE_STATUS=false in portal.env
 #   Kommandozeile     service-portal-cli user:create … (wie "cli.ts" im Docker-Betrieb)
 #
 # Erneut ausführen = aktualisieren: baut neu, startet neu, Einstellungen und Daten bleiben.
@@ -419,6 +421,119 @@ fi
 caddy validate --config "$caddyfile" --adapter caddyfile >/dev/null 2>&1 || { caddy validate --config "$caddyfile" --adapter caddyfile; fail "Caddy-Konfiguration ungültig."; }
 systemctl enable --quiet caddy
 systemctl restart caddy
+
+# Status auf der Anmeldekonsole (vor „login:“): Dienste, Erreichbarkeit von Zammad, Warteschlange.
+# Abschalten: CONSOLE_STATUS=false in portal.env und das Skript erneut ausführen.
+issue_file=/etc/issue.d/$UNIT.issue
+if [ "${CONSOLE_STATUS:-true}" = false ]; then
+  systemctl disable --now --quiet "$UNIT-issue.timer" 2>/dev/null || true
+  rm -f "$issue_file" "/etc/systemd/system/$UNIT-issue.service" "/etc/systemd/system/$UNIT-issue.timer"
+  systemctl daemon-reload
+else
+  mkdir -p /etc/issue.d /usr/local/lib/$UNIT
+  cat > "/usr/local/lib/$UNIT/console-status.sh" <<EOF
+#!/bin/bash
+# Erzeugt von deploy/native/install.sh – wird bei jeder Installation neu geschrieben.
+UNIT=$UNIT
+APP_PORT=$APP_PORT
+ENV_FILE=$ENV_FILE
+OUT=$issue_file
+CLI=/usr/local/bin/service-portal-cli
+EOF
+  cat >> "/usr/local/lib/$UNIT/console-status.sh" <<'EOF'
+set -u
+export LC_ALL=C.UTF-8
+# In issue-Dateien ist „\“ ein Steuerzeichen (\e{green} = Farbe, \4 = IPv4-Adresse); fremde Texte entschärfen
+clean() { printf '%s' "$1" | tr -d '\\\000-\037'; }
+GREEN='\e{green}'; RED='\e{lightred}'; YELLOW='\e{yellow}'; GRAY='\e{darkgray}'; BOLD='\e{bold}'; RESET='\e{reset}'
+
+service_line() {
+  local label="$1" unit="$2" s text
+  systemctl cat "$unit" >/dev/null 2>&1 || return 0
+  s=$(systemctl is-active "$unit" 2>/dev/null)
+  case "$s" in
+    active) text="${GREEN}● läuft${RESET}" ;;
+    inactive) text="${GRAY}○ aus${RESET}" ;;
+    activating|reloading) text="${YELLOW}◐ startet${RESET}" ;;
+    *) text="${RED}✗ $(clean "$s")${RESET}" ;;
+  esac
+  printf '  %-14s %s\n' "$label" "$text"
+}
+
+url=$(sed -n 's/^PUBLIC_URL=//p' "$ENV_FILE" 2>/dev/null | tr -d '"'"'" | head -n1)
+ready=$(curl -fsS --max-time 3 "http://127.0.0.1:$APP_PORT/readyz" 2>/dev/null)
+version=$(printf '%s' "$ready" | sed -n 's/.*"version":"\([0-9A-Za-z.+-]*\)".*/\1/p')
+
+tmp=$(mktemp)
+trap 'rm -f "$tmp"' EXIT
+{
+  printf '\n  %sService-Portal für Zammad%s %s\n' "$BOLD" "$RESET" "${version:+v$version}"
+  printf '  %s   (IP-Adresse \\4)\n\n' "$(clean "${url:-}")"
+  service_line "Portal" "$UNIT"
+  service_line "Zustellung" "$UNIT-worker"
+  service_line "Updates" "$UNIT-updater"
+  service_line "Caddy (HTTPS)" caddy
+  service_line "Virenscanner" clamav-daemon
+  if [ -n "$ready" ]; then printf '  %-14s %s\n' "Bereit" "${GREEN}● ja${RESET}"
+  else printf '  %-14s %s\n' "Bereit" "${RED}✗ antwortet nicht${RESET}"; fi
+  printf '\n'
+  if status=$(timeout 25 "$CLI" console-status 2>/dev/null); then
+    while IFS='|' read -r state name target _ms sysstatus; do
+      name=$(clean "$name"); target=$(clean "$target")
+      case "$state" in
+        ok) text="${GREEN}● erreichbar${RESET}" ;;
+        off) text="${GRAY}○ deaktiviert${RESET}" ;;
+        *) text="${RED}✗ nicht erreichbar${RESET}" ;;
+      esac
+      [ "$sysstatus" = maintenance ] && text="$text ${YELLOW}(Wartung)${RESET}"
+      printf '  %-14s %s  %s (%s)\n' "Zammad" "$text" "$name" "$target"
+    done < <(printf '%s\n' "$status" | sed -n 's/^system=//p')
+    queued=$(printf '%s\n' "$status" | sed -n 's/^queued=//p')
+    failed=$(printf '%s\n' "$status" | sed -n 's/^failed=//p')
+    approval=$(printf '%s\n' "$status" | sed -n 's/^approval=//p')
+    oldest=$(printf '%s\n' "$status" | sed -n 's/^oldest=//p')
+    line="${queued:-0} wartend, ${failed:-0} fehlgeschlagen, ${approval:-0} warten auf Freigabe"
+    if [ "${failed:-0}" != 0 ] || [ "${oldest:-0}" -gt 30 ] 2>/dev/null; then line="${RED}${line}${RESET}"; fi
+    printf '  %-14s %s\n' "Anfragen" "$line"
+  else
+    printf '  %-14s %s\n' "Zammad" "${YELLOW}Status nicht abrufbar${RESET}"
+  fi
+  printf '\n'
+} > "$tmp"
+
+# Nur bei Änderung neu schreiben: agetty --reload zeichnet die Anmeldung neu (unterbricht sonst das Tippen)
+if ! cmp -s "$tmp" "$OUT"; then
+  install -m 644 "$tmp" "$OUT"
+  agetty --reload 2>/dev/null || true
+fi
+EOF
+  chmod 755 "/usr/local/lib/$UNIT/console-status.sh"
+  cat > "/etc/systemd/system/$UNIT-issue.service" <<EOF
+[Unit]
+Description=Service-Portal für Zammad: Status auf der Anmeldekonsole
+After=$UNIT.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/$UNIT/console-status.sh
+Nice=10
+EOF
+  cat > "/etc/systemd/system/$UNIT-issue.timer" <<EOF
+[Unit]
+Description=Service-Portal für Zammad: Konsolenstatus jede Minute
+
+[Timer]
+OnBootSec=20s
+OnUnitActiveSec=60s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
+EOF
+  systemctl daemon-reload
+  systemctl enable --now --quiet "$UNIT-issue.timer"
+  systemctl start "$UNIT-issue.service" 2>/dev/null || true
+fi
 
 # ---------------------------------------------------------------- 7. Benutzer
 say "7/7 Benutzer"

@@ -1,5 +1,10 @@
 # Änderungen
 
+## 1.9.6 – 29.10.2026
+
+- **Status auf der Server-Konsole** (Installation ohne Docker): Vor `login:` stehen jetzt Version, Adresse und IP des Portals, der Zustand aller Dienste (Portal, Zustellung, Updates, Caddy, Virenscanner), ob jedes Zammad erreichbar ist und wie viele Anfragen warten oder fehlgeschlagen sind. Aktualisiert sich jede Minute, die Anmeldung wird nur bei Änderungen neu gezeichnet. Abschalten mit `CONSOLE_STATUS=false` in `portal.env`
+- Neuer Befehl `service-portal-cli console-status` (Kurzstatus ohne Virenscanner-Test und ohne Microsoft-Abfrage)
+
 ## 1.9.5 – 29.10.2026
 
 - **Schnellere Seiten, auch wenn Zammad langsam ist**

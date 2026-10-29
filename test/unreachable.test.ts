@@ -47,3 +47,15 @@ test('Abgelaufene Stammdaten kommen sofort aus dem Zwischenspeicher, mit Hinweis
   const again = await admin.get(`/api/admin/systems/${sys}/metadata`);
   assert.ok(again.json.state.lastError, 'Hinweis auf nicht erreichbares Zammad');
 });
+
+test('Konsolenstatus: erreichbare und nicht erreichbare Ticketsysteme, Warteschlange', async () => {
+  const { consoleStatus } = await import('../src/server/services/console-status.ts');
+  createSystem(p.app, p.zammad.url, { slug: 'da' });
+  const r = await consoleStatus(p.app, 500);
+  const da = r.systems.find((s) => s.target === `${new URL(p.zammad.url).hostname}:${new URL(p.zammad.url).port}`);
+  assert.equal(da?.reachable, true);
+  const weg = r.systems.find((s) => s.target === '10.255.255.1:81');
+  assert.equal(weg?.reachable, false);
+  assert.equal(typeof r.queued, 'number');
+  assert.equal(r.version, p.app.cfg.version);
+});

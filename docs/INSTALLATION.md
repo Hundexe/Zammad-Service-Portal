@@ -309,7 +309,10 @@ Nach jeder Änderung an `.env`: `docker compose up -d`.
 | Update-Dienst | `zammad-service-portal-updater` (root, kein offener Port) – Updates aus **Verwaltung → Updates**, nur signierte Release-Tags; abschalten mit `UPDATER_ENABLED=false` in `portal.env` |
 | Reverse Proxy | Caddy aus dem offiziellen Paket-Repository, Konfiguration `/etc/caddy/zammad-service-portal.caddy` |
 | Virenscanner | `clamav-daemon` (optional), lauscht nur auf 127.0.0.1:3310 |
+| Konsolenstatus | Status direkt auf der Server-Konsole vor `login:` – Dienste, Erreichbarkeit von Zammad, wartende und fehlgeschlagene Anfragen, IP-Adresse; jede Minute aktualisiert (`zammad-service-portal-issue.timer`), abschalten mit `CONSOLE_STATUS=false` in `portal.env` und `install.sh` erneut ausführen |
 | Kommandozeile | `service-portal-cli` statt `docker compose exec app … cli.ts` |
+
+Alle Dienste sind aktiviert und starten nach einem Neustart des Servers von selbst; stürzt einer ab, startet systemd ihn nach wenigen Sekunden neu.
 
 Die App lauscht nur auf `127.0.0.1:3000`; von außen erreichbar ist nur Caddy. Eine vorhandene Caddy-Konfiguration bleibt erhalten, das Portal wird dann per `import` ergänzt.
 
@@ -320,6 +323,7 @@ nano /etc/zammad-service-portal/portal.env            # Einstellungen ändern �
 systemctl restart zammad-service-portal zammad-service-portal-worker   # … und neu starten
 service-portal-cli user:create --username max --name "Max Muster" --email max@firma.de
 service-portal-cli backup                             # Sicherung nach /var/lib/zammad-service-portal/backups
+service-portal-cli console-status                     # Kurzstatus (wie auf der Konsole)
 ```
 
 Updates: über **Verwaltung → Updates** (ab 1.8.0, siehe [UPDATES.md](UPDATES.md#installation-ohne-docker)) oder `setup.sh` erneut ausführen (oder `git -C /opt/zammad-service-portal pull && /opt/zammad-service-portal/deploy/native/install.sh`). Das Stammzertifikat der internen Caddy-CA liegt unter `/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt`.

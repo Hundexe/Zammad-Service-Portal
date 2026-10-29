@@ -198,6 +198,23 @@ async function main(): Promise<void> {
         if (!r.ok) process.exitCode = 2;
       });
       return;
+    case 'console-status':
+      // Kurzstatus für die Anmeldekonsole (wird jede Minute aufgerufen) – eine Angabe je Zeile, Schlüssel=Wert
+      await withApp(async (app) => {
+        const { consoleStatus } = await import('./services/console-status.ts');
+        const r = await consoleStatus(app);
+        if (flag('json')) { console.log(JSON.stringify(r)); return; }
+        console.log(`version=${r.version}`);
+        console.log(`queued=${r.queued}`);
+        console.log(`failed=${r.failed}`);
+        console.log(`approval=${r.awaitingApproval}`);
+        console.log(`oldest=${r.oldestQueuedMinutes ?? ''}`);
+        for (const s of r.systems) {
+          const clean = (v: string) => v.replace(/[^\p{L}\p{N} ._:\-/()]/gu, '').slice(0, 40);
+          console.log(`system=${s.reachable === null ? 'off' : s.reachable ? 'ok' : 'down'}|${clean(s.name)}|${clean(s.target)}|${s.ms ?? ''}|${s.status}`);
+        }
+      });
+      return;
     case 'audit:verify':
       await withApp(async (app) => {
         const { verifyAuditChain } = await import('./services/audit.ts');
