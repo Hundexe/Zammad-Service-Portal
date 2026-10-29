@@ -4,7 +4,7 @@ Self-Service-Portal für IT-Abteilungen mit einem oder mehreren Zammad-Systemen:
 
 **[▶ Demo im Browser ansehen](https://hundexe.github.io/Zammad-Service-Portal/)** – ohne Installation, mit Beispieldaten (Portal und Verwaltung zum Durchklicken).
 
-**Aktuelle Version: 1.9.0** – [Änderungen](CHANGELOG.md), externes Architektur- und Sicherheits-Review: [was geändert wurde](docs/REVIEW-2026-10.md).
+**Aktuelle Version: 1.9.1** – [Änderungen](CHANGELOG.md), externes Architektur- und Sicherheits-Review: [was geändert wurde](docs/REVIEW-2026-10.md).
 
 ![Startseite des Portals im Stil „Glas“](docs/screenshots/31-stil-glas.png)
 
@@ -96,7 +96,7 @@ TypeScript auf Node.js 24 ohne externe Laufzeitpakete (HTTP, Krypto, SQLite und 
 ## Tests
 
 ```bash
-npm test                        # 280 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
+npm test                        # 282 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
 npm run typecheck
 node tools/loadtest.ts          # Lasttest: 50 Logins, 50 Ticketansichten, 20 Anfragen mit Anhang
 bash tools/secret-scan.sh       # vor jeder Veröffentlichung: keine Geheimnisse im Repository
@@ -110,7 +110,7 @@ bash tools/secret-scan.sh       # vor jeder Veröffentlichung: keine Geheimnisse
 | Review: Token-Prüfung im Detail, Schlüsselwechsel, JWKS-Erneuerung und Höchstalter | 33 |
 | Review: Zugriffe, Zammad-Felder und -Gruppen, Kundenzuordnung, SSRF-Schutz (inkl. IPv6 und TLS), Uploads, Backup/Restore, Zustellung, Step-up, Monitoring | 40 |
 | Freigabe durch Vorgesetzte: Ablauf, Rechte (404 für Fremde, keine Selbstfreigabe), Fristen, Benachrichtigungen, Migration | 14 |
-| Grundfunktionen, Ende-zu-Ende, Ticketliste, Verwaltung (inkl. Abbrechen, Export/Import, Formulare und Vorlagen aus Datei), Stile, Updater (Docker und ohne Docker) | 72 |
+| Grundfunktionen, Ende-zu-Ende, Ticketliste, Verwaltung (inkl. Abbrechen, Export/Import, Formulare und Vorlagen aus Datei), Stile, Updater (Docker und ohne Docker), nicht erreichbares Zammad | 74 |
 | Sicherheitstest 28.10.2026: JSON- und Speichergrenzen, lineare Prüfmuster, Identität über Tenant-Domains, Freigabe-Gruppen, Token-Umleitung, Vier-Augen bei Formular-Angaben, SVG-Allowlist, Vorlagen-HTML, Doppel-Tickets, Verschlüsselung | 37 |
 
 Die Tests starten Portal, Zammad- und Microsoft-Simulator im selben Prozess – es wird nichts weiter benötigt. Lasttest-Ergebnisse: [docs/LASTTEST.md](docs/LASTTEST.md).

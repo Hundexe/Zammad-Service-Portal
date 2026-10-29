@@ -9,7 +9,7 @@ import { audit, diff, verifyAuditChain } from '../services/audit.ts';
 import { can, canAnywhere, systemsWith, type AuthUser, type Permissions } from '../services/rbac.ts';
 import { ADMIN_PERMISSIONS, GLOBAL_PERMISSIONS, PERMISSION_KEYS, PERMISSIONS } from '../../shared/permissions.ts';
 import { connectorFor, getSystem, listSystems, publishedBranding, globalBranding, validateSystemUrl, allowedGroups, type SystemRow } from '../services/systems.ts';
-import { getMetadata, releasedAttributes, releasedWithOptions, validateRelease } from '../services/metadata.ts';
+import { getMetadata, metadataState, releasedAttributes, releasedWithOptions, validateRelease } from '../services/metadata.ts';
 import {
   emptyDefinition, getForm, latestVersion, publishVersion, publishedVersion, resolveDefinition, saveDraft, stageFormMeta,
   type FormRow, type FormVersionRow,
@@ -320,7 +320,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
     const s = sysOr404(ctx.params.systemId);
     try {
       const meta = await getMetadata(app, s, ctx.query.get('refresh') === '1');
-      return { metadata: meta, released: releasedAttributes(s), releasedResolved: releasedWithOptions(s, meta) };
+      return { metadata: meta, released: releasedAttributes(s), releasedResolved: releasedWithOptions(s, meta), state: metadataState(app, s.id) };
     } catch (err) {
       throw new HttpError(502, `Zammad nicht erreichbar: ${(err as Error).message}`, 'upstream');
     }

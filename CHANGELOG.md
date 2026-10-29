@@ -1,5 +1,14 @@
 # Änderungen
 
+## 1.9.1 – 29.10.2026
+
+- **Nicht erreichbares Zammad bremst die Seiten nicht mehr aus:**
+  - Verbindungsaufbau (inkl. Namensauflösung) bricht nach 5 Sekunden ab, statt bis zur Gesamtzeit von 20 Sekunden zu warten – bei einer Firewall, die Pakete verwirft, wartete bisher jeder Aufruf so lange (mehrere Aufrufe nacheinander ergaben fast eine Minute)
+  - Danach schlagen Aufrufe an dieses Zammad 30 Sekunden lang sofort fehl („gerade nicht erreichbar“), statt jedes Mal erneut zu warten; „Verbindung testen“ versucht es immer sofort
+  - Stammdaten aus Zammad (Gruppen, Status, Objekte) kommen sofort aus dem Zwischenspeicher und werden im Hintergrund erneuert; gleichzeitige Abrufe teilen sich einen Aufruf
+  - Verwaltung: Hinweis „Zammad ist gerade nicht erreichbar – angezeigt wird der Stand von …“; die Seite **Verbindung** wartet höchstens 4 Sekunden auf die Gruppenliste
+- Tests: 2 neue, insgesamt 282
+
 ## 1.9.0 – 29.10.2026
 
 Behebt die Funde aus dem [Sicherheitstest vom 28.10.2026](docs/SICHERHEITSTEST-2026-10-28.md).

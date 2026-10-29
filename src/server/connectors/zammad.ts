@@ -68,6 +68,15 @@ export function safeTicketFields(fields: Record<string, unknown>): Record<string
   return out;
 }
 
+/**
+ * Ist ein Zammad nicht erreichbar (Verbindungsfehler, keine HTTP-Antwort), schlagen weitere Aufrufe für kurze
+ * Zeit sofort fehl, statt jedes Mal bis zur Zeitüberschreitung zu warten – sonst hinge jede Seite, die Zammad
+ * braucht. Ein erfolgreicher Aufruf (z. B. „Verbindung testen“) hebt die Sperre auf.
+ */
+const UNREACHABLE_PAUSE_MS = 30_000;
+const unreachableUntil = new Map<string, number>();
+export function resetReachability(): void { unreachableUntil.clear(); }
+
 export class ZammadConnector implements Connector {
   private sys: TicketSystemConfig;
   private fetchImpl: typeof fetch;
@@ -85,7 +94,12 @@ export class ZammadConnector implements Connector {
     return base.toString().replace(/\/+$/, '') + path;
   }
 
-  private async call(method: string, path: string, opts: { body?: unknown; onBehalfOf?: string; raw?: boolean } = {}): Promise<Json> {
+  private async call(method: string, path: string, opts: { body?: unknown; onBehalfOf?: string; raw?: boolean; force?: boolean } = {}): Promise<Json> {
+    const key = this.sys.baseUrl;
+    const pausedUntil = unreachableUntil.get(key) ?? 0;
+    if (!opts.force && pausedUntil > Date.now()) {
+      throw new ConnectorError(`${this.sys.name} ist gerade nicht erreichbar (neuer Versuch in ${Math.ceil((pausedUntil - Date.now()) / 1000)} s)`, true);
+    }
     const headers: Record<string, string> = {
       Authorization: `Token token=${this.sys.apiToken}`,
       Accept: 'application/json',
@@ -103,8 +117,10 @@ export class ZammadConnector implements Connector {
         signal: AbortSignal.timeout(20000),
       });
     } catch (err) {
+      unreachableUntil.set(key, Date.now() + UNREACHABLE_PAUSE_MS);
       throw new ConnectorError(`${this.sys.name} nicht erreichbar: ${(err as Error).message}`, true);
     }
+    unreachableUntil.delete(key);
     const len = Number(res.headers.get('content-length') ?? 0);
     if (len > MAX_RESPONSE) throw new ConnectorError('Antwort von Zammad zu groß', false, res.status);
     if (res.status === 404) return null;
@@ -132,7 +148,7 @@ export class ZammadConnector implements Connector {
   }
 
   async test(): Promise<{ user: string; version?: string }> {
-    const me = await this.call('GET', '/api/v1/users/me');
+    const me = await this.call('GET', '/api/v1/users/me', { force: true });
     if (!me || typeof me !== 'object') throw new ConnectorError('Unerwartete Antwort', false);
     let version: string | undefined;
     try {

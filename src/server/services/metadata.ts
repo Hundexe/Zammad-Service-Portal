@@ -9,16 +9,45 @@ import { log } from '../log.ts';
 
 const TTL = 15 * 60_000;
 
+const inflight = new Map<string, Promise<SystemMetadata>>();
+/** Letzter fehlgeschlagener Abruf je System (für den Hinweis in der Verwaltung) */
+const lastFailure = new Map<string, { at: number; error: string }>();
+
+/** Holt die Stammdaten aus Zammad; gleichzeitige Abrufe für dasselbe System teilen sich einen Aufruf. */
+function fetchMetadata(app: App, sys: SystemRow): Promise<SystemMetadata> {
+  let p = inflight.get(sys.id);
+  if (!p) {
+    p = connectorFor(app, sys).metadata().then((meta) => {
+      app.db.run(
+        'INSERT INTO system_metadata (system_id, data, fetched_at) VALUES (?, ?, ?) ON CONFLICT(system_id) DO UPDATE SET data = excluded.data, fetched_at = excluded.fetched_at',
+        sys.id, JSON.stringify(meta), Date.now(),
+      );
+      lastFailure.delete(sys.id);
+      return meta;
+    }).catch((err) => {
+      lastFailure.set(sys.id, { at: Date.now(), error: (err as Error).message.slice(0, 200) });
+      throw err;
+    }).finally(() => inflight.delete(sys.id));
+    inflight.set(sys.id, p);
+  }
+  return p;
+}
+
+/**
+ * Stammdaten mit Zwischenspeicher. Abgelaufene Daten werden sofort geliefert und im Hintergrund erneuert –
+ * Seiten warten also nicht auf ein langsames oder nicht erreichbares Zammad. Nur ohne Zwischenspeicher
+ * (erster Abruf) oder mit refresh wird gewartet.
+ */
 export async function getMetadata(app: App, sys: SystemRow, refresh = false): Promise<SystemMetadata> {
   const cached = app.db.get<{ data: string; fetched_at: number }>('SELECT data, fetched_at FROM system_metadata WHERE system_id = ?', sys.id);
-  if (cached && !refresh && Date.now() - cached.fetched_at < TTL) return parseJson<SystemMetadata>(cached.data, emptyMeta());
+  if (cached && !refresh) {
+    if (Date.now() - cached.fetched_at >= TTL) {
+      fetchMetadata(app, sys).catch((err) => log.warn('Zammad-Stammdaten nicht abrufbar, nutze Zwischenspeicher', { system: sys.slug, error: (err as Error).message }));
+    }
+    return parseJson<SystemMetadata>(cached.data, emptyMeta());
+  }
   try {
-    const meta = await connectorFor(app, sys).metadata();
-    app.db.run(
-      'INSERT INTO system_metadata (system_id, data, fetched_at) VALUES (?, ?, ?) ON CONFLICT(system_id) DO UPDATE SET data = excluded.data, fetched_at = excluded.fetched_at',
-      sys.id, JSON.stringify(meta), Date.now(),
-    );
-    return meta;
+    return await fetchMetadata(app, sys);
   } catch (err) {
     if (cached) {
       log.warn('Zammad-Stammdaten nicht abrufbar, nutze Zwischenspeicher', { system: sys.slug, error: (err as Error).message });
@@ -26,6 +55,13 @@ export async function getMetadata(app: App, sys: SystemRow, refresh = false): Pr
     }
     throw err;
   }
+}
+
+/** Stand der zwischengespeicherten Stammdaten und ob der letzte Abruf aus Zammad fehlgeschlagen ist. */
+export function metadataState(app: App, systemId: string): { fetchedAt: number | null; lastError: string | null } {
+  const fetchedAt = app.db.get<{ fetched_at: number }>('SELECT fetched_at FROM system_metadata WHERE system_id = ?', systemId)?.fetched_at ?? null;
+  const f = lastFailure.get(systemId);
+  return { fetchedAt, lastError: f && (!fetchedAt || f.at > fetchedAt) ? f.error : null };
 }
 
 export function emptyMeta(): SystemMetadata {

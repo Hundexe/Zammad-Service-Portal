@@ -27,6 +27,8 @@ export interface GuardOptions {
   blockedCidrs?: string[];
   /** Wenn gesetzt: nur diese Hostnamen (exakt oder „.domain“ für alle Unterdomains) */
   allowedHosts?: string[];
+  /** Höchstdauer für Namensauflösung und Verbindungsaufbau (Standard 5 s) – unabhängig von der Gesamtdauer */
+  connectTimeoutMs?: number;
 }
 
 type AddrOpts = Pick<GuardOptions, 'allowPrivate' | 'allowLoopback' | 'blockedCidrs'>;
@@ -210,6 +212,13 @@ export function guardedFetch(opts: GuardOptions): typeof fetch {
         });
         const noBody = method === 'HEAD' || status === 204 || status === 304;
         resolve(new Response(noBody ? null : (Readable.toWeb(res) as ReadableStream), { status, statusText: res.statusMessage, headers: h }));
+      });
+      // Nicht erreichbarer Server (Pakete werden verworfen) soll nicht erst nach der Gesamtzeit auffallen
+      req.on('socket', (sock) => {
+        if (!sock.connecting) return;
+        const timer = setTimeout(() => req.destroy(new Error(`Verbindungsaufbau zu ${host} dauert zu lange`)), opts.connectTimeoutMs ?? 5000);
+        sock.once(url.protocol === 'https:' ? 'secureConnect' : 'connect', () => clearTimeout(timer));
+        req.once('close', () => clearTimeout(timer));
       });
       req.on('error', reject);
       if (body !== undefined) req.write(body);

@@ -1,5 +1,5 @@
 // Verwaltung: Ticketsysteme (Verbindung, Verhalten) und Freigabe von Zammad-Objekten.
-import { h, mount, type Child } from '../lib/dom.ts';
+import { h, mount, relTime, type Child } from '../lib/dom.ts';
 import { get, post, put, del } from '../lib/api.ts';
 import { badge, button, checkbox, confirmDialog, dialog, errorText, fieldWrap, input, listInput, notice, pageHead, select, statusBadge, table, toast, emptyState } from '../lib/ui.ts';
 import { can, link, navigate } from '../lib/app.ts';
@@ -49,10 +49,23 @@ async function createSystemDialog() {
   ]);
 }
 
+interface MetaState { fetchedAt: number | null; lastError: string | null }
+
+/** Hinweis, wenn die Angaben aus Zammad nicht aktuell sind (Zammad nicht erreichbar). */
+function staleNotice(state: MetaState | undefined): HTMLElement | null {
+  if (!state?.lastError) return null;
+  return notice('warn', `Zammad ist gerade nicht erreichbar (${state.lastError}). Angezeigt wird der letzte Stand${state.fetchedAt ? ` von ${relTime(state.fetchedAt)}` : ''}.`);
+}
+
 export async function systemEditPage(p: Record<string, string>) {
   await loadAdminSystems();
   const s = adminSystem(p.systemId);
-  const meta = await get<{ metadata: Meta }>(`/api/admin/systems/${s.id}/metadata`).then((r) => r.metadata).catch(() => null);
+  // Gruppen aus Zammad nur für die Auswahlliste – die Seite wartet höchstens kurz darauf (Zammad kann fehlen)
+  const metaRes = await Promise.race([
+    get<{ metadata: Meta; state?: MetaState }>(`/api/admin/systems/${s.id}/metadata`).catch(() => null),
+    new Promise<null>((r) => setTimeout(() => r(null), 4000)),
+  ]);
+  const meta = metaRes?.metadata ?? null;
   const v = { ...s, apiToken: '' } as AdminSystem & { apiToken: string };
   const testResult = h('div', { attrs: { 'aria-live': 'polite' } });
   const msg = h('div');
@@ -61,6 +74,7 @@ export async function systemEditPage(p: Record<string, string>) {
 
   return h('div', null,
     pageHead(s.name, h('span', null, 'Verbindung und Verhalten ', statusBadge(s.status))),
+    metaRes ? staleNotice(metaRes.state) : notice('warn', 'Zammad antwortet gerade nicht – die Liste der Gruppen fehlt. Speichern und „Verbindung testen“ funktionieren trotzdem.'),
     msg,
     h('section', { class: 'panel' },
       h('h2', null, 'Verbindung zu Zammad'),
@@ -121,8 +135,11 @@ export async function objectsPage(p: Record<string, string>) {
   const host = h('div');
   const draw = async (refresh = false) => {
     let meta: Meta;
+    let state: MetaState | undefined;
     try {
-      meta = (await get<{ metadata: Meta }>(`/api/admin/systems/${s.id}/metadata${refresh ? '?refresh=1' : ''}`)).metadata;
+      const r = await get<{ metadata: Meta; state?: MetaState }>(`/api/admin/systems/${s.id}/metadata${refresh ? '?refresh=1' : ''}`);
+      meta = r.metadata;
+      state = r.state;
     } catch (err) {
       mount(host, pageHead('Zammad-Objekte'), notice('error', errorText(err)));
       return;
@@ -153,6 +170,7 @@ export async function objectsPage(p: Record<string, string>) {
     });
     mount(host,
       pageHead('Zammad-Objekte', `Ticket-Attribute aus dem Objekt-Manager von ${s.name}, die im Portal auswählbar sind`, [button('Aus Zammad neu laden', () => draw(true), { icon: 'refresh', kind: 'ghost' })]),
+      staleNotice(state),
       notice('info', 'Freigegebene Attribute können Sie in Formularen als Feld „Zammad-Objekt“ verwenden. Die Optionen kommen live aus Zammad; Sie bestimmen hier, welche Werte die Mitarbeitenden auswählen dürfen.'),
       meta.fields.length ? h('div', { class: 'attr-list' }, ...rows) : emptyState('Keine Ticket-Attribute gefunden', 'Der API-Benutzer braucht in Zammad das Recht „admin.object“, damit das Portal die Attribute lesen kann.'),
       h('div', { class: 'form-actions sticky' }, button('Freigabe speichern', async () => {
