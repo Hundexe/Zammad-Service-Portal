@@ -7,6 +7,7 @@ import {
 } from './types.ts';
 import { isProtectedZammadField } from '../../shared/form.ts';
 import { log } from '../log.ts';
+import { escapeHtml, textToHtml } from '../../shared/template.ts';
 
 const MAX_RESPONSE = 30 * 1024 * 1024;
 /** Aufrufe, die länger dauern, landen mit Dauer im Log – hilft bei „manchmal langsam“ */
@@ -81,6 +82,23 @@ export function safeTicketFields(fields: Record<string, unknown>): Record<string
 const UNREACHABLE_PAUSE_MS = 30_000;
 const unreachableUntil = new Map<string, number>();
 export function resetReachability(): void { unreachableUntil.clear(); orgCache.clear(); }
+
+const QUOTE_MAX = 500_000;
+const quoteDate = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+/**
+ * Verlauf wie bei E-Mails: Die letzte für den Kunden sichtbare Nachricht (interne Notizen sind schon
+ * herausgefiltert) wird als Zitat angehängt – sie enthält ihrerseits die früheren Zitate.
+ * In Zammad steht so der ganze Verlauf in der Antwort; das Portal klappt das Zitat ein.
+ */
+export function quoteOf(articles: ArticleSummary[]): string {
+  const last = [...articles].sort((a, b) => a.id - b.id).at(-1);
+  if (!last || !last.body.trim() || last.body.length > QUOTE_MAX) return '';
+  const when = Number.isNaN(Date.parse(last.createdAt)) ? '' : `Am ${quoteDate.format(new Date(last.createdAt)).replace(',', ' um')} `;
+  const who = last.from || (last.sender === 'Customer' ? 'Kunde' : 'IT-Service');
+  const body = last.contentType.includes('html') ? last.body : textToHtml(last.body);
+  return `<br><div>${when ? escapeHtml(when) : ''}schrieb ${escapeHtml(who)}:</div><blockquote type="cite">${body}</blockquote>`;
+}
 
 export class ZammadConnector implements Connector {
   private sys: TicketSystemConfig;
@@ -408,7 +426,7 @@ export class ZammadConnector implements Connector {
       onBehalfOf,
       body: {
         ticket_id: ticketId,
-        body: bodyHtml,
+        body: bodyHtml + quoteOf(detail.articles),
         content_type: 'text/html',
         type: 'web',
         internal: false,

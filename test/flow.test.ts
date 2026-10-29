@@ -99,8 +99,16 @@ test('Meine Tickets: nur eigene, ohne interne Notizen; Antwort landet in Zammad'
   const reply = await c.post(`/api/portal/systems/${systemId}/tickets/${printer.id}/reply`, { text: 'Danke!\nGruß Anna' });
   assert.equal(reply.status, 200, reply.text);
   const last = p.zammad.state.articles.filter((a) => a.ticket_id === printer.id).at(-1)!;
-  assert.equal(last.body, 'Danke!<br>Gruß Anna');
+  // Wie bei E-Mails: die letzte sichtbare Nachricht hängt als Zitat an, interne Notizen nie
+  assert.ok(last.body.startsWith('Danke!<br>Gruß Anna<br><div>Am '), last.body);
+  assert.match(last.body, /schrieb [^<]+:<\/div><blockquote type="cite"><p>Hallo, wir haben den Toner bestellt/);
+  assert.ok(!last.body.includes('Interne Notiz'));
   assert.equal(last.sender, 'Customer');
+  // Im Portal steht nur die Antwort, das Zitat ist eingeklappt
+  const after = await c.get(`/api/portal/systems/${systemId}/tickets/${printer.id}`);
+  const mine = after.json.articles.at(-1);
+  assert.deepEqual(mine.blocks, [{ t: 'text', text: 'Danke!\nGruß Anna' }]);
+  assert.match(mine.quoted, /Toner bestellt/);
 });
 
 test('Zammad nicht erreichbar → Anfrage bleibt in der Warteschlange und wird später zugestellt', async () => {

@@ -1,5 +1,10 @@
 # Änderungen
 
+## 1.9.11 – 29.10.2026
+
+- **Antworten aus dem Portal mit Verlauf:** Wie bei E-Mails hängt an jeder Antwort aus dem Portal die letzte Nachricht des Tickets als Zitat („Am … schrieb …:“) – mit den Zitaten davor, also dem ganzen Verlauf. In Zammad und in E-Mails an das Team ist der Zusammenhang so sofort sichtbar. Interne Notizen werden nie zitiert; bei ausgeblendeten Bearbeiternamen steht auch im Zitat nur der Name des Ticketsystems
+- Im Portal selbst bleibt das Zitat wie bisher eingeklappt
+
 ## 1.9.10 – 29.10.2026
 
 - **Updates kommen immer vollständig im Browser an:** Alle Programmteile laden sich gegenseitig mit der Build-Kennung. Nach einem Update holt der Browser damit den ganzen Stand neu, auch wenn er einzelne Dateien von früher noch zwischengespeichert hat. Kein Strg+F5 mehr nötig
