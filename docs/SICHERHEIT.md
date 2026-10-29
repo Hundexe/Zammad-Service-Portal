@@ -40,7 +40,7 @@ Dieses Dokument beschreibt, wie das Portal geschützt ist, gegen welche Angriffe
 
 ### Eingaben und Ausgaben (ASVS V5)
 
-- Jede Formulareingabe wird serverseitig gegen das veröffentlichte Formular geprüft: nur bekannte, sichtbare Felder, erlaubte Werte, Längen, Typen. Prüfmuster laufen nur über begrenzte Eingabelängen.
+- Jede Formulareingabe wird serverseitig gegen das veröffentlichte Formular geprüft: nur bekannte, sichtbare Felder, erlaubte Werte, Längen, Typen. Prüfmuster laufen auf dem Server in der linearen Regex-Engine von V8 (kein ReDoS); Rückverweise, Lookarounds und `\p{…}` werden beim Speichern abgelehnt.
 - **SQL:** ausschließlich vorbereitete Statements mit Parametern.
 - **XSS:** Das Frontend setzt Texte nur als Textknoten (`innerHTML` wird nirgends verwendet); CSP `script-src 'self'` ohne `unsafe-inline`. Ins Ticket geschriebene Eingaben werden HTML-escaped. HTML aus Zammad wird serverseitig in reinen Text umgewandelt.
 - **Vorlagen** kennen nur Platzhalter wie `{{feld}}` – keine Logik, kein Code, kein Zugriff auf Objekt-Interna.
@@ -53,7 +53,7 @@ Dieses Dokument beschreibt, wie das Portal geschützt ist, gegen welche Angriffe
 
 - Dateityp wird am **Inhalt** erkannt (Magic Bytes) und muss zur Endung passen; erlaubt sind PDF, Bilder, Office-Dokumente, Text/CSV. Programme, Skripte, HTML und SVG als Anhang werden abgelehnt.
 - **Virenscan** mit ClamAV; ist der Scanner nicht erreichbar, werden Uploads abgelehnt (fail closed). `cli.ts scanner:test` schickt eine EICAR-Testdatei an ClamAV und meldet per Exit-Code, ob sie erkannt wird (auch in `status` enthalten – fürs Monitoring).
-- **Größen:** je Datei `UPLOAD_MAX_FILE_MB` (Standard 10, höchstens 20), je Anfrage `UPLOAD_MAX_TOTAL_MB` (Standard 25, höchstens 25). Formulare können kleinere Grenzen setzen, nie größere.
+- **Größen:** je Datei `UPLOAD_MAX_FILE_MB` (Standard 10, höchstens 20), je Anfrage `UPLOAD_MAX_TOTAL_MB` (Standard 25, höchstens 25). Formulare können kleinere Grenzen setzen, nie größere. Der JSON-Body ist auf die Gesamtgröße × 4/3 + 1 MB begrenzt, wird vor dem Parsen linear auf Tiefe (64) und Anzahl der Elemente (100 000) geprüft und muss ein Objekt sein. Große Bodys teilen sich ein Speicherbudget (`UPLOAD_INFLIGHT_MB`, Standard 64); je Benutzer läuft nur einer gleichzeitig.
 - Dateinamen werden bereinigt (Pfade, Steuerzeichen, Unicode-Richtungszeichen).
 - Bis zur Zustellung liegen Dateien **verschlüsselt** auf der Platte und werden danach sofort gelöscht.
 - Anhänge aus Zammad werden immer als Download mit `application/octet-stream` und Sandbox-CSP ausgeliefert.
@@ -245,7 +245,7 @@ active
 | --- | --- | --- |
 | Updater mit Docker-Rechten | Wer den Updater übernimmt, kontrolliert praktisch die VM. Er hat keinen offenen Port und nimmt nur Aufträge für vorhandene, signierte Tags an. | Profil `updater` nur aktivieren, wenn Updates per Klick gewünscht sind; sonst manuell aktualisieren (docs/UPDATES.md) |
 | Super-Admins | haben bewusst alle Rechte | wenige Personen, Entra-Gruppe mit PIM/Zugriffsüberprüfung |
-| Formular-Prüfmuster | Admins können reguläre Ausdrücke hinterlegen; Eingabelängen sind begrenzt | Prüfmuster nur durch vertrauenswürdige Admins (ist durch Rechte gegeben) |
+| Formular-Prüfmuster | Admins können reguläre Ausdrücke hinterlegen; sie laufen linear (keine Blockade durch ungünstige Muster) | im Browser (Vorschau der eigenen Eingabe) läuft die normale Engine – betrifft nur den eigenen Tab |
 | Hauptschlüssel | wer `secret_key` und die Datenbank hat, kann Tokens entschlüsseln | Schlüssel getrennt vom Backup im Tresor aufbewahren |
 | Zammad-API-Token | hat `admin.user` (nötig für `X-On-Behalf-Of`) – damit könnte ein Angreifer mit Zugriff auf Server **und** Hauptschlüssel Zammad-Benutzer verwalten | eigener API-Benutzer nur mit den nötigen Rechten und Gruppen, Token regelmäßig erneuern; Alternative mit weniger Rechten: Modus „Kundenfeld“ ([INSTALLATION.md](INSTALLATION.md#5-zammad-api-benutzer-und-token)) |
 | Eigenentwicklung | OIDC, Sitzungen, CSRF, TOTP, Verschlüsselung sind selbst geschrieben (nur Node-Bordmittel, keine Laufzeit-Pakete) und bisher nur projektintern geprüft | vor dem breiten Einsatz unabhängigen Web-Pentest einplanen; Prüfliste in [GO-LIVE.md](GO-LIVE.md) |

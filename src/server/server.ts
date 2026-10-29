@@ -4,7 +4,7 @@ import { createServer as createHttpServer, type IncomingMessage, type ServerResp
 import { randomUUID } from 'node:crypto';
 import type { App } from './app.ts';
 import {
-  HttpError, ProxyTrust, RateLimiter, Router, parseCookies, readJson, sendJson, type Ctx, type RouteOptions,
+  ByteBudget, HttpError, ProxyTrust, RateLimiter, Router, limiterKey, parseCookies, readJson, sendJson, type Ctx, type RouteOptions,
 } from './http/core.ts';
 import { setSecurityHeaders } from './http/security.ts';
 import { StaticFiles } from './http/static.ts';
@@ -47,6 +47,10 @@ export function createServer(app: App, deps: ServerDeps): { server: Server; rout
   const publicHost = new URL(app.cfg.publicUrl).host;
   const apiLimiter = new RateLimiter(...app.cfg.rateLimits.api); // Standard: 240 Burst, 4/s Nachschub je IP
   const writeLimiter = new RateLimiter(...app.cfg.rateLimits.write);
+  // Große Bodys (Uploads, Import): gemeinsames Speicherbudget, je Benutzer nur einer gleichzeitig
+  const LARGE_BODY = 1024 * 1024;
+  const bodyBudget = new ByteBudget(app.cfg.upload.inflightMb * 1024 * 1024);
+  const largeByUser = new Set<string>();
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const started = Date.now();
@@ -97,8 +101,9 @@ export function createServer(app: App, deps: ServerDeps): { server: Server; rout
     ctx.params = params;
     const o: RouteOptions = route.opts;
 
-    if (!apiLimiter.take(ctx.ip)) throw new HttpError(429, 'Zu viele Anfragen – bitte kurz warten', 'rate_limited');
-    if (MUTATING.has(ctx.method) && !writeLimiter.take(ctx.ip)) throw new HttpError(429, 'Zu viele Anfragen – bitte kurz warten', 'rate_limited');
+    const rlKey = limiterKey(ctx.ip);
+    if (!apiLimiter.take(rlKey)) throw new HttpError(429, 'Zu viele Anfragen – bitte kurz warten', 'rate_limited');
+    if (MUTATING.has(ctx.method) && !writeLimiter.take(rlKey)) throw new HttpError(429, 'Zu viele Anfragen – bitte kurz warten', 'rate_limited');
 
     // Herkunft prüfen: ändernde Anfragen nur von der eigenen Seite
     if (MUTATING.has(ctx.method)) {
@@ -155,7 +160,24 @@ export function createServer(app: App, deps: ServerDeps): { server: Server; rout
       throw new HttpError(403, 'Bitte für diese Aktion erneut anmelden', 'stepup_required');
     }
 
-    if (MUTATING.has(ctx.method)) ctx.body = await readJson(ctx.req, o.bodyLimit ?? 256 * 1024);
+    if (MUTATING.has(ctx.method)) {
+      const limit = o.bodyLimit ?? 256 * 1024;
+      const declared = Number(ctx.req.headers['content-length'] ?? Number.NaN);
+      const expected = Number.isFinite(declared) ? Math.min(declared, limit) : limit;
+      if (expected > LARGE_BODY) {
+        const who = ctx.user?.id ?? rlKey;
+        if (largeByUser.has(who)) throw new HttpError(429, 'Es läuft bereits ein Upload – bitte warten, bis er fertig ist', 'busy');
+        largeByUser.add(who);
+        try {
+          await bodyBudget.acquire(expected, 30_000);
+          try { ctx.body = await readJson(ctx.req, limit); } finally { bodyBudget.release(expected); }
+        } finally {
+          largeByUser.delete(who);
+        }
+      } else {
+        ctx.body = await readJson(ctx.req, limit);
+      }
+    }
 
     const result = await route.handler(ctx);
     if (!ctx.responded) sendJson(ctx, ctx.method === 'POST' && result && (result as any).created ? 201 : 200, result ?? { ok: true });

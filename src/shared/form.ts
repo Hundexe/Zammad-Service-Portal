@@ -153,14 +153,28 @@ export function isVisible(field: FormField, values: FormValues, fields: FormFiel
   }
 }
 
-function safeRegex(pattern: string): RegExp | null {
-  if (pattern.length > LIMITS.maxPatternLength) return null;
-  try {
-    return new RegExp(`^(?:${pattern})$`, 'u');
-  } catch {
-    return null;
-  }
+// Auf dem Server laufen Prüfmuster in der linearen Regex-Engine von V8 (Flag „l“): Laufzeit wächst
+// nur linear mit der Eingabe, kein ReDoS. Nicht unterstützt sind Rückverweise, Lookarounds und \p{…}.
+// Im Browser (nur Vorschau der eigenen Eingabe) bleibt die normale Engine.
+let linearRegex = false;
+
+/** Server: lineare Regex-Engine verwenden (vorher v8.setFlagsFromString('--enable-experimental-regexp-engine')). */
+export function useLinearRegex(): boolean {
+  try { new RegExp('a', 'l'); linearRegex = true; } catch { linearRegex = false; }
+  return linearRegex;
 }
+
+/** Muster kompilieren. 'unsupported' = gültiges Muster, das die lineare Engine nicht kann (nur Server). */
+function compilePattern(pattern: string): RegExp | 'unsupported' | null {
+  if (pattern.length > LIMITS.maxPatternLength) return null;
+  const source = `^(?:${pattern})$`;
+  try { new RegExp(source, 'u'); } catch { return null; }
+  if (!linearRegex) return new RegExp(source, 'u');
+  // Die lineare Engine kennt kein Flag „u“: Unicode-Escapes hätten ohne „u“ eine andere Bedeutung
+  if (/\\[pP]\{|\\u\{/.test(pattern)) return 'unsupported';
+  try { return new RegExp(source, 'l'); } catch { return 'unsupported'; }
+}
+
 
 function textLimit(field: FormField): number {
   const fallback = field.type === 'textarea' ? LIMITS.defaultTextareaLength : LIMITS.defaultTextLength;
@@ -197,8 +211,10 @@ export function validateSubmission(def: FormDefinition, input: FormValues, _ctx:
         if (field.minLength && v.length < field.minLength) { errors[field.id] = `Mindestens ${field.minLength} Zeichen`; break; }
         if (field.type === 'email' && !EMAIL_RE.test(v)) { errors[field.id] = 'Keine gültige E-Mail-Adresse'; break; }
         if (field.pattern) {
-          const re = safeRegex(field.pattern);
-          if (!re || !re.test(v)) { errors[field.id] = field.patternMessage || 'Format ungültig'; break; }
+          const re = compilePattern(field.pattern);
+          // Ältere Muster, die die lineare Engine nicht kann, werden nicht ausgeführt (nie ReDoS);
+          // der Editor verlangt beim nächsten Speichern ein unterstütztes Muster.
+          if (re === null || (re instanceof RegExp && !re.test(v))) { errors[field.id] = field.patternMessage || 'Format ungültig'; break; }
         }
         values[field.id] = v;
         break;
@@ -289,7 +305,11 @@ export function validateDefinition(def: unknown): string[] {
       else if (f.options.length > LIMITS.maxOptions) problems.push(`${where}: zu viele Optionen`);
       else if (f.options.some((o) => typeof o?.value !== 'string' || o.value === '' || typeof o.label !== 'string')) problems.push(`${where}: Optionen brauchen Wert und Bezeichnung`);
     }
-    if (f.pattern !== undefined && (typeof f.pattern !== 'string' || !safeRegex(f.pattern))) problems.push(`${where}: Prüfmuster ungültig`);
+    if (f.pattern !== undefined) {
+      const re = typeof f.pattern === 'string' ? compilePattern(f.pattern) : null;
+      if (re === null) problems.push(`${where}: Prüfmuster ungültig`);
+      else if (re === 'unsupported') problems.push(`${where}: Prüfmuster nicht erlaubt – Rückverweise (\\1), Lookarounds ((?=…), (?<=…)) und \\p{…} werden aus Sicherheitsgründen nicht unterstützt`);
+    }
     if (f.maxLength !== undefined && (!Number.isInteger(f.maxLength) || f.maxLength < 1 || f.maxLength > LIMITS.maxTextLength)) problems.push(`${where}: Maximallänge 1–${LIMITS.maxTextLength}`);
     if (f.maxFiles !== undefined && (!Number.isInteger(f.maxFiles) || f.maxFiles < 1 || f.maxFiles > LIMITS.maxFilesPerField)) problems.push(`${where}: 1–${LIMITS.maxFilesPerField} Dateien`);
     if (f.maxSizeMb !== undefined && (typeof f.maxSizeMb !== 'number' || f.maxSizeMb <= 0 || f.maxSizeMb > LIMITS.maxFileSizeMb)) problems.push(`${where}: Dateigröße bis ${LIMITS.maxFileSizeMb} MB`);

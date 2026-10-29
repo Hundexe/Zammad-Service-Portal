@@ -1,5 +1,7 @@
 // Gemeinsamer Anwendungskontext für Server, Worker und CLI.
 import { join } from 'node:path';
+import { setFlagsFromString } from 'node:v8';
+import { useLinearRegex } from '../shared/form.ts';
 import type { Config } from './config.ts';
 import { Db } from './db/db.ts';
 import { SecretBox } from './crypto.ts';
@@ -15,6 +17,9 @@ export interface App {
 }
 
 export function createApp(cfg: Config): App {
+  // Prüfmuster aus Formularen linear auswerten (Schutz vor ReDoS), siehe shared/form.ts
+  setFlagsFromString('--enable-experimental-regexp-engine');
+  if (!useLinearRegex()) throw new Error('Lineare Regex-Engine nicht verfügbar – Node.js 22 oder neuer nötig');
   const db = new Db(cfg.dataDir === ':memory:' ? ':memory:' : join(cfg.dataDir, 'portal.sqlite'));
   db.migrate();
   ensureBuiltinRoles(db);

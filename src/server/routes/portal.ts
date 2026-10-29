@@ -21,26 +21,50 @@ export const OVERVIEW_COLUMNS = ['number', 'title', 'state', 'priority', 'group'
 
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', auml: 'ä', ouml: 'ö', uuml: 'ü', Auml: 'Ä', Ouml: 'Ö', Uuml: 'Ü', szlig: 'ß', euro: '€' };
 
-/** Wandelt HTML aus Zammad in reinen Text. Das Portal zeigt nie fremdes HTML an. */
+/** Wandelt HTML aus Zammad in reinen Text. Das Portal zeigt nie fremdes HTML an.
+ *  Linear: ein Durchlauf mit indexOf statt Regexen, die bei vielen „<“ ohne „>“ quadratisch würden. */
 export function htmlToText(html: string): string {
-  return html
-    .slice(0, 200_000)
-    .replace(/<(script|style|head)[^>]*>[\s\S]*?<\/\1>/gi, '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|li|tr|h[1-6]|blockquote)>/gi, '\n')
-    .replace(/<li[^>]*>/gi, '• ')
-    .replace(/<\/t[dh]>/gi, '\t')
-    .replace(/<[^>]*>/g, '')
-    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e: string) => {
-      if (e[0] === '#') {
-        const code = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
-        return Number.isFinite(code) && code > 0 && code < 0x110000 ? String.fromCodePoint(code) : '';
-      }
-      return ENTITIES[e] ?? m;
-    })
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  const s = html.slice(0, 200_000);
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    const lt = s.indexOf('<', i);
+    if (lt < 0) { out += s.slice(i); break; }
+    out += s.slice(i, lt);
+    const gt = s.indexOf('>', lt + 1);
+    if (gt < 0) { out += s.slice(lt); break; } // kein Tag mehr – Rest ist Text
+    const m = /^\/?([a-zA-Z][a-zA-Z0-9]{0,15})/.exec(s.slice(lt + 1, Math.min(gt, lt + 18)));
+    i = gt + 1;
+    if (!m) continue; // Kommentar, Doctype o. Ä.
+    const closing = s[lt + 1] === '/';
+    const name = m[1].toLowerCase();
+    if (!closing && (name === 'script' || name === 'style' || name === 'head')) {
+      const endRe = new RegExp(`</${name}\\s*>`, 'gi');
+      endRe.lastIndex = i;
+      const e = endRe.exec(s);
+      if (!e) break; // nie geschlossen: Rest verwerfen (linear, da danach Schluss)
+      i = e.index + e[0].length;
+      continue;
+    }
+    if (name === 'br') out += '\n';
+    else if (closing && /^(p|div|li|tr|h[1-6]|blockquote)$/.test(name)) out += '\n';
+    else if (!closing && name === 'li') out += '• ';
+    else if (closing && (name === 'td' || name === 'th')) out += '\t';
+  }
+  out = out.replace(/&(#x[0-9a-f]{1,6}|#\d{1,7}|[a-z]{1,10});/gi, (m, e: string) => {
+    if (e[0] === '#') {
+      const code = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return Number.isFinite(code) && code > 0 && code < 0x110000 ? String.fromCodePoint(code) : '';
+    }
+    return ENTITIES[e] ?? m;
+  });
+  // Leerzeichen am Zeilenende entfernen (ohne Regex über lange Leerzeichenfolgen)
+  const lines = out.split('\n').map((l) => {
+    let e = l.length;
+    while (e > 0 && (l[e - 1] === ' ' || l[e - 1] === '\t')) e--;
+    return l.slice(0, e);
+  });
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /** Datei immer als Download senden, nie im Browser anzeigen; harmloser Typ verhindert Skriptausführung. */
@@ -57,6 +81,8 @@ function sendDownload(ctx: AppCtx, filename: string, data: Buffer | Uint8Array):
 }
 
 export function registerPortalRoutes(router: Router, app: App): void {
+  // Dateien kommen als Base64 im JSON: Gesamtgröße × 4/3 plus 1 MB für die Feldwerte
+  const uploadBodyLimit = Math.ceil(app.cfg.upload.maxTotalMb * 4 / 3 + 1) * 1024 * 1024;
   const ticketCache = new Map<string, { at: number; tickets: TicketSummary[] }>();
   const user = { auth: 'user' as const };
 
@@ -107,7 +133,7 @@ export function registerPortalRoutes(router: Router, app: App): void {
     };
   });
 
-  router.post('/api/portal/forms/:formId/submit', { auth: 'user', bodyLimit: 40 * 1024 * 1024 }, async (ctx: AppCtx) => {
+  router.post('/api/portal/forms/:formId/submit', { auth: 'user', bodyLimit: uploadBodyLimit }, async (ctx: AppCtx) => {
     const { form, sys } = visibleForm(ctx, ctx.params.formId);
     if (sys.status === 'inactive') throw new HttpError(409, 'Ticketsystem ist deaktiviert', 'inactive');
     const version = publishedVersion(app, form.id);
@@ -286,7 +312,7 @@ export function registerPortalRoutes(router: Router, app: App): void {
     }
   });
 
-  router.post('/api/portal/systems/:systemId/tickets/:ticketId/reply', { auth: 'user', bodyLimit: 30 * 1024 * 1024 }, async (ctx: AppCtx) => {
+  router.post('/api/portal/systems/:systemId/tickets/:ticketId/reply', { auth: 'user', bodyLimit: uploadBodyLimit }, async (ctx: AppCtx) => {
     const sys = visibleSystem(ctx, ctx.params.systemId);
     if (sys.allow_replies !== 1) throw new HttpError(403, 'Antworten über das Portal sind für dieses System deaktiviert', 'forbidden');
     if (sys.status !== 'active') throw new HttpError(409, 'Ticketsystem ist gerade in Wartung', 'maintenance');

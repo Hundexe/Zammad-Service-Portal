@@ -1,7 +1,7 @@
 // Anmeldung: Microsoft Entra ID (SSO) und lokale Konten (mit TOTP für Admins).
 import type { App } from '../app.ts';
 import type { Config } from '../config.ts';
-import { HttpError, RateLimiter, appendCookie, redirect, serializeCookie, type Router } from '../http/core.ts';
+import { HttpError, RateLimiter, appendCookie, limiterKey, redirect, serializeCookie, type Router } from '../http/core.ts';
 import type { AppCtx, ServerDeps } from '../server.ts';
 import {
   createSession, destroySession, destroyUserSessions, secureCookies, setSessionState, type SessionState,
@@ -128,7 +128,7 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
 
   router.post('/api/auth/local/login', { auth: 'public', bodyLimit: 4096 }, async (ctx: AppCtx) => {
     if (!app.cfg.localLogin) throw new HttpError(404, 'Lokale Anmeldung ist deaktiviert', 'disabled');
-    if (!loginLimiter.take(ctx.ip)) throw new HttpError(429, 'Zu viele Anmeldeversuche – bitte kurz warten', 'rate_limited');
+    if (!loginLimiter.take(limiterKey(ctx.ip))) throw new HttpError(429, 'Zu viele Anmeldeversuche – bitte kurz warten', 'rate_limited');
     const b = ctx.body as { username?: unknown; password?: unknown };
     const username = typeof b.username === 'string' ? b.username.trim().slice(0, 64) : '';
     const password = typeof b.password === 'string' ? b.password.slice(0, 256) : '';
@@ -285,7 +285,7 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
   // ------------------------------------------------------------- Entra ID
   router.get('/api/auth/entra/login', { auth: 'public' }, async (ctx: AppCtx) => {
     if (!deps.entra) throw new HttpError(404, 'Microsoft-Anmeldung ist nicht konfiguriert', 'disabled');
-    if (!loginLimiter.take(`entra:${ctx.ip}`)) throw new HttpError(429, 'Zu viele Anmeldeversuche – bitte kurz warten', 'rate_limited');
+    if (!loginLimiter.take(`entra:${limiterKey(ctx.ip)}`)) throw new HttpError(429, 'Zu viele Anmeldeversuche – bitte kurz warten', 'rate_limited');
     const stepup = ctx.query.get('stepup') === '1';
     if (stepup && (!ctx.session || ctx.user?.kind !== 'entra')) throw new HttpError(401, 'Bitte anmelden', 'unauthenticated');
     const tx = deps.entra.newTransaction(safeReturnTo(ctx.query.get('returnTo')), stepup);

@@ -8,7 +8,7 @@ import { startPortal, Client, createSystem, createForm, createUser, ENTRA_USERS,
 import { deliverNext } from '../src/server/services/requests.ts';
 import { verifyAuditChain } from '../src/server/services/audit.ts';
 import { renderTemplate } from '../src/shared/template.ts';
-import { validateSubmission } from '../src/shared/form.ts';
+import { validateSubmission, validateDefinition } from '../src/shared/form.ts';
 import { ClamAv } from '../src/server/services/clamav.ts';
 
 let p: Portal;
@@ -195,12 +195,26 @@ describe('Eingaben', () => {
     assert.equal((await c.put(`/api/admin/systems/${systemId}/forms/${formId}/draft`, { definition: def })).status, 422);
   });
 
-  test('Prüfmuster: Eingaben sind in der Länge begrenzt (ReDoS)', () => {
-    const def = { fields: [{ id: 't', type: 'text' as const, label: 'T', pattern: '(a|aa)+' }], settings: { titleTemplate: 'x', bodyTemplate: '' } };
-    const started = Date.now();
-    const r = validateSubmission(def, { t: 'a'.repeat(5000) + 'b' });
-    assert.equal(r.ok, false);
-    assert.ok(Date.now() - started < 1000);
+  test('Prüfmuster laufen linear: kein ReDoS auch mit kurzer bösartiger Eingabe', () => {
+    // Mit der normalen Engine blockiert dieses Muster bei ~30 Zeichen den Server sekundenlang
+    for (const pattern of ['(a|aa)+', '([A-Za-z]+ ?)+', '(x+x+)+y']) {
+      const def = { fields: [{ id: 't', type: 'text' as const, label: 'T', pattern }], settings: { titleTemplate: 'x', bodyTemplate: '' } };
+      for (const input of ['a'.repeat(40) + '!', 'Abc '.repeat(30) + '!', 'x'.repeat(4000)]) {
+        const started = Date.now();
+        validateSubmission(def, { t: input });
+        assert.ok(Date.now() - started < 200, `${pattern} mit ${input.length} Zeichen zu langsam`);
+      }
+    }
+    const ok = { fields: [{ id: 't', type: 'text' as const, label: 'T', pattern: '[A-Za-z]{2}-\\d{4}' }], settings: { titleTemplate: 'x', bodyTemplate: '' } };
+    assert.equal(validateSubmission(ok, { t: 'NB-0042' }).ok, true);
+    assert.equal(validateSubmission(ok, { t: 'NB-42' }).ok, false);
+  });
+
+  test('Prüfmuster mit Rückverweis oder Lookaround werden beim Speichern abgelehnt', () => {
+    for (const pattern of ['(a)\\1', '(?=a)a', '\\p{L}+']) {
+      const problems = validateDefinition({ fields: [{ id: 't', type: 'text', label: 'T', pattern }], settings: { titleTemplate: 'x', bodyTemplate: '' } } as any);
+      assert.ok(problems.some((x: string) => /nicht erlaubt/.test(x)), pattern);
+    }
   });
 });
 

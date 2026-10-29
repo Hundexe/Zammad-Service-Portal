@@ -116,6 +116,18 @@ export function appendCookie(res: ServerResponse, cookie: string): void {
 export async function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
   const declared = Number(req.headers['content-length'] ?? 0);
   if (declared > limit) throw new HttpError(413, 'Anfrage zu groß', 'too_large');
+  // Mit bekannter Länge direkt in einen Puffer schreiben (spart die Kopie von Buffer.concat)
+  if (declared > 0) {
+    const out = Buffer.allocUnsafe(declared);
+    let size = 0;
+    for await (const chunk of req) {
+      const c = chunk as Buffer;
+      if (size + c.length > declared) throw new HttpError(400, 'Länge der Anfrage stimmt nicht', 'bad_request');
+      c.copy(out, size);
+      size += c.length;
+    }
+    return size === declared ? out : out.subarray(0, size);
+  }
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
@@ -126,16 +138,90 @@ export async function readBody(req: IncomingMessage, limit: number): Promise<Buf
   return Buffer.concat(chunks);
 }
 
+/** Grenzen für die Struktur von JSON-Bodys (Tiefe, Anzahl der Elemente). */
+export const JSON_LIMITS = { maxDepth: 64, maxTokens: 100_000 };
+
+/**
+ * Prüft einen JSON-Body linear, bevor er geparst wird: muss ein Objekt sein, höchstens maxDepth tief
+ * und höchstens maxTokens Strukturzeichen ([ { , :) außerhalb von Zeichenketten. Lange Zeichenketten
+ * (Base64-Dateien) sind erlaubt. Verhindert Absturz (Heap) und lange Blockaden durch präparierte Bodys.
+ */
+export function checkJsonShape(buf: Buffer, limits = JSON_LIMITS): string | null {
+  let i = 0;
+  const n = buf.length;
+  while (i < n && (buf[i] === 0x20 || buf[i] === 0x0a || buf[i] === 0x0d || buf[i] === 0x09)) i++;
+  if (i < n && buf[i] !== 0x7b /* { */) return 'Es wird ein JSON-Objekt erwartet';
+  let depth = 0;
+  let tokens = 0;
+  let inString = false;
+  for (; i < n; i++) {
+    const c = buf[i];
+    if (inString) {
+      if (c === 0x5c /* \ */) i++;
+      else if (c === 0x22 /* " */) inString = false;
+      continue;
+    }
+    if (c === 0x22) inString = true;
+    else if (c === 0x7b || c === 0x5b) {
+      if (++depth > limits.maxDepth) return 'JSON zu tief verschachtelt';
+      if (++tokens > limits.maxTokens) return 'JSON hat zu viele Elemente';
+    } else if (c === 0x7d || c === 0x5d) depth--;
+    else if (c === 0x2c || c === 0x3a) {
+      if (++tokens > limits.maxTokens) return 'JSON hat zu viele Elemente';
+    }
+  }
+  return null;
+}
+
 export async function readJson(req: IncomingMessage, limit: number): Promise<unknown> {
   const type = String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
   const buf = await readBody(req, limit);
   if (buf.length === 0) return {};
   if (type !== 'application/json') throw new HttpError(415, 'Nur application/json wird angenommen', 'unsupported_media_type');
+  const shape = checkJsonShape(buf);
+  if (shape) throw new HttpError(400, shape, 'bad_json');
+  let out: unknown;
   try {
-    return JSON.parse(buf.toString('utf8'), (k, v) => (k === '__proto__' || k === 'constructor' || k === 'prototype' ? undefined : v));
+    out = JSON.parse(buf.toString('utf8'), (k, v) => (k === '__proto__' || k === 'constructor' || k === 'prototype' ? undefined : v));
   } catch {
     throw new HttpError(400, 'Ungültiges JSON', 'bad_json');
   }
+  if (typeof out !== 'object' || out === null || Array.isArray(out)) throw new HttpError(400, 'Es wird ein JSON-Objekt erwartet', 'bad_json');
+  return out;
+}
+
+/**
+ * Begrenzt, wie viele Bytes großer Bodys gleichzeitig im Speicher sein dürfen. Wer nicht sofort
+ * Platz bekommt, wartet (höchstens timeoutMs), statt den Prozess über das Speicherlimit zu treiben.
+ */
+export class ByteBudget {
+  private used = 0;
+  private queue: { bytes: number; resolve: () => void; timer: NodeJS.Timeout }[] = [];
+  readonly capacity: number;
+  constructor(capacity: number) { this.capacity = capacity; }
+
+  acquire(bytes: number, timeoutMs: number): Promise<void> {
+    const need = Math.min(bytes, this.capacity);
+    if (this.queue.length === 0 && this.used + need <= this.capacity) { this.used += need; return Promise.resolve(); }
+    return new Promise((resolve, reject) => {
+      const entry = {
+        bytes: need,
+        resolve: () => { clearTimeout(entry.timer); this.used += need; resolve(); },
+        timer: setTimeout(() => {
+          this.queue = this.queue.filter((q) => q !== entry);
+          reject(new HttpError(503, 'Das Portal verarbeitet gerade viele Uploads – bitte gleich noch einmal senden', 'busy'));
+        }, timeoutMs),
+      };
+      this.queue.push(entry);
+    });
+  }
+
+  release(bytes: number): void {
+    this.used = Math.max(0, this.used - Math.min(bytes, this.capacity));
+    while (this.queue.length && this.used + this.queue[0].bytes <= this.capacity) this.queue.shift()!.resolve();
+  }
+
+  get inUse(): number { return this.used; }
 }
 
 export function sendJson(ctx: Ctx, status: number, data: unknown): void {
@@ -199,15 +285,33 @@ export function normalizeIp(ip: string): string {
   return ip.startsWith('::ffff:') && isIPv4(ip.slice(7)) ? ip.slice(7) : ip;
 }
 
-/** Einfacher Token-Bucket je Schlüssel (pro Prozess). */
+/** Schlüssel für Ratenbegrenzung: IPv6 je /64-Netz (sonst lässt sich die Grenze mit wechselnden Adressen umgehen). */
+export function limiterKey(ip: string): string {
+  if (!isIPv6(ip)) return ip;
+  const plain = ip.split('%')[0];
+  const [head, tail] = plain.includes('::') ? plain.split('::') : [plain, undefined];
+  const h = head ? head.split(':') : [];
+  const t = tail !== undefined && tail !== '' ? tail.split(':') : [];
+  const groups = tail === undefined ? h : [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill('0'), ...t];
+  return groups.slice(0, 4).map((g) => (parseInt(g, 16) || 0).toString(16)).join(':') + '::/64';
+}
+
+/**
+ * Token-Bucket je Schlüssel (pro Prozess). Aufgeräumt wird zeitgesteuert (volle Buckets sind wie neue
+ * und werden entfernt), die Zahl der Schlüssel ist begrenzt: darüber werden die am längsten nicht
+ * benutzten verdrängt. Kosten je Aufruf bleiben dadurch konstant.
+ */
 export class RateLimiter {
   private buckets = new Map<string, { tokens: number; at: number }>();
   private capacity: number;
   private refillPerSec: number;
+  private maxKeys: number;
+  private lastSweep = Date.now();
 
-  constructor(capacity: number, refillPerSec: number) {
+  constructor(capacity: number, refillPerSec: number, maxKeys = 100_000) {
     this.capacity = capacity;
     this.refillPerSec = refillPerSec;
+    this.maxKeys = maxKeys;
   }
 
   take(key: string, cost = 1): boolean {
@@ -217,13 +321,28 @@ export class RateLimiter {
     b.at = t;
     const ok = b.tokens >= cost;
     if (ok) b.tokens -= cost;
+    // Neu einsortieren: Map-Reihenfolge = zuletzt benutzt am Ende
+    this.buckets.delete(key);
     this.buckets.set(key, b);
-    if (this.buckets.size > 50000) this.sweep();
+    if (this.buckets.size > this.maxKeys) {
+      // In einem Rutsch auf 80 % verdrängen (amortisiert konstant): erst volle Buckets, dann die ältesten
+      this.sweep(t);
+      const drop = this.buckets.size - Math.floor(this.maxKeys * 0.8);
+      if (drop > 0) {
+        let i = 0;
+        for (const k of this.buckets.keys()) { if (i++ >= drop) break; this.buckets.delete(k); }
+      }
+    }
+    if (t - this.lastSweep > 60_000) this.sweep(t);
     return ok;
   }
 
-  private sweep(): void {
-    const t = Date.now();
-    for (const [k, b] of this.buckets) if (t - b.at > 3600_000) this.buckets.delete(k);
+  private sweep(t: number): void {
+    this.lastSweep = t;
+    for (const [k, b] of this.buckets) {
+      if (b.tokens + ((t - b.at) / 1000) * this.refillPerSec >= this.capacity) this.buckets.delete(k);
+    }
   }
+
+  get size(): number { return this.buckets.size; }
 }

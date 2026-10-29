@@ -445,7 +445,7 @@ describe('#8 Uploads: Grenzen aus der Konfiguration, Scanner-Test', () => {
       Object.assign(process.env, env);
       try { return loadConfig({ secretKey: randomBytes(32), env: 'test' }); } finally { process.env = saved; }
     };
-    assert.deepEqual(load({ UPLOAD_MAX_FILE_MB: '5', UPLOAD_MAX_TOTAL_MB: '12' }).upload, { maxFileMb: 5, maxTotalMb: 12 });
+    assert.deepEqual(load({ UPLOAD_MAX_FILE_MB: '5', UPLOAD_MAX_TOTAL_MB: '12' }).upload, { maxFileMb: 5, maxTotalMb: 12, inflightMb: 64 });
     assert.throws(() => load({ UPLOAD_MAX_FILE_MB: '50' }), /UPLOAD_MAX_FILE_MB/);
     assert.throws(() => load({ UPLOAD_MAX_TOTAL_MB: '100' }), /UPLOAD_MAX_TOTAL_MB/);
     assert.throws(() => load({ UPLOAD_MAX_FILE_MB: '0' }), /UPLOAD_MAX_FILE_MB/);
@@ -453,7 +453,7 @@ describe('#8 Uploads: Grenzen aus der Konfiguration, Scanner-Test', () => {
 
   test('Formular und Antwort halten die Grenze aus der Konfiguration ein', async () => {
     const saved = p.app.cfg.upload;
-    p.app.cfg.upload = { maxFileMb: 1, maxTotalMb: 1 };
+    p.app.cfg.upload = { ...saved, maxFileMb: 1, maxTotalMb: 1 };
     try {
       const c = await entra(ANNA);
       const form = await c.get(`/api/portal/forms/${formId}`);

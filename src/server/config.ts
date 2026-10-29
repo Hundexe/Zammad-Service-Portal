@@ -76,7 +76,8 @@ export interface Config {
   };
   clamav: { host?: string; port: number; required: boolean };
   /** Obergrenzen für Uploads (MB). Formulare können kleiner, aber nie größer einstellen. */
-  upload: { maxFileMb: number; maxTotalMb: number };
+  /** inflightMb: so viele MB großer Bodys dürfen gleichzeitig im Speicher sein, weitere warten */
+  upload: { maxFileMb: number; maxTotalMb: number; inflightMb: number };
   retentionDays: number;
   /** Freigaben durch Vorgesetzte: Frist bis zum Verfall und Erinnerung (Tage, 0 = keine Erinnerung) */
   approval: { expireDays: number; remindDays: number };
@@ -152,6 +153,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     upload: {
       maxFileMb: range('UPLOAD_MAX_FILE_MB', 10, 1, 20, errors),
       maxTotalMb: range('UPLOAD_MAX_TOTAL_MB', 25, 1, 25, errors),
+      inflightMb: range('UPLOAD_INFLIGHT_MB', 64, 16, 1024, errors),
     },
     retentionDays: range('RETENTION_DAYS', 30, 1, 3650, errors),
     approval: {
