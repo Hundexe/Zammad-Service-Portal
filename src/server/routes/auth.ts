@@ -90,6 +90,8 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
     entra: app.cfg.entra.enabled,
     passwordMinLength: app.cfg.passwordMinLength,
     branding: globalBranding(app),
+    // Portal als App: Service Worker auch schon auf der Anmeldeseite registrieren
+    installApp: getFeatures(app).installApp,
   }));
 
   router.get('/api/me', { auth: 'any' }, (ctx: AppCtx) => {

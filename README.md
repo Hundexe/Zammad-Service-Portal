@@ -8,7 +8,7 @@ Self-Service-Portal für IT-Abteilungen mit einem oder mehreren Zammad-Systemen:
 
 Die Einführung im Video (3:18, mit Sprecher und Untertiteln) zeigt Anmeldung, Formulare mit Prüfung und Bedingungen, Freigabe durch die Führungskraft, Ticketverlauf und Benachrichtigungen, Status-Seite mit „Ich bin auch betroffen“, helles und dunkles Design, Baukasten mit einfacher und erweiterter Ansicht, Weiterleitung, Stile, Störungen und Probleme, Funktionsschalter, Verwaltung und Sicherheit. [Mit Ton auf der Webseite ansehen](https://hundexe.github.io/Zammad-Service-Portal/#video) oder [herunterladen](docs/video/service-portal-demo.mp4) ([Untertitel](docs/video/service-portal-demo.srt)).
 
-**Aktuelle Version: 1.12.0** – neu: Status-Seite mit Störungen, Wartungen, Service-Status und bekannten Problemen, „Ich bin auch betroffen“ statt doppelter Tickets, jede Funktion einzeln schaltbar. Alle [Änderungen](CHANGELOG.md), externes Review: [was geändert wurde](docs/REVIEW-2026-10.md), alle [Sicherheitsprüfungen](https://hundexe.github.io/Zammad-Service-Portal/doku/pruefungen.html).
+**Aktuelle Version: 1.13.0** – neu: das Portal als App installieren und **per Intune auf alle Geräte verteilen**. Seit 1.12: Status-Seite mit Störungen, Wartungen, Service-Status und bekannten Problemen, „Ich bin auch betroffen“ statt doppelter Tickets, jede Funktion einzeln schaltbar. Alle [Änderungen](CHANGELOG.md), externes Review: [was geändert wurde](docs/REVIEW-2026-10.md), alle [Sicherheitsprüfungen](https://hundexe.github.io/Zammad-Service-Portal/doku/pruefungen.html).
 
 <img src="docs/website/img/start.jpg" width="49%" alt="Startseite der Zentralen IT"> <img src="docs/website/img/ticket.jpg" width="49%" alt="Ticketverlauf als Chat">
 <img src="docs/website/img/status.jpg" width="49%" alt="Status-Seite mit aktuellen Störungen"> <img src="docs/website/img/freigabe.jpg" width="49%" alt="Freigabe durch die Führungskraft">
@@ -22,6 +22,7 @@ Die Einführung im Video (3:18, mit Sprecher und Untertiteln) zeigt Anmeldung, F
 - **Freigabe durch die Führungskraft**, wo es etwas kostet: Die Anfrage wartet im Portal und geht erst danach an die IT – mit Erinnerung, Frist und Vermerk im Ticket
 - **Meine Tickets** mit Verlauf wie im Chat (ohne doppelte Zitate und interne Notizen), Antworten direkt aus dem Portal und **Glocke**, sobald die IT antwortet
 - **Status-Seite** mit aktuellen Störungen, geplanten Wartungen, dem Zustand aller Services und bekannten Problemen mit Lösung; **„Ich bin auch betroffen“** mit einem Klick statt eines eigenen Tickets – Updates kommen automatisch
+- **Als App** im eigenen Fenster mit Symbol in Startmenü und Taskleiste – in Edge und Chrome mit einem Klick installiert, auf iPhone und iPad über „Zum Home-Bildschirm“
 - Hell oder dunkel, Handy oder Desktop, barrierearm (Tastatur, Screenreader, geprüfte Kontraste)
 
 **Für die IT**
@@ -30,7 +31,8 @@ Die Einführung im Video (3:18, mit Sprecher und Untertiteln) zeigt Anmeldung, F
 | --- | --- |
 | Mehrere Ticketsysteme | Beliebig viele Zammad-Instanzen an einem Portal, je System eigene Formulare, Vorlagen, Übersichten, Farben und Logos. Ein Auswahlfeld im Formular kann die Anfrage an ein anderes Ticketsystem oder eine andere Abteilung weiterleiten |
 | Status und Störungen | **Neu:** Störungen mit Updates, Banner bei großen Störungen, Liste der Betroffenen, geplante Wartungen, Service-Status, Probleme mit Ursache, Workaround und verknüpften Tickets. Zammad bleibt führend: Tickets zu Störungen und Problemen bekommen dort Tags (`inc-0003`, `prb-0001`) |
-| Funktionen | **Neu:** Jede Funktion einzeln ein- und ausschaltbar – Status, Störungen, Wartungen, Probleme, Freigabe, Weiterleitung, Benachrichtigungen |
+| Portal als App | **Neu:** installierbar als Progressive Web App; **Verteilung per Intune** (Edge-Richtlinie `WebAppInstallForceList`) mit fertigem Wert aus der Verwaltung. Symbol in den Farben des Portals, keine Daten auf dem Gerät – [Anleitung](docs/APP.md) |
+| Funktionen | Jede Funktion einzeln ein- und ausschaltbar – Status, Störungen, Wartungen, Probleme, Freigabe, Weiterleitung, Benachrichtigungen, App |
 | Formular-Baukasten | Ziehen und Ablegen, Live-Vorschau, Bedingungen, Prüfmuster, Felder nur für bestimmte Gruppen, Versionen, optional Vier-Augen-Prinzip, Formulare und Vorlagen als Datei |
 | Ansicht Einfach / Erweitert | „Einfach“ zeigt nur, was man im Alltag braucht, „Erweitert“ jede Stellschraube – der Server prüft in beiden gleich |
 | Tickets in Zammad | Angelegt im Namen der Person, mit Gruppe, Priorität, Tags und freigegebenen Zammad-Feldern – nur in **erlaubte Gruppen**; Kernfelder wie Besitzer oder Status setzt nie ein Formular |
@@ -98,6 +100,7 @@ Alle Anleitungen gibt es auch lesefreundlich auf der Webseite: **[hundexe.github
 | [Installation](docs/INSTALLATION.md) | Ein Befehl oder Schritt für Schritt, mit Docker oder direkt auf Debian |
 | [Microsoft-Anmeldung](docs/ENTRA.md) | Entra ID Schritt für Schritt: App-Registrierung, Rechte, Gruppen, zwei Tenants, Test, Fehler |
 | [Bedienung](docs/BEDIENUNG.md) | Portal für Mitarbeitende und Verwaltung, mit Screenshots |
+| [Portal als App](docs/APP.md) | Als App installieren, per Intune oder Gruppenrichtlinie verteilen, Handys, Sicherheit, Fehlersuche |
 | [Architektur](docs/ARCHITEKTUR.md) | Aufbau, Datenfluss, Datenmodell, Zammad-Anbindung |
 | [Sicherheit](docs/SICHERHEIT.md) | Schutzmaßnahmen, Bedrohungsmodell, Abgleich mit OWASP |
 | [Penetrationstest](docs/PENTEST.md) | Vorgehen, Werkzeuge, Ergebnisse und behobene Funde |
@@ -116,7 +119,7 @@ TypeScript auf Node.js 24 ohne externe Laufzeitpakete (HTTP, Krypto, SQLite und 
 ## Tests
 
 ```bash
-npm test                        # 332 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
+npm test                        # 341 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
 npm run typecheck
 node tools/loadtest.ts          # Lasttest: 50 Logins, 50 Ticketansichten, 20 Anfragen mit Anhang
 bash tools/secret-scan.sh       # vor jeder Veröffentlichung: keine Geheimnisse im Repository

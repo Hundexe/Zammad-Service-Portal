@@ -1153,8 +1153,12 @@ details.more > * + * { margin-top: .85rem; }
 .st-banner-text { flex: 1; min-width: 200px; display: flex; flex-wrap: wrap; gap: .1rem .75rem; align-items: baseline; }
 .st-banner-text span { opacity: .9; font-size: .9375rem; }
 .st-banner a { color: inherit; font-weight: 600; }
-.st-banner:not(.st-banner-slim) .btn-primary { background: #fff; color: var(--ink); }
-.st-banner:not(.st-banner-slim) .btn-secondary { background: rgba(255,255,255,.18); color: #fff; }
+/* Feste Farben: var(--ink) ist im dunklen Design hell – das ergab weiße Schrift auf weißem Knopf */
+.st-banner:not(.st-banner-slim) .btn-primary { background: #fff; color: #1b1b1f; border-color: #fff; }
+.st-banner:not(.st-banner-slim) .btn-primary:hover { background: #f1f1f4; color: #1b1b1f; }
+.st-banner:not(.st-banner-slim) .btn-primary svg { stroke: currentColor; }
+.st-banner:not(.st-banner-slim) .btn-secondary { background: rgba(255,255,255,.18); color: #fff; border-color: rgba(255,255,255,.55); }
+.st-banner:not(.st-banner-slim) .btn-secondary:hover { background: rgba(255,255,255,.28); color: #fff; }
 .st-banner .affected-count, .st-banner .link-btn { color: inherit; opacity: .9; }
 
 .form-notices { display: grid; gap: .75rem; margin: 0 0 1.25rem; }
@@ -1181,3 +1185,9 @@ details.more > * + * { margin-top: .85rem; }
 .toggle-input:focus-visible + .toggle-track { outline: 3px solid color-mix(in srgb, var(--focus) 55%, transparent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .toggle-track, .toggle-track::after { transition: none; } }
 .itsm-detail { align-items: start; }
+
+/* Funktionen › Portal als App: Verteilung per Intune */
+.intune { margin-top: 1rem; border: 1px solid var(--line); border-radius: var(--r-sm); }
+.intune > summary { display: flex; gap: .5rem; align-items: center; padding: .75rem 1rem; cursor: pointer; font-weight: 600; }
+.intune-body { padding: 0 1rem 1rem; display: grid; gap: .75rem; }
+.policy-json { margin: 0; max-height: 14rem; overflow: auto; }

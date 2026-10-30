@@ -53,6 +53,9 @@ for (const f of walk(out).filter((x) => extname(x) === '.js' && !x.endsWith('the
   writeFileSync(f, js);
 }
 writeFileSync(join(out, 'index.html'), readFileSync(join(root, 'src/web/index.html'), 'utf8').replace(/__BUILD__/g, build));
+// Service Worker (Portal als App): liegt im Wurzelverzeichnis, damit er für das ganze Portal gilt.
+// Die Build-Kennung darin ändert die Datei bei jedem Update – so übernehmen Browser die neue Fassung.
+writeFileSync(join(out, 'sw.js'), readFileSync(join(root, 'src/web/sw.js'), 'utf8').replace(/__BUILD__/g, build));
 // Das Frontend in app/ nutzt Importe wie '../../shared/form.js' – passt zur Struktur dist/web/app → dist/web/shared.
 const count = walk(out).filter((f) => extname(f) === '.js').length;
 console.log(`Frontend gebaut: ${count} Module, Build ${build}`);

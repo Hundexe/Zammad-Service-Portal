@@ -45,7 +45,7 @@ export const problemTag = (n: number) => `prb-${String(n).padStart(4, '0')}`;
 
 // ------------------------------------------------------------------------------------------ Funktionen
 
-export const FEATURE_KEYS = ['status', 'incidents', 'maintenance', 'problems', 'approvals', 'routing', 'replyNotifications'] as const;
+export const FEATURE_KEYS = ['status', 'incidents', 'maintenance', 'problems', 'approvals', 'routing', 'replyNotifications', 'installApp'] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
 export interface Features {
@@ -56,6 +56,8 @@ export interface Features {
   approvals: boolean;
   routing: boolean;
   replyNotifications: boolean;
+  /** Portal lässt sich als App installieren (Web-App-Manifest, Service Worker, Verteilung per Intune) */
+  installApp: boolean;
   /** Standorte, die bei Störungen und Wartungen auswählbar sind (z. B. „Zentrale“, „Standort Nord“) */
   locations: string[];
   /** Bei einer großen Störung alle Benutzer des Ticketsystems benachrichtigen (sonst nur Banner) */
@@ -64,7 +66,8 @@ export interface Features {
   showAffectedCount: boolean;
 }
 
-/** Neue Funktionen sind zunächst aus, bestehende an – ein Update ändert nichts am Verhalten. */
+/** Neue Funktionen sind zunächst aus, bestehende an – ein Update ändert nichts am Verhalten.
+ *  Ausnahme: „Als App installierbar“ ändert keinen Ablauf, sondern bietet nur die Installation an. */
 export const DEFAULT_FEATURES: Features = {
   status: false,
   incidents: false,
@@ -73,12 +76,13 @@ export const DEFAULT_FEATURES: Features = {
   approvals: true,
   routing: true,
   replyNotifications: true,
+  installApp: true,
   locations: [],
   notifyAllOnMajor: false,
   showAffectedCount: true,
 };
 
-export interface FeatureInfo { key: FeatureKey; label: string; description: string; group: 'itsm' | 'requests' }
+export interface FeatureInfo { key: FeatureKey; label: string; description: string; group: 'itsm' | 'requests' | 'portal' }
 export const FEATURE_INFO: FeatureInfo[] = [
   { key: 'status', group: 'itsm', label: 'Service-Status', description: 'Status-Seite mit allen IT-Services und ihrem Zustand. Der Zustand ergibt sich aus Störungen und Wartungen oder wird von Hand gesetzt.' },
   { key: 'incidents', group: 'itsm', label: 'Störungen', description: 'Die IT veröffentlicht Störungen mit laufenden Updates. Große Störungen erscheinen als Banner. Mitarbeitende melden sich mit „Ich bin auch betroffen“ statt mit einem eigenen Ticket und bekommen jedes Update.' },
@@ -87,6 +91,7 @@ export const FEATURE_INFO: FeatureInfo[] = [
   { key: 'approvals', group: 'requests', label: 'Freigabe durch Vorgesetzte', description: 'Formularfeld „Freigabe durch Vorgesetzte(n)“. Ausgeschaltet gehen neue Anfragen ohne Freigabe direkt an die IT; schon wartende Freigaben laufen weiter.' },
   { key: 'routing', group: 'requests', label: 'Weiterleitung aus Formularen', description: 'Auswahlfelder können Anfragen an ein anderes Ticketsystem leiten. Ausgeschaltet bleibt jede Anfrage im Ticketsystem ihres Formulars.' },
   { key: 'replyNotifications', group: 'requests', label: 'Benachrichtigung bei Antworten', description: 'Antwortet die IT in Zammad, erscheint im Portal eine Nachricht unter der Glocke.' },
+  { key: 'installApp', group: 'portal', label: 'Als App installierbar', description: 'Das Portal lässt sich in Edge und Chrome als App installieren – eigenes Fenster, Symbol im Startmenü und in der Taskleiste. Per Intune auch für alle Geräte verteilbar. Ausgeschaltet bieten die Browser keine Installation mehr an.' },
 ];
 
 /** Prüft und vervollständigt gespeicherte oder übermittelte Einstellungen. Wirft bei ungültigen Werten. */

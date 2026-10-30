@@ -1,5 +1,15 @@
 # Änderungen
 
+## 1.13.0 – 30.10.2026
+
+- **Portal als App (PWA):** Das Portal lässt sich in Edge und Chrome als App installieren – eigenes Fenster, Symbol im Startmenü und in der Taskleiste, Titelleiste in den Farben des Portals, Kurzbefehle „Anfrage stellen“, „Meine Anfragen“ und „Status“. Im Menü unter dem eigenen Namen steht **„Als App installieren“**, unter **Konto und Sicherheit › Als App nutzen** eine Anleitung für jeden Browser (auch Safari auf iPhone und iPad)
+- **Verteilung per Intune:** Unter **Funktionen › Portal als App** steht der fertige Wert für die Edge- bzw. Chrome-Richtlinie `WebAppInstallForceList` (optional mit Desktop-Verknüpfung) – kopieren, im Einstellungskatalog einfügen, Gruppen zuweisen. Neue Anleitung [Portal als App und Verteilung per Intune](docs/APP.md), auch mit Gruppenrichtlinie, Registry, macOS und Handys
+- App-Symbole erzeugt der Server selbst in den Farben der Farbfläche (alle Größen, „maskable“ für Android, Apple-Touch-Icon); ein eigenes Favicon als SVG oder PNG ab 192 Pixeln wird zusätzlich angeboten
+- Service Worker ohne Zwischenspeicher: ohne Netz die Seite „Keine Verbindung zum Portal“ statt der Fehlerseite des Browsers, keine Daten auf dem Gerät, `/api/` bleibt unberührt. CSP um `worker-src 'self'` ergänzt
+- Neuer Schalter **Als App installierbar** unter Funktionen (Standard an); ausgeschaltet antworten Manifest und Symbole mit 404 und der Service Worker meldet sich ab
+- Behoben: Im dunklen Design war der Knopf „Ich bin auch betroffen“ im roten Störungs-Banner weiß auf weiß
+- 9 neue Tests
+
 ## 1.12.0 – 30.10.2026
 
 - **Funktionen ein- und ausschalten:** neuer Bereich **Verwaltung → Funktionen**. Neu und zunächst aus: Service-Status, Störungen, Geplante Wartungen, Bekannte Probleme. Bestehend und an: Freigabe durch Vorgesetzte, Weiterleitung aus Formularen, Benachrichtigung bei Antworten. Ausgeschaltetes verschwindet aus Portal und Verwaltung, der Server lehnt es ab

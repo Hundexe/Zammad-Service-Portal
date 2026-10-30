@@ -41,6 +41,7 @@ Empfohlener Weg: eigene VM → 4 Wochen mit 5–10 IT-Benutzern → Pilot mit ei
 | ☐ | Test nach Zammad-Update | nach jedem Zammad-Update: Verbindungstest, Testanfrage, Ticketansicht, interne Notiz | – |
 | ☐ | manueller Rollback geübt | [UPDATES.md](UPDATES.md#manuell-zurückrollen) einmal auf der Test-VM durchspielen | – |
 | ☐ | Freigabe durch Vorgesetzte (falls genutzt) | Testanfrage mit Freigabe-Feld: freigebende Person sieht sie unter „Freigaben“, Kollegin ohne Eintrag bekommt 404; Freigabe → Ticket mit Vermerk und Tag `freigegeben`; Ablehnung → kein Ticket; `APPROVAL_EXPIRE_DAYS` passt zu den Abläufen | ja (approvals) |
+| ☐ | Portal als App verteilen (optional) | Intune-Richtlinie `WebAppInstallForceList` mit dem Wert aus **Funktionen › Portal als App** einer Testgruppe zuweisen → `edge://policy` zeigt sie, `edge://apps` das Portal, App startet im eigenen Fenster; ohne Netz erscheint „Keine Verbindung zum Portal“ ([APP.md](APP.md)) | ja (pwa) |
 | ☐ | Exit-Strategie | Formulare sind in Zammad nachbaubar; Tickets liegen ohnehin in Zammad – das Portal lässt sich jederzeit abschalten | – |
 
 ## Nach dem Go-Live

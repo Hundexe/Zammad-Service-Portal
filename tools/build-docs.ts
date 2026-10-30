@@ -13,6 +13,7 @@ export const DOCS: { file: string; page: string; name: string; hint: string }[] 
   { file: 'INSTALLATION.md', page: 'installation', name: 'Installation', hint: 'Schritt für Schritt' },
   { file: 'ENTRA.md', page: 'microsoft-anmeldung', name: 'Microsoft-Anmeldung', hint: 'App, Rechte, Gruppen' },
   { file: 'BEDIENUNG.md', page: 'bedienung', name: 'Bedienung', hint: 'Portal und Verwaltung' },
+  { file: 'APP.md', page: 'app', name: 'Portal als App', hint: 'Installieren, per Intune verteilen' },
   { file: 'BETRIEB.md', page: 'betrieb', name: 'Betrieb', hint: 'Sicherung, Monitoring, Härtung' },
   { file: 'UPDATES.md', page: 'updates', name: 'Updates', hint: 'Releases, Rollback' },
   { file: 'SICHERHEIT.md', page: 'sicherheit', name: 'Sicherheit', hint: 'Schutzmaßnahmen, Tests' },

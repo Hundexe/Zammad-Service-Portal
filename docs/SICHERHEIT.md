@@ -81,6 +81,13 @@ Dieses Dokument beschreibt, wie das Portal geschützt ist, gegen welche Angriffe
 - Ratenbegrenzung je IP für alle API-Aufrufe, ändernde Aufrufe und Anmeldungen.
 - API-Antworten werden weder zwischengespeichert (`no-store`) noch komprimiert (BREACH-Vorbeugung).
 
+### Portal als App (PWA)
+
+- Der **Service Worker** (`/sw.js`) speichert nichts zwischen – keine Seiten, Daten oder Anhänge. Er zeigt ohne Netz nur eine statische Hinweisseite und lässt alle Aufrufe unter `/api/` (Anmeldung, Daten, Weiterleitungen zu Microsoft) unberührt; bei jeder Aktivierung leert er alle Zwischenspeicher des Portals.
+- CSP: `worker-src 'self'` und `manifest-src 'self'` – Service Worker und Manifest nur vom eigenen Server.
+- Manifest und App-Symbole sind öffentlich (für die Installation vor der Anmeldung und die Verteilung per Intune) und enthalten nur Name und Farben des Portals.
+- Abschaltbar unter **Funktionen** (Manifest und Symbole → 404, Service Worker meldet sich ab). Details: [APP.md](APP.md#sicherheit).
+
 ### Export und Import
 
 - Nur globale Admins mit „Ticketsystem verwalten“, aus dem Admin-Netz; Export und Import verlangen eine frische Anmeldung (Step-up). Beides steht im Audit-Log (`transfer.exported`, `transfer.imported`).

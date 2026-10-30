@@ -350,8 +350,9 @@ export async function planImport(app: App, file: unknown, password?: string): Pr
       if (!Array.isArray(s.services) || s.services.length > 200) errors.push(`${w}: Services ungültig`);
       else for (const x of s.services) {
         if (!isObj(x) || typeof x.name !== 'string' || !x.name.trim() || x.name.length > 120 || (x.description !== undefined && (typeof x.description !== 'string' || x.description.length > 1000))) { errors.push(`${w}: Service ungültig`); continue; }
-        if (services.some((y) => y.name.toLowerCase() === x.name.trim().toLowerCase())) continue;
-        services.push({ name: x.name.trim(), description: typeof x.description === 'string' ? x.description : '', sort: typeof x.sort === 'number' && Number.isInteger(x.sort) ? x.sort : 0 });
+        const name = (x.name as string).trim();
+        if (services.some((y) => y.name.toLowerCase() === name.toLowerCase())) continue;
+        services.push({ name, description: typeof x.description === 'string' ? x.description : '', sort: typeof x.sort === 'number' && Number.isInteger(x.sort) ? x.sort : 0 });
       }
     }
     systems.push({

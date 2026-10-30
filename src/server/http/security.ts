@@ -10,6 +10,7 @@ export const CSP = [
   "font-src 'self'",
   "connect-src 'self'",
   "manifest-src 'self'",
+  "worker-src 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
   "base-uri 'none'",

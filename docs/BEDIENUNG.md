@@ -119,6 +119,12 @@ Das Portal passt sich an kleine Bildschirme an.
 
 <img src="screenshots/09-mobil-start.png" width="300" alt="Startseite auf dem Handy"> <img src="screenshots/09b-mobil-formular.png" width="300" alt="Formular auf dem Handy">
 
+### Als App installieren
+
+Das Portal lässt sich in **Edge** und **Chrome** als App installieren: **„Als App installieren“** im Menü unter dem eigenen Namen. Es öffnet sich dann in einem eigenen Fenster und hat ein Symbol im Startmenü und in der Taskleiste. Auf iPhone und iPad: in Safari **Teilen › Zum Home-Bildschirm**. Eine Anleitung für jeden Browser steht im Portal unter **Konto und Sicherheit › Als App nutzen**. Oft hat die IT die App schon per Intune verteilt – dann ist sie bereits im Startmenü. Mehr: [Portal als App](APP.md).
+
+<img src="website/img/app-menue.jpg" width="49%" alt="Menü mit „Als App installieren“"> <img src="website/img/app-konto.jpg" width="49%" alt="Konto: Als App nutzen">
+
 ### Helles und dunkles Design
 
 Das Mond-Symbol oben rechts schaltet auf das dunkle Design um, die Sonne zurück auf hell. Ohne eigene Wahl folgt das Portal der Einstellung von Windows, macOS oder dem Handy. Die Wahl wird nur im eigenen Browser gespeichert.
@@ -127,7 +133,7 @@ Das Mond-Symbol oben rechts schaltet auf das dunkle Design um, die Sonne zurück
 
 ### Konto
 
-Unter dem Namen oben rechts: **Meine Anfragen** (alles, was über das Portal gesendet wurde, mit dem Stand der Freigaben), **Freigaben**, **Konto und Sicherheit** und **Abmelden**.
+Unter dem Namen oben rechts: **Meine Anfragen** (alles, was über das Portal gesendet wurde, mit dem Stand der Freigaben), **Freigaben**, **Konto und Sicherheit**, **Als App installieren** (wenn der Browser es anbietet) und **Abmelden**.
 
 ![Konto](screenshots/22-konto.png)
 
@@ -296,10 +302,15 @@ Unter **Funktionen** (Recht „Globale Einstellungen ändern“) wird jede Funkt
 | Freigabe durch Vorgesetzte | an | das Freigabe-Feld entfällt, neue Anfragen gehen direkt an die IT; schon wartende Freigaben laufen weiter |
 | Weiterleitung aus Formularen | an | jede Anfrage bleibt im Ticketsystem ihres Formulars |
 | Benachrichtigung bei Antworten | an | keine Nachricht unter der Glocke, wenn die IT in Zammad antwortet |
+| Als App installierbar | an | Edge und Chrome bieten keine Installation mehr an, kein Manifest, kein Service Worker |
 
 Dazu: **Standorte** (bei Störungen und Wartungen auswählbar), **Anzahl der Betroffenen im Portal zeigen** und **Bei großen Störungen alle benachrichtigen** (alle, die das Ticketsystem sehen und sich in den letzten 90 Tagen angemeldet haben).
 
 ![Funktionen](website/img/admin-funktionen.jpg)
+
+Unter **Portal als App › Per Intune auf alle Geräte verteilen** steht der fertige Wert für die Edge-Richtlinie `WebAppInstallForceList` mit der Adresse des Portals – zum Kopieren in Intune. Damit installiert Edge das Portal auf allen zugewiesenen Geräten automatisch. Schritt für Schritt: [Portal als App und Verteilung per Intune](APP.md#per-intune-verteilen).
+
+![Portal als App: Vorlage für Intune](website/img/app-intune.jpg)
 
 ### Status und Störungen verwalten
 

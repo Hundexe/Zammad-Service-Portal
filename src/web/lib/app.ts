@@ -5,6 +5,7 @@ import { button, dialog, errorText, fieldWrap, input, loading, notice, toast } f
 import { effectiveColors, LOGO_LIMITS, luminance, NAV_LINK_RE, themeOf, type Branding } from '../../shared/branding.ts';
 import { DEMO, demoBackend } from './env.ts';
 import { DEFAULT_FEATURES, type FeatureKey, type Features } from '../../shared/itsm.ts';
+import { installApp, installAvailable, onInstallChange } from './pwa.ts';
 
 // ---------------------------------------------------------------- Adresse
 // Normal: echte Pfade (/s/…). In der statischen Demo: alles hinter dem # (#/s/…).
@@ -46,7 +47,7 @@ export interface PortalSystem { id: string; slug: string; name: string; status: 
 
 export const state = {
   me: null as Me | null,
-  config: null as { localLogin: boolean; entra: boolean; passwordMinLength?: number; branding: Branding } | null,
+  config: null as { localLogin: boolean; entra: boolean; passwordMinLength?: number; branding: Branding; installApp?: boolean } | null,
   systems: [] as PortalSystem[],
   systemId: null as string | null,
 };
@@ -84,6 +85,10 @@ export function applyBranding(b: Branding | undefined | null): void {
   let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
   if (!link) { link = h('link', { attrs: { rel: 'icon' } }); document.head.appendChild(link); }
   link.href = br.faviconId ? assetUrl(br.faviconId) : DEMO ? 'favicon.svg' : '/favicon.svg';
+  // Farbe der Titelleiste (installierte App, Handy-Browser)
+  let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (!meta) { meta = h('meta', { attrs: { name: 'theme-color' } }); document.head.appendChild(meta); }
+  meta.content = c.headerColor;
 }
 
 /** Logo für die Farbfläche: auf dunkler Fläche das helle Logo („Logo auf der Farbfläche“),
@@ -345,10 +350,29 @@ export function userMenu(): HTMLElement {
       link('/freigaben', 'Freigaben'),
       link('/konto', 'Konto und Sicherheit'),
       me.isAdmin ? link('/admin', 'Verwaltung') : null,
+      installMenuItem(),
       h('button', { class: 'menu-item', attrs: { type: 'button' }, on: { click: () => void logout() } }, icon('out', 16), 'Abmelden'),
     ));
   details.addEventListener('click', (e) => { if ((e.target as HTMLElement).closest('a')) details.open = false; });
   return details;
+}
+
+/** „Als App installieren“ – nur sichtbar, wenn der Browser die Installation gerade anbietet (Edge, Chrome). */
+function installMenuItem(): HTMLElement {
+  const btn = h('button', { class: 'menu-item', attrs: { type: 'button' }, on: {
+    click: async () => {
+      (btn.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
+      if (await installApp()) toast('Das Portal ist jetzt als App installiert');
+    },
+  } }, icon('install', 16), 'Als App installieren');
+  const sync = () => {
+    if (!btn.isConnected && btn.dataset.mounted) { off(); return; }
+    btn.hidden = !installAvailable();
+  };
+  const off = onInstallChange(sync);
+  sync();
+  requestAnimationFrame(() => { btn.dataset.mounted = '1'; });
+  return btn;
 }
 
 export function initials(name: string): string {

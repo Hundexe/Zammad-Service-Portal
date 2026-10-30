@@ -129,7 +129,7 @@ src/
     auth/          Sitzungen, OIDC (Entra), TOTP
     services/      Audit, Rechte, Benutzer, Formulare, Anfragen, Freigaben, Benachrichtigungen, Dateien, Zammad-Stammdaten
     connectors/    Zammad-Anbindung
-    routes/        API: auth, portal, admin
+    routes/        API: auth, portal, admin, itsm, pwa
     db/            SQLite, Migrationen
   web/             Frontend (ohne Framework, ohne innerHTML)
 updater/           Update-Dienst
@@ -141,6 +141,10 @@ deploy/            Docker Compose, Caddy, Installationsskript
 ## Status und Störungen
 
 Zammad bleibt das führende System für Tickets. Das Portal ergänzt eine Schicht davor: Services, Störungen, Wartungen und Probleme liegen im Portal (je Ticketsystem), Tickets nur in Zammad. Die Verbindung entsteht über **Tags**: Das führende Ticket einer Störung und Tickets, die während einer Störung aus einem zugeordneten Formular entstehen, tragen `inc-0003`; mit einem Problem verknüpfte Tickets `prb-0001`. Der Zustand eines Services ergibt sich bei jedem Abruf aus offenen Störungen, laufenden Wartungen und einem optionalen Zustand von Hand (der schlimmste gewinnt). „Ich bin auch betroffen“ speichert nur die Zuordnung Person ↔ Störung; Updates gehen als Benachrichtigung an diese Personen. Alle Funktionen sind über `settings.features` schaltbar (`src/shared/itsm.ts`, `src/server/services/itsm.ts`, `src/server/routes/itsm.ts`).
+
+## Portal als App
+
+Das Portal ist eine Progressive Web App. `GET /api/app/manifest` liefert das Web-App-Manifest aus der globalen Gestaltung (Name, Farbe der Farbfläche, Kurzbefehle), `GET /api/app/icon/<datei>` die App-Symbole. Die Symbole zeichnet der Server selbst – ohne Bildbibliothek: Kantenglättung über vorzeichenbehaftete Abstände, PNG über `zlib` (`src/server/services/pwa.ts`); sie werden je Farbe zwischengespeichert. Der Service Worker `src/web/sw.js` trägt die Build-Kennung, damit Browser nach jedem Update die neue Fassung übernehmen, und speichert bewusst nichts zwischen. `GET /api/admin/settings/app` liefert den fertigen Wert für die Richtlinie `WebAppInstallForceList` (Intune). Schalter: `installApp` in `settings.features`. Anleitung: [APP.md](APP.md).
 
 ## Datenmodell
 

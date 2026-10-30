@@ -17,6 +17,7 @@ import { registerAuthRoutes, totpRequired } from './routes/auth.ts';
 import { registerPortalRoutes } from './routes/portal.ts';
 import { registerAdminRoutes } from './routes/admin.ts';
 import { registerItsmRoutes } from './routes/itsm.ts';
+import { registerPwaRoutes } from './routes/pwa.ts';
 import { safeEqual } from './crypto.ts';
 
 export interface ServerDeps { entra: EntraClient | null }
@@ -39,6 +40,7 @@ export function buildRouter(app: App, deps: ServerDeps): Router {
   registerPortalRoutes(router, app);
   registerAdminRoutes(router, app);
   registerItsmRoutes(router, app);
+  registerPwaRoutes(router, app);
   return router;
 }
 

@@ -2,7 +2,9 @@
 import { h, icon, mount, fmtDate, relTime, type Child } from '../lib/dom.ts';
 import { ApiError, fileToBase64, get, post } from '../lib/api.ts';
 import { button, confirmDialog, dialog, emptyState, errorText, notice, pageHead, statusBadge, tabs, textarea, ticketState, toast, table, fieldWrap } from '../lib/ui.ts';
-import { currentSystem, link, loadMe, loadSystems, navigate, selectSystem, state, systemSwitch, assetUrl, bandLogoId, curPath, setUrl } from '../lib/app.ts';
+import { currentSystem, feature, link, loadMe, loadSystems, navigate, selectSystem, state, systemSwitch, assetUrl, bandLogoId, curPath, setUrl } from '../lib/app.ts';
+import { installApp, installAvailable, installHint, isStandalone, onInstallChange } from '../lib/pwa.ts';
+import { DEMO } from '../lib/env.ts';
 import { renderForm, type Person } from '../lib/formrender.ts';
 import { refreshCounts } from '../lib/notify.ts';
 import type { FormDefinition } from '../../shared/form.ts';
@@ -332,6 +334,24 @@ export async function requestsPage() {
   return host;
 }
 
+/** Konto: Portal als App installieren (eigenes Fenster, Symbol in Startmenü und Taskleiste) */
+function appPanel(): HTMLElement {
+  const body = h('div');
+  const draw = () => {
+    if (!body.isConnected && body.dataset.mounted) { off(); return; }
+    if (isStandalone()) { mount(body, notice('ok', 'Sie nutzen das Portal bereits als App.')); return; }
+    mount(body,
+      h('p', { class: 'muted' }, 'Das Portal öffnet sich dann in einem eigenen Fenster und hat ein Symbol im Startmenü und in der Taskleiste – wie eine installierte Anwendung.'),
+      installAvailable()
+        ? button('Als App installieren', async () => { if (await installApp()) toast('Das Portal ist jetzt als App installiert'); }, { kind: 'primary', icon: 'install' })
+        : h('p', null, installHint()));
+  };
+  const off = onInstallChange(draw);
+  draw();
+  requestAnimationFrame(() => { body.dataset.mounted = '1'; });
+  return h('section', { class: 'panel' }, h('h2', null, 'Als App nutzen'), body);
+}
+
 export async function accountPage() {
   const me = state.me!;
   const host = h('div', { class: 'container narrow' });
@@ -355,7 +375,8 @@ export async function accountPage() {
         h('dt', null, 'E-Mail'), h('dd', null, me.user.email ?? '–'),
         h('dt', null, 'Abteilung'), h('dd', null, me.user.department ?? '–'),
         h('dt', null, 'Anmeldung'), h('dd', null, me.user.kind === 'entra' ? 'Microsoft (Entra ID)' : `Lokales Konto (${me.user.username})`))),
-      ...sec);
+      ...sec,
+      feature('installApp') && !DEMO ? appPanel() : null); // statische Demo: nicht installierbar
   };
   await draw();
   return host;

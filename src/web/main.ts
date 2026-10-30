@@ -4,6 +4,7 @@ import { get } from './lib/api.ts';
 import { applyBranding, currentSystem, link, loadMe, loadSystems, navBrand, navLinks, themeToggle, render, route, selectSystem, setLayouts, setPrepare, state, statusEnabled, userMenu, navigate } from './lib/app.ts';
 import { notice } from './lib/ui.ts';
 import { DEMO, setDemoBackend } from './lib/env.ts';
+import { initPwa } from './lib/pwa.ts';
 import { loginPage } from './pages/login.ts';
 import { accountPage, formPage, homePage, requestsPage, ticketDetailPage, ticketsPage } from './pages/portal.ts';
 import { approvalDetailPage, approvalsPage } from './pages/approvals.ts';
@@ -161,6 +162,7 @@ async function boot() {
     }
     state.config = await get('/api/public/config');
     applyBranding(state.config!.branding);
+    initPwa(state.config!.installApp === true);
     const me = await loadMe();
     if (me?.state === 'active') await loadSystems().catch(() => undefined);
     startPolling();

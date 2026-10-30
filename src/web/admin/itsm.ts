@@ -2,7 +2,7 @@
 import { h, icon, mount, fmtDate, relTime, type Child } from '../lib/dom.ts';
 import { ApiError, del, get, post, put } from '../lib/api.ts';
 import { curPath, link, loadMe, navigate, setUrl } from '../lib/app.ts';
-import { badge, button, checkbox, confirmDialog, dialog, emptyState, errorText, fieldWrap, input, listInput, notice, pageHead, select, table, tabs, textarea, toast } from '../lib/ui.ts';
+import { badge, button, checkbox, confirmDialog, copyButton, dialog, emptyState, errorText, fieldWrap, input, listInput, notice, pageHead, select, table, tabs, textarea, toast } from '../lib/ui.ts';
 import {
   INCIDENT_IMPACTS, INCIDENT_STATES, INCIDENT_STATE_LABEL, PROBLEM_STATES, PROBLEM_STATE_LABEL, SERVICE_STATUS_LABEL,
   type FeatureInfo, type Features, type IncidentState, type ProblemState, type ServiceStatus,
@@ -39,6 +39,10 @@ export async function featuresPage(): Promise<Child> {
     h('section', { class: 'panel' },
       h('h2', null, 'Anfragen'),
       h('ul', { class: 'feature-list' }, ...r.info.filter((i) => i.group === 'requests').map(row))),
+    h('section', { class: 'panel' },
+      h('h2', null, 'Portal als App'),
+      h('ul', { class: 'feature-list' }, ...r.info.filter((i) => i.group === 'portal').map(row)),
+      await intunePanel()),
     h('div', { class: 'form-actions sticky' }, button('Speichern', async () => {
       try {
         await put('/api/admin/settings/features', { features: f });
@@ -47,6 +51,34 @@ export async function featuresPage(): Promise<Child> {
         navigate(curPath(), true);
       } catch (err) { mount(msg, notice('error', errorText(err))); window.scrollTo({ top: 0 }); }
     }, { kind: 'primary' })));
+}
+
+/** Verteilung per Intune: fertiger Wert für die Edge-Richtlinie „WebAppInstallForceList“ */
+async function intunePanel(): Promise<HTMLElement> {
+  const a = await get<{ enabled: boolean; url: string; name: string; policy: string; policyDesktop: string }>('/api/admin/settings/app');
+  let desktop = false;
+  const code = h('pre', { class: 'policy-json', attrs: { 'aria-label': 'Wert für die Richtlinie' } });
+  const copyHost = h('span');
+  const draw = () => {
+    const v = desktop ? a.policyDesktop : a.policy;
+    code.textContent = v;
+    mount(copyHost, copyButton(v, 'Wert kopieren'));
+  };
+  draw();
+  return h('details', { class: 'intune', attrs: a.enabled ? { open: '' } : {} },
+    h('summary', null, icon('laptop', 16), 'Per Intune auf alle Geräte verteilen'),
+    h('div', { class: 'intune-body' },
+      h('p', { class: 'muted small' }, 'Edge (und Chrome) installieren das Portal dann ohne Zutun als App – mit Symbol im Startmenü, auf Wunsch auch auf dem Desktop. Die Mitarbeitenden können die App nicht entfernen; wer aus der Zuweisung fällt, verliert sie wieder.'),
+      h('ol', { class: 'steps' },
+        h('li', null, 'Intune Admin Center › Geräte › Windows › Konfiguration › ', h('strong', null, 'Erstellen'), ' › Neue Richtlinie: Plattform „Windows 10 und höher“, Profiltyp „Einstellungskatalog“.'),
+        h('li', null, 'Einstellungen hinzufügen › nach ', h('code', null, 'WebAppInstallForceList'), ' suchen › Kategorie „Microsoft Edge“ › ', h('strong', null, 'Configure list of force-installed Web Apps'), ' (Geräteeinstellung).'),
+        h('li', null, 'Einstellung aktivieren und den Wert unten in das Textfeld darunter einfügen.'),
+        h('li', null, 'Gruppen zuweisen und speichern. Die App erscheint nach der nächsten Synchronisierung, spätestens nach einem Neustart von Edge.')),
+      h('div', { class: 'stack' },
+        checkbox(false, 'Zusätzlich eine Verknüpfung auf dem Desktop anlegen', (x) => { desktop = x; draw(); }),
+        code,
+        h('div', { class: 'row' }, copyHost, h('span', { class: 'muted small' }, `Adresse: ${a.url}`))),
+      a.enabled ? null : notice('warn', 'Zum Verteilen muss „Als App installierbar“ eingeschaltet und gespeichert sein.')));
 }
 
 // ------------------------------------------------------------------------------------------ Daten
