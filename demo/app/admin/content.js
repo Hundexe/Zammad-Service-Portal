@@ -1,0 +1,357 @@
+// Verwaltung: Vorlagen, Übersichten, Farben und Logos.
+import { h, icon, mount, fmtDate } from '../lib/dom.js?v=142b079f7fc6';
+import { fileToBase64, get, post, put, del } from '../lib/api.js?v=142b079f7fc6';
+import { badge, button, checkbox, confirmDialog, dialog, errorText, fieldWrap, input, notice, pageHead, select, statusBadge, table, textarea, toast } from '../lib/ui.js?v=142b079f7fc6';
+import { can, navigate, state, curPath, assetUrl, bandLogoId, navBrand } from '../lib/app.js?v=142b079f7fc6';
+import { adminSystem, loadAdminSystems } from './common.js?v=142b079f7fc6';
+import { exportFormsFile, importFormsDialog } from './forms.js?v=142b079f7fc6';
+import { contrastWarnings, effectiveColors, LOGIN_TITLE_DEFAULT, LOGO_LIMITS, NAV_LINKS_MAX, PALETTES, THEMES, THEME_INFO, themeOf,                                                         } from '../../shared/branding.js?v=142b079f7fc6';
+
+const KIND                         = { title: 'Ticket-Titel', body: 'Tickettext', success: 'Text nach dem Absenden' };
+
+export async function templatesPage(p                        ) {
+  await loadAdminSystems();
+  const s = adminSystem(p.systemId);
+  const r = await get                                                                                                 (`/api/admin/systems/${s.id}/templates`);
+  const edit = async (t                                                              ) => {
+    const v = { kind: t?.kind ?? 'body', name: t?.name ?? '', content: t?.content ?? '' };
+    const msg = h('div');
+    await dialog(t ? 'Vorlage bearbeiten' : 'Vorlage anlegen', h('div', { class: 'stack' }, msg,
+      fieldWrap(select(v.kind, Object.entries(KIND).map(([value, label]) => ({ value, label })), (x) => { v.kind = x; }), { label: 'Art' }),
+      fieldWrap(input(v.name, (x) => { v.name = x; }), { label: 'Name' }),
+      fieldWrap(textarea(v.content, (x) => { v.content = x; }, { rows: 10, class: 'code' }), { label: 'Inhalt', help: 'Platzhalter wie {{benutzer.name}}, {{formular.name}}, {{alle_felder}} oder Feld-IDs, z. B. {{beschreibung}}. Keine Skripte, keine Logik.' })),
+    (close) => [
+      button('Abbrechen', () => close(), { kind: 'ghost' }),
+      button('Speichern', async () => {
+        try {
+          if (t) await put(`/api/admin/systems/${s.id}/templates/${t.id}`, v); else await post(`/api/admin/systems/${s.id}/templates`, v);
+          close(); toast('Gespeichert'); navigate(curPath(), true);
+        } catch (err) { mount(msg, notice('error', errorText(err))); }
+      }, { kind: 'primary' }),
+    ], { wide: true });
+  };
+  return h('div', null,
+    pageHead('Vorlagen', 'Textbausteine für Ticket-Titel, Tickettext und Bestätigung, die im Formular-Editor übernommen werden können', [
+      button('In Datei exportieren', () => void exportFormsFile(s.id), { icon: 'down' }),
+      button('Aus Datei übernehmen …', () => void importFormsDialog(s.id, s.name, true), { icon: 'file' }),
+      button('Vorlage anlegen', () => edit(), { kind: 'primary', icon: 'plus' }),
+    ]),
+    table(r.templates, [
+      { label: 'Name', class: 'grow', render: (t) => t.name },
+      { label: 'Art', render: (t) => KIND[t.kind] ?? t.kind },
+      { label: 'Geändert', render: (t) => fmtDate(t.updatedAt) },
+      { label: '', render: (t) => button('Löschen', async () => {
+        if (await confirmDialog('Vorlage löschen?', `„${t.name}“ wird gelöscht. Formulare, die sie übernommen haben, bleiben unverändert.`, 'Löschen', true)) {
+          await del(`/api/admin/systems/${s.id}/templates/${t.id}`); toast('Gelöscht'); navigate(curPath(), true);
+        }
+      }, { kind: 'ghost', icon: 'trash' }) },
+    ], { onRow: (t) => edit(t), empty: 'Noch keine Vorlagen.' }));
+}
+
+const COLS                         = { number: 'Nr.', title: 'Betreff', state: 'Status', priority: 'Priorität', group: 'Bereich', created_at: 'Erstellt', updated_at: 'Zuletzt geändert' };
+const FILTER                         = { open: 'Offene Tickets', closed: 'Erledigte Tickets', all: 'Alle Tickets' };
+
+export async function overviewsPage(p                        ) {
+  await loadAdminSystems();
+  const s = adminSystem(p.systemId);
+  const r = await get                                                                                                                                      (`/api/admin/systems/${s.id}/overviews`);
+  const edit = async (o                             ) => {
+    const v = { name: o?.name ?? '', stateFilter: o?.stateFilter ?? 'open', columns: o?.columns ?? ['number', 'title', 'state', 'updated_at'], sortBy: o?.sortBy ?? 'updated_at', sortDir: o?.sortDir ?? 'desc', sort: o?.sort ?? r.overviews.length };
+    const msg = h('div');
+    await dialog(o ? 'Übersicht bearbeiten' : 'Übersicht anlegen', h('div', { class: 'stack' }, msg,
+      fieldWrap(input(v.name, (x) => { v.name = x; }), { label: 'Name', help: 'Erscheint als Reiter unter „Meine Tickets“.' }),
+      fieldWrap(select(v.stateFilter, Object.entries(FILTER).map(([value, label]) => ({ value, label })), (x) => { v.stateFilter = x; }), { label: 'Zeigt' }),
+      h('p', { class: 'label' }, 'Spalten'),
+      h('div', { class: 'value-grid' }, ...Object.entries(COLS).map(([k, l]) => checkbox(v.columns.includes(k), l, (x) => { v.columns = x ? [...v.columns, k] : v.columns.filter((c) => c !== k); }))),
+      h('div', { class: 'grid-2' },
+        fieldWrap(select(v.sortBy, Object.entries(COLS).map(([value, label]) => ({ value, label })), (x) => { v.sortBy = x; }), { label: 'Sortieren nach' }),
+        fieldWrap(select(v.sortDir, [{ value: 'desc', label: 'Absteigend (neueste zuerst)' }, { value: 'asc', label: 'Aufsteigend' }], (x) => { v.sortDir = x; }), { label: 'Richtung' })),
+      fieldWrap(input(String(v.sort), (x) => { v.sort = Number(x) || 0; }, { type: 'number' }), { label: 'Reihenfolge' })),
+    (close) => [
+      button('Abbrechen', () => close(), { kind: 'ghost' }),
+      button('Speichern', async () => {
+        const order = Object.keys(COLS);
+        const body = { ...v, columns: order.filter((c) => v.columns.includes(c)) };
+        try {
+          if (o) await put(`/api/admin/systems/${s.id}/overviews/${o.id}`, body); else await post(`/api/admin/systems/${s.id}/overviews`, body);
+          close(); toast('Gespeichert'); navigate(curPath(), true);
+        } catch (err) { mount(msg, notice('error', errorText(err))); }
+      }, { kind: 'primary' }),
+    ]);
+  };
+  return h('div', null,
+    pageHead('Übersichten', 'Reiter unter „Meine Tickets“ im Portal', [button('Übersicht anlegen', () => edit(), { kind: 'primary', icon: 'plus' })]),
+    table(r.overviews, [
+      { label: 'Name', class: 'grow', render: (o) => o.name },
+      { label: 'Zeigt', render: (o) => FILTER[o.stateFilter] },
+      { label: 'Spalten', render: (o) => o.columns.map((c) => COLS[c] ?? c).join(', ') },
+      { label: '', render: (o) => button('Löschen', async () => {
+        if (await confirmDialog('Übersicht löschen?', `„${o.name}“ wird gelöscht.`, 'Löschen', true)) { await del(`/api/admin/systems/${s.id}/overviews/${o.id}`); toast('Gelöscht'); navigate(curPath(), true); }
+      }, { kind: 'ghost', icon: 'trash' }) },
+    ], { onRow: (o) => edit(o), empty: 'Keine Übersichten – das Portal zeigt dann „Offene Tickets“ und „Erledigt“.' }));
+}
+
+// ---------------------------------------------------------------- Branding
+function colorField(label        , value        , onChange                     , help         )              {
+  const picker = h('input', { attrs: { type: 'color', 'aria-label': `${label} auswählen` } });
+  picker.value = value;
+  const text = input(value, (x) => { if (/^#[0-9a-fA-F]{6}$/.test(x)) { picker.value = x; onChange(x.toLowerCase()); } }, { maxlength: 7, class: 'hex', pattern: '#[0-9a-fA-F]{6}' });
+  picker.addEventListener('input', () => { text.value = picker.value; onChange(picker.value); });
+  const wrap = fieldWrap(text, { label, help });
+  wrap.querySelector('input') .before(picker);
+  wrap.classList.add('color-field');
+  return wrap;
+}
+
+function logoField(label        , id                           , kind                    , uploadUrl        , onChange                             , surface                            = 'light', help         )              {
+  const preview = h('div', { class: ['logo-preview', surface === 'band' && 'on-band', surface === 'dark' && 'on-dark'] });
+  const draw = (cur                           ) => mount(preview, cur ? h('img', { attrs: { src: assetUrl(cur), alt: '' } }) : h('span', { class: 'muted small' }, 'kein Bild'));
+  draw(id);
+  const fileInput = h('input', { attrs: { type: 'file', accept: kind === 'logo' ? '.png,.jpg,.jpeg,.webp,.svg' : '.png,.ico,.svg', class: 'visually-hidden' } });
+  const fid = `up-${label.replace(/\W/g, '')}`;
+  fileInput.id = fid;
+  fileInput.addEventListener('change', async () => {
+    const f = fileInput.files?.[0];
+    if (!f) return;
+    try {
+      const r = await post                (uploadUrl, { kind, data: await fileToBase64(f) });
+      draw(r.id); onChange(r.id); toast('Hochgeladen – Entwurf speichern nicht vergessen');
+    } catch (err) { toast(errorText(err), 'error'); }
+    fileInput.value = '';
+  });
+  return h('div', { class: 'field' }, h('p', { class: 'label' }, label), help ? h('p', { class: 'small muted' }, help) : null,
+    h('div', { class: 'logo-row' }, preview, fileInput, h('label', { class: ['btn', 'btn-secondary'], attrs: { for: fid } }, 'Datei wählen'),
+      button('Entfernen', () => { draw(null); onChange(null); }, { kind: 'ghost' })));
+}
+
+/** Schieberegler für eine Logohöhe in Pixeln. */
+function sizeField(label        , value        , lim                                               , onChange                     )              {
+  const out = h('span', { class: 'size-value' }, `${value} px`);
+  const range = h('input', { attrs: { type: 'range', min: lim.min, max: lim.max, step: 1, value, 'aria-label': label } });
+  range.addEventListener('input', () => { out.textContent = `${range.value} px`; onChange(Number(range.value)); });
+  const reset = h('button', { class: 'link-btn', attrs: { type: 'button' }, on: { click: () => { range.value = String(lim.default); out.textContent = `${lim.default} px`; onChange(lim.default); } } }, 'Standard');
+  return h('div', { class: 'field' }, h('p', { class: 'label' }, label), h('div', { class: 'size-row' }, range, out, reset));
+}
+
+/** Liste zusätzlicher Links für die Navigationsleiste. */
+function linksField(initial           , onChange                        )              {
+  const links = initial.map((l) => ({ ...l }));
+  const host = h('div', { class: 'stack' });
+  const draw = () => {
+    mount(host,
+      ...links.map((l, i) => h('div', { class: 'link-row' },
+        input(l.label, (v) => { l.label = v; onChange(links); }, { placeholder: 'Bezeichnung, z. B. Intranet', maxlength: 40, 'aria-label': `Link ${i + 1}: Bezeichnung` }),
+        input(l.url, (v) => { l.url = v.trim(); onChange(links); }, { placeholder: 'https://…', maxlength: 500, 'aria-label': `Link ${i + 1}: Adresse` }),
+        h('button', { class: 'icon-btn', attrs: { type: 'button', 'aria-label': `Link ${i + 1} entfernen` }, on: { click: () => { links.splice(i, 1); onChange(links); draw(); } } }, icon('x', 16)))),
+      links.length < NAV_LINKS_MAX ? button('Link hinzufügen', () => { links.push({ label: '', url: 'https://' }); onChange(links); draw(); }, { icon: 'plus', kind: 'ghost' }) : null);
+  };
+  draw();
+  return h('div', { class: 'field' }, h('p', { class: 'label' }, 'Links in der Navigationsleiste'),
+    h('p', { class: 'help', style: { marginTop: '0' } }, `Bis zu ${NAV_LINKS_MAX} Links, z. B. Intranet, Wissensdatenbank oder Telefonliste. Web-Links öffnen in einem neuen Tab. Erlaubt: https://, http://, mailto:, tel:`),
+    host);
+}
+
+function setColors(el             , c         )       {
+  el.style.setProperty('--brand', c.primaryColor);
+  el.style.setProperty('--band', c.headerColor);
+  el.style.setProperty('--band-text', c.headerTextColor);
+  el.style.setProperty('--brand-accent', c.accentColor);
+}
+
+/** Kleine Vorschau eines Stils (Farbfläche, Zeile, Schaltfläche) – wird mit dem Stil selbst gezeichnet. */
+function themeMini(id         , title        )              {
+  return h('div', { class: 'theme-mini', attrs: { 'data-style': id, 'aria-hidden': 'true' } },
+    h('div', { class: 'tm-hero' }, h('span', { class: 'tm-title' }, title)),
+    h('div', { class: 'tm-card' }, h('span', { class: 'tm-dot' }), h('span', { class: 'tm-line' })),
+    h('div', { class: 'tm-card' }, h('span', { class: 'tm-dot' }), h('span', { class: 'tm-line' })),
+    h('span', { class: 'tm-btn' }));
+}
+
+/**
+ * Editor für das Erscheinungsbild. mode 'system': Portal eines Ticketsystems (Navigationsleiste, Startseite).
+ * mode 'login': Anmeldeseite – nur was dort sichtbar ist, mit Vorschau der Anmeldeseite.
+ */
+export function brandingEditor(initial          , uploadUrl        , extra                                                       = {})                                       {
+  const login = extra.mode === 'login';
+  const b           = { theme: 'standard', colorMode: 'custom', ...initial };
+  const warn = h('div', { attrs: { 'aria-live': 'polite' } });
+  const preview = h('div', { class: 'brand-preview', attrs: { 'aria-label': 'Vorschau' } });
+  const minis = new Map                      ();
+  const colorsHost = h('div', { class: 'stack' });
+  let gridEl                     = null;
+  const draw = () => {
+    const ws = contrastWarnings(b);
+    mount(warn, ws.length ? notice('warn', h('ul', null, ...ws.map((w) => h('li', null, w)))) : notice('ok', 'Kontraste erfüllen WCAG AA.'));
+    const c = effectiveColors(b);
+    gridEl?.style.setProperty('--band-preview', c.headerColor);
+    preview.setAttribute('data-style', themeOf(b));
+    setColors(preview, c);
+    for (const [id, mini] of minis) setColors(mini, b.colorMode === 'theme' ? THEME_INFO[id].palette : c);
+    if (login) {
+      // Anmeldeseite im Kleinen: Farbfläche mit Logo, Überschrift, Fußzeile – daneben die Anmeldung
+      mount(preview, h('div', { class: 'bp-login' },
+        h('div', { class: 'bp-login-band' },
+          bandLogoId(b)
+            ? h('img', { attrs: { src: assetUrl(bandLogoId(b) ), alt: '' }, style: { height: `${Math.round(Math.min(b.logoHeroHeight ?? LOGO_LIMITS.hero.default, 120) * 0.45)}px` } })
+            : h('span', { class: 'bp-login-name' }, b.displayName || 'Name'),
+          h('div', null,
+            h('p', { class: 'bp-login-title' }, b.loginTitle || LOGIN_TITLE_DEFAULT),
+            b.loginText ? h('p', { class: 'bp-login-lead' }, b.loginText) : null),
+          b.footerText || b.imprintUrl || b.privacyUrl ? h('p', { class: 'bp-login-foot' }, [b.footerText, b.imprintUrl ? 'Impressum' : '', b.privacyUrl ? 'Datenschutz' : ''].filter(Boolean).join(' · ')) : null),
+        h('div', { class: 'bp-login-card' },
+          h('p', { class: 'bp-login-h' }, 'Anmelden'),
+          h('span', { class: 'bp-input' }), h('span', { class: 'bp-input' }),
+          h('span', { class: ['btn', 'btn-primary'] }, 'Anmelden'))));
+      extra.onChange?.();
+      return;
+    }
+    mount(preview,
+      // Navigationsleiste wie im Portal (helles bzw. dunkles Design je nach aktueller Ansicht)
+      h('div', { class: 'bp-nav' }, h('span', { class: 'bp-brand' }, ...navBrand({ ...b, displayName: b.displayName || 'Name' }, Math.round((b.logoNavHeight ?? LOGO_LIMITS.nav.default) * 0.8))),
+        (b.navLinks ?? []).length ? h('span', { class: 'bp-links' }, ...(b.navLinks ?? []).map((l) => h('span', null, l.label || '…'))) : null),
+      h('div', { class: 'bp-hero' },
+        bandLogoId(b) ? h('img', { attrs: { src: assetUrl(bandLogoId(b) ), alt: '' }, style: { height: `${Math.round((b.logoHeroHeight ?? LOGO_LIMITS.hero.default) * 0.64)}px`, maxWidth: '85%' } }) : null,
+        h('p', { class: 'bp-title' }, b.welcomeText || 'Wie können wir helfen?')),
+      h('div', { class: 'bp-body' },
+        h('div', { class: 'bp-row' }, h('span', { class: 'form-icon' }, icon('bolt', 18)), h('span', null, 'Störung melden'), icon('next', 16)),
+        h('div', { class: 'bp-row' }, h('span', { class: 'form-icon' }, icon('laptop', 18)), h('span', null, 'Hardware anfordern'), icon('next', 16)),
+        h('p', { class: 'bp-actions' }, h('span', { class: ['btn', 'btn-primary'] }, 'Anfrage senden'), h('span', { class: ['btn', 'btn-secondary'] }, 'Abbrechen'), h('span', { class: 'bp-link' }, 'Ein Link'), badge('Akzent', 'info'))),
+      b.footerText ? h('div', { class: 'bp-foot' }, b.footerText) : null);
+    extra.onChange?.();
+  };
+  const set =                           (k   ) => (v             ) => { b[k] = v; draw(); };
+
+  // Stil
+  const radioName = `theme-${Math.random().toString(36).slice(2, 8)}`;
+  const picker = h('fieldset', { class: 'theme-picker' },
+    h('legend', { class: 'visually-hidden' }, 'Gestaltungsstil'),
+    ...THEMES.map((id) => {
+      const info = THEME_INFO[id];
+      const radio = h('input', { attrs: { type: 'radio', name: radioName, value: id } })                    ;
+      radio.checked = themeOf(b) === id;
+      radio.addEventListener('change', () => { if (radio.checked) { b.theme = id; drawColors(); draw(); } });
+      const mini = themeMini(id, info.name);
+      minis.set(id, mini);
+      return h('label', { class: 'theme-option' }, radio, mini, h('span', { class: 'theme-option-name' }, info.name), h('span', { class: 'theme-option-desc' }, info.description));
+    }));
+
+  // Farben: die des Stils oder eigene (mit fertigen Kombinationen)
+  const swatch = (p         ) => h('span', { class: 'palette-swatch', attrs: { 'aria-hidden': 'true' } },
+    h('span', { style: { background: p.headerColor } }), h('span', { style: { background: p.primaryColor } }), h('span', { style: { background: p.accentColor } }));
+  const applyPalette = (p         ) => { Object.assign(b, p); drawColors(); draw(); };
+  function drawColors()       {
+    const mode = b.colorMode === 'theme' ? 'theme' : 'custom';
+    const themePalette = THEME_INFO[themeOf(b)].palette;
+    mount(colorsHost,
+      h('div', { class: 'color-mode' },
+        select(mode, [
+          { value: 'theme', label: `Farben des Stils „${THEME_INFO[themeOf(b)].name}“ verwenden` },
+          { value: 'custom', label: 'Eigene Farben' },
+        ], (v) => { b.colorMode = v                      ; drawColors(); draw(); })),
+      mode === 'custom' ? h('div', { class: 'stack' },
+        h('div', null,
+          h('p', { class: 'label' }, 'Fertige Farbkombinationen'),
+          h('div', { class: 'palette-row' },
+            h('button', { class: 'palette-chip', attrs: { type: 'button' }, on: { click: () => applyPalette(themePalette) } }, swatch(themePalette), `Wie „${THEME_INFO[themeOf(b)].name}“`),
+            ...PALETTES.map((p) => h('button', { class: 'palette-chip', attrs: { type: 'button' }, on: { click: () => applyPalette(p.palette) } }, swatch(p.palette), p.name)))),
+        h('div', { class: 'grid-2' },
+          colorField('Farbfläche', b.headerColor, set('headerColor'), 'Große Fläche auf Start- und Anmeldeseite'),
+          colorField('Schrift auf der Farbfläche', b.headerTextColor, set('headerTextColor')),
+          colorField('Primärfarbe', b.primaryColor, set('primaryColor'), 'Schaltflächen, Links, Symbole'),
+          colorField('Akzentfarbe', b.accentColor, set('accentColor'), 'Markierungen'),
+        )) : h('p', { class: 'help' }, 'Der Stil bringt eigene, aufeinander abgestimmte Farben mit. Für eigene Farben „Eigene Farben“ wählen – die bisherigen bleiben gespeichert.'));
+  }
+  drawColors();
+
+  const styleBlock = h('div', null, h('p', { class: 'label' }, 'Stil'), h('p', { class: 'help', style: { marginTop: '0', marginBottom: '.6rem' } }, login
+    ? 'Gilt für die Anmeldeseite. Nach der Anmeldung gilt der Stil des gewählten Ticketsystems. Helles und dunkles Design werden automatisch unterstützt.'
+    : 'Gilt im Portal, solange dieses Ticketsystem gewählt ist (die Anmeldeseite hat ihre eigene Einstellung). Helles und dunkles Design werden automatisch unterstützt.'), picker);
+  const legalFields = h('div', { class: 'grid-2' },
+    fieldWrap(input(b.imprintUrl ?? '', set('imprintUrl'), { type: 'url', placeholder: 'https://' }), { label: 'Link Impressum' }),
+    fieldWrap(input(b.privacyUrl ?? '', set('privacyUrl'), { type: 'url', placeholder: 'https://' }), { label: 'Link Datenschutz' }));
+  const section = (title        ) => h('h3', { class: 'editor-section' }, title);
+  const loginFields = h('div', { class: 'stack' },
+    section('Farbfläche'),
+    logoField('Logo', b.logoDarkId, 'logo', uploadUrl, set('logoDarkId'), 'band', 'Meist helle Schrift auf der Farbe der Fläche. Ohne Logo steht dort der Anzeigename.'),
+    sizeField('Logogröße', b.logoHeroHeight ?? LOGO_LIMITS.hero.default, LOGO_LIMITS.hero, (v) => { b.logoHeroHeight = v; draw(); }),
+    fieldWrap(input(b.loginTitle || LOGIN_TITLE_DEFAULT, set('loginTitle')), { label: 'Überschrift', help: 'Leer lassen für den Standardtext.' }),
+    fieldWrap(textarea(b.loginText ?? '', set('loginText'), { rows: 2 }), { label: 'Text unter der Überschrift (optional)', help: 'z. B. „Bei dringenden Störungen: Telefon 1234“' }),
+    fieldWrap(textarea(b.footerText, set('footerText'), { rows: 2 }), { label: 'Fußzeile (optional)', help: 'Klein unten auf der Farbfläche, z. B. Name der IT oder der Firmen.' }),
+    legalFields,
+    section('Stil und Farben'),
+    styleBlock,
+    h('div', null, h('p', { class: 'label' }, 'Farben'), colorsHost),
+    section('Browser-Tab'),
+    fieldWrap(input(b.displayName, set('displayName')), { label: 'Anzeigename', help: 'Titel im Browser-Tab; auf der Farbfläche, solange kein Logo hinterlegt ist.' }),
+    logoField('Favicon (Symbol im Browser-Tab)', b.faviconId, 'favicon', uploadUrl, set('faviconId')));
+  const el = h('div', { class: 'branding-grid' },
+    login ? loginFields : h('div', { class: 'stack' },
+      fieldWrap(input(b.displayName, set('displayName')), { label: 'Anzeigename', help: 'Steht in der Navigationsleiste, wenn kein helles Logo hinterlegt ist, und im Browser-Tab.' }),
+      styleBlock,
+      h('div', null, h('p', { class: 'label' }, 'Farben'), colorsHost),
+      logoField('Logo auf der Farbfläche (Startseite und Anmeldung)', b.logoDarkId, 'logo', uploadUrl, set('logoDarkId'), 'band'),
+      logoField('Logo für die Navigationsleiste – helles Design', b.logoLightId, 'logo', uploadUrl, set('logoLightId'), 'light'),
+      logoField('Logo für die Navigationsleiste – dunkles Design (optional)', b.logoNavDarkId, 'logo', uploadUrl, set('logoNavDarkId'), 'dark',
+        'Helle Schrift für die dunkle Leiste. Ohne eigenes Logo steht das Logo des hellen Designs auf einem weißen Feld.'),
+      logoField('Favicon', b.faviconId, 'favicon', uploadUrl, set('faviconId')),
+      h('div', { class: 'stack' },
+        sizeField('Logogröße in der Navigationsleiste', b.logoNavHeight ?? LOGO_LIMITS.nav.default, LOGO_LIMITS.nav, (v) => { b.logoNavHeight = v; draw(); }),
+        sizeField('Logogröße auf der Farbfläche', b.logoHeroHeight ?? LOGO_LIMITS.hero.default, LOGO_LIMITS.hero, (v) => { b.logoHeroHeight = v; draw(); })),
+      linksField(b.navLinks ?? [], (v) => { b.navLinks = v; draw(); }),
+      fieldWrap(input(b.welcomeText, set('welcomeText')), { label: 'Begrüßung auf der Startseite' }),
+      fieldWrap(textarea(b.footerText, set('footerText'), { rows: 2 }), { label: 'Fußzeile' }),
+      legalFields,
+    ),
+    h('div', { class: 'stack sticky-top' }, h('p', { class: 'label' }, 'Vorschau'), preview, warn),
+  );
+  gridEl = el;
+  draw();
+  return { el, value: b };
+}
+
+export async function brandingPage(p                        ) {
+  await loadAdminSystems();
+  const s = adminSystem(p.systemId);
+  const d = await get                                                                                                                                                                                                                                                   (`/api/admin/systems/${s.id}/branding`);
+  const editor = brandingEditor(d.latest?.branding ?? d.published, `/api/admin/systems/${s.id}/assets`);
+  const pending = d.latest?.status === 'pending' ? d.latest : null;
+  const msg = h('div');
+  const mayApprove = pending && can('form.approve', s.id) && pending.submittedBy !== state.me?.user.id && pending.createdBy !== state.me?.user.id;
+  return h('div', null,
+    pageHead('Stil, Farben und Logo', `Erscheinungsbild von ${s.name} – so erkennen die Mitarbeitenden, wohin ihre Anfrage geht`),
+    msg,
+    pending ? notice('warn', h('span', null, `Version ${pending.version} wartet auf Freigabe.`,
+      mayApprove ? h('span', { class: 'row inline' },
+        button('Freigeben', async () => { await post(`/api/admin/systems/${s.id}/branding/versions/${pending.id}/approve`); toast('Freigegeben'); navigate(curPath(), true); }, { kind: 'primary' }),
+        button('Ablehnen', async () => { await post(`/api/admin/systems/${s.id}/branding/versions/${pending.id}/reject`); toast('Abgelehnt'); navigate(curPath(), true); }, { kind: 'ghost' })) : null)) : null,
+    h('section', { class: 'panel' }, editor.el),
+    can('branding.edit', s.id) && !pending ? h('div', { class: 'form-actions sticky' },
+      button('Entwurf speichern', async () => {
+        try { await put(`/api/admin/systems/${s.id}/branding/draft`, { branding: editor.value }); toast('Entwurf gespeichert'); } catch (err) { mount(msg, notice('error', errorText(err))); }
+      }),
+      button(s.requireApproval ? 'Zur Freigabe senden' : 'Veröffentlichen', async () => {
+        try {
+          await put(`/api/admin/systems/${s.id}/branding/draft`, { branding: editor.value });
+          const r = await post                    (`/api/admin/systems/${s.id}/branding/publish`);
+          toast(r.status === 'pending' ? 'Zur Freigabe gesendet' : 'Veröffentlicht');
+          navigate(curPath(), true);
+        } catch (err) { mount(msg, notice('error', errorText(err))); }
+      }, { kind: 'primary' })) : null,
+    h('details', { class: 'panel' }, h('summary', null, 'Versionen'), table(d.versions, [
+      { label: 'Version', render: (v) => String(v.version) }, { label: 'Status', render: (v) => statusBadge(v.status) }, { label: 'Datum', render: (v) => fmtDate(v.createdAt) },
+    ])),
+  );
+}
+
+export async function loginSettingsPage() {
+  const d = await get                        ('/api/admin/settings/branding');
+  const editor = brandingEditor(d.branding, '/api/admin/assets', { mode: 'login' });
+  const msg = h('div');
+  return h('div', null,
+    pageHead('Anmeldeseite', 'So sieht die Seite aus, auf der sich alle anmelden. Nach der Anmeldung gilt das Erscheinungsbild des jeweiligen Ticketsystems.'),
+    msg,
+    h('section', { class: 'panel' }, editor.el),
+    h('div', { class: 'form-actions sticky' }, button('Speichern', async () => {
+      try { await put('/api/admin/settings/branding', { branding: editor.value }); toast('Gespeichert'); } catch (err) { mount(msg, notice('error', errorText(err))); }
+    }, { kind: 'primary' })));
+}

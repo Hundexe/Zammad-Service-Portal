@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lasttest – Self-Service-Portal für Zammad</title>
+<meta name="description" content="Lasttest vom 27.10.2026: Anmeldespitze, Ticketansichten und gleichzeitige Anfragen mit Anhang, dazu Ausfall und Neustart von Zammad und Portal.">
+<link rel="icon" href="../demo/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="doku.css">
+</head>
+<body>
+<header class="top"><div class="wrap"><nav class="nav" aria-label="Hauptnavigation">
+  <a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span>Self-Service-Portal für Zammad</a>
+  <div class="nav-links">
+    <a href="../#video">Video</a>
+    <a class="keep" href="./" aria-current="page">Dokumentation</a>
+    <a href="../demo/">Demo</a>
+    <a href="https://github.com/Hundexe/Zammad-Service-Portal">GitHub</a>
+  </div>
+</nav></div></header>
+<div class="wrap layout">
+  <aside class="side" aria-label="Dokumentation">
+    <details open><summary>Anleitungen und Inhalt</summary>
+      <h2>Anleitungen</h2>
+      <ul><li><a href="installation.html">Installation</a></li><li><a href="microsoft-anmeldung.html">Microsoft-Anmeldung</a></li><li><a href="bedienung.html">Bedienung</a></li><li><a href="app.html">Portal als App</a></li><li><a href="betrieb.html">Betrieb</a></li><li><a href="updates.html">Updates</a></li><li><a href="sicherheit.html">Sicherheit</a></li><li><a href="go-live.html">Go-Live-Checkliste</a></li><li><a href="architektur.html">Architektur</a></li></ul>
+      <h2>Sicherheitsprüfungen</h2>
+      <ul><li><a href="pruefungen.html">Übersicht</a></li><li><a href="sicherheitstest-2026-10-28.html">Sicherheitstest 28.10.2026</a></li><li><a href="review-2026-10.html">Review 27.10.2026</a></li><li><a href="lasttest.html" aria-current="page">Lasttest 27.10.2026</a></li><li><a href="pentest.html">Penetrationstest 21.10.2026</a></li></ul>
+      <h2>Auf dieser Seite</h2><ul class="toc"><li><a href="#ergebnis-vom-2026-10-27">Ergebnis vom 2026-10-27</a></li><li><a href="#einordnung">Einordnung</a></li><li><a href="#ausfall-und-neustart">Ausfall und Neustart</a></li></ul>
+    </details>
+  </aside>
+  <main class="doc" id="inhalt">
+<p class="crumbs"><a href="pruefungen.html">Sicherheitsprüfungen</a></p><div class="report-meta"><span class="kind kind-lasttest">Lasttest</span><time datetime="2026-10-27">27.10.2026</time><span>Version 1.3.0</span></div><h1 id="lasttest">Lasttest<a class="anchor" href="#lasttest" aria-label="Link zu diesem Abschnitt">#</a></h1>
+<p>Werkzeug: <code>tools/loadtest.ts</code>. Es startet Portal, Zammad-Simulator und Entra-Simulator <strong>in einem Prozess</strong> und spielt die Szenarien aus dem Review durch:</p>
+<ol><li><strong>Anmeldespitze</strong> – alle Benutzer melden sich gleichzeitig über Microsoft an (kompletter OIDC-Ablauf mit Token-Prüfung).</li><li><strong>Ticketansichten</strong> – alle rufen gleichzeitig „Meine Tickets“ ab (einmal frisch aus Zammad, einmal aus dem 30-Sekunden-Zwischenspeicher), die Hälfte öffnet ein Ticket.</li><li><strong>Gleichzeitige Anfragen</strong> – N Benutzer schicken gleichzeitig ein Formular mit je 1 MB PDF-Anhang ab (Dateiprüfung, Verschlüsselung, Outbox).</li><li><strong>Zustellung</strong> – der Worker stellt die Warteschlange an Zammad zu.</li></ol>
+<pre data-lang="bash"><code>node tools/loadtest.ts                                    # 50 Benutzer, 20 Anfragen mit 1 MB
+node tools/loadtest.ts --users 200 --submits 50 --upload-kb 5120 --json ergebnis.json</code></pre>
+<p>Exit-Code 1, wenn eine Anfrage fehlschlägt.</p>
+<h2 id="ergebnis-vom-2026-10-27">Ergebnis vom 2026-10-27<a class="anchor" href="#ergebnis-vom-2026-10-27" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<p>Testrechner: 2 CPU-Kerne, 8 GB RAM, Node.js v22.22.0. Zeiten in Millisekunden (Median / 95 %). Rohdaten: <a href="https://github.com/Hundexe/Zammad-Service-Portal/blob/main/docs/lasttest-ergebnis.json" rel="noopener"><code>lasttest-ergebnis.json</code></a> (50 Benutzer), <a href="https://github.com/Hundexe/Zammad-Service-Portal/blob/main/docs/lasttest-skalierung.json" rel="noopener"><code>lasttest-skalierung.json</code></a> (alle Läufe).</p>
+<div class="table"><table><thead><tr><th style="text-align:right">Benutzer</th><th style="text-align:right">Anfragen gleichzeitig</th><th>Anmeldung</th><th>Ticketliste (frisch)</th><th style="text-align:right">Ticketliste (Cache)</th><th>Ticket öffnen</th><th>Anfrage + 1 MB</th><th style="text-align:right">Zustellung je Anfrage</th><th style="text-align:right">Fehler</th><th style="text-align:right">Speicher (MB)</th></tr></thead><tbody><tr><td style="text-align:right">10</td><td style="text-align:right">5</td><td>129 / 132</td><td>47 / 53</td><td style="text-align:right">6</td><td>18 / 20</td><td>152 / 170</td><td style="text-align:right">21</td><td style="text-align:right">0</td><td style="text-align:right">189</td></tr><tr><td style="text-align:right">50</td><td style="text-align:right">20</td><td>393 / 591</td><td>199 / 247</td><td style="text-align:right">40</td><td>73 / 90</td><td>501 / 575</td><td style="text-align:right">22</td><td style="text-align:right">0</td><td style="text-align:right">318</td></tr><tr><td style="text-align:right">100</td><td style="text-align:right">50</td><td>631 / 1025</td><td>606 / 680</td><td style="text-align:right">98</td><td>129 / 148</td><td>1256 / 1493</td><td style="text-align:right">18</td><td style="text-align:right">0</td><td style="text-align:right">449</td></tr><tr><td style="text-align:right">200</td><td style="text-align:right">50</td><td>981 / 1546</td><td>1488 / 1576</td><td style="text-align:right">86</td><td>234 / 295</td><td>1265 / 1500</td><td style="text-align:right">20</td><td style="text-align:right">0</td><td style="text-align:right">501</td></tr></tbody></table></div>
+<p><strong>Szenario aus dem Review (50 Logins, 50 Ticketansichten, 20 gleichzeitige Anfragen mit Upload): keine Fehler</strong>, alle Antworten unter 0,6 Sekunden. Die 20 Anfragen waren nach 436 ms vollständig an Zammad zugestellt.</p>
+<h2 id="einordnung">Einordnung<a class="anchor" href="#einordnung" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<ul><li>Gemessen ist das Portal <strong>einschließlich</strong> der simulierten Gegenstellen und der Testclients – alles teilt sich dieselben 2 Kerne. Auf einem eigenen Server liegen die Zeiten des Portals eher darunter; dafür antwortet ein echtes Zammad langsamer als der Simulator (typisch 50–300 ms je Aufruf).</li><li>Die Zeit wächst mit der <strong>Gleichzeitigkeit</strong>, nicht mit der Zahl der Benutzer insgesamt: 200 Personen, die in derselben Sekunde ihre Tickets öffnen, warten im Median 1,5 Sekunden. Das ist der ungünstigste Fall (alle gleichzeitig, kein Zwischenspeicher).</li><li>SQLite ist dabei kein Engpass: Schreibzugriffe (Sitzungen, Outbox, Audit) sind kurz; die meiste Zeit kosten Token-Prüfung, Base64/Verschlüsselung der Anhänge und die Aufrufe an Zammad.</li><li>Speicher: Der gemessene Wert gilt für den <strong>ganzen Testprozess</strong> (Portal + Simulatoren + 200 Clients mit Anhängen im Speicher). Das Portal selbst hat im Docker-Stack 512 MB; wer regelmäßig sehr viele große Anhänge gleichzeitig erwartet, setzt <code>mem_limit</code> für <code>app</code> auf 1 GB oder senkt <code>UPLOAD_MAX_TOTAL_MB</code>.</li></ul>
+<h2 id="ausfall-und-neustart">Ausfall und Neustart<a class="anchor" href="#ausfall-und-neustart" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<p>Die Szenarien „Zammad zehn Minuten nicht erreichbar“ und „Neustart während gefüllter Outbox“ sind als automatische Tests umgesetzt (<code>test/review.test.ts</code>, Abschnitt „#11“):</p>
+<div class="table"><table><thead><tr><th>Szenario</th><th>Ergebnis</th></tr></thead><tbody><tr><td>Wartung/Ausfall, dann Neustart mit neuer App-Instanz auf denselben Daten</td><td>Anfrage wird zugestellt, genau ein Ticket</td></tr><tr><td>Absturz mitten in der Zustellung (Status „sending“ hängt)</td><td>nach 5 Minuten erneut zugestellt, genau ein Ticket</td></tr><tr><td>Zammad legt das Ticket an, die Antwort geht verloren (Zeitüberschreitung)</td><td>beim nächsten Versuch wird das vorhandene Ticket erkannt – <strong>kein Duplikat</strong></td></tr><tr><td>langer Ausfall</td><td>Wartezeit wächst 1 → 2 → 4 … Minuten bis höchstens 1 Stunde; nach 20 Versuchen (≈ 14 Stunden) „fehlgeschlagen“, Inhalt bleibt erhalten und lässt sich unter <strong>Zustellung</strong> erneut senden</td></tr></tbody></table></div>
+<p>Bei einem Ausfall von zehn Minuten sind das 4 Versuche; die Anfrage kommt spätestens etwa 8 Minuten nach Ende des Ausfalls an.</p><nav class="pager" aria-label="Weitere Prüfberichte"><a href="review-2026-10.html"><span>Neuer</span>Externes Review</a><a class="next" href="pentest.html"><span>Älter</span>Penetrationstest</a></nav><p class="source"><span>Diese Seite entsteht aus <a href="https://github.com/Hundexe/Zammad-Service-Portal/blob/main/docs/LASTTEST.md">docs/LASTTEST.md</a>.</span><a href="#inhalt">Nach oben</a></p>
+  </main>
+</div>
+<script>
+  // Auf schmalen Bildschirmen startet das Menü zugeklappt
+  if (matchMedia('(max-width: 960px)').matches) document.querySelector('.side details').removeAttribute('open');
+</script>
+</body>
+</html>

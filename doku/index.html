@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dokumentation – Self-Service-Portal für Zammad</title>
+<meta name="description" content="Anleitungen zum Self-Service-Portal für Zammad">
+<link rel="icon" href="../demo/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="doku.css">
+</head>
+<body>
+<header class="top"><div class="wrap"><nav class="nav" aria-label="Hauptnavigation">
+  <a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span>Self-Service-Portal für Zammad</a>
+  <div class="nav-links">
+    <a href="../#video">Video</a>
+    <a class="keep" href="./" aria-current="page">Dokumentation</a>
+    <a href="../demo/">Demo</a>
+    <a href="https://github.com/Hundexe/Zammad-Service-Portal">GitHub</a>
+  </div>
+</nav></div></header>
+<div class="wrap layout">
+  <aside class="side" aria-label="Dokumentation">
+    <details open><summary>Anleitungen und Inhalt</summary>
+      <h2>Anleitungen</h2>
+      <ul><li><a href="installation.html">Installation</a></li><li><a href="microsoft-anmeldung.html">Microsoft-Anmeldung</a></li><li><a href="bedienung.html">Bedienung</a></li><li><a href="app.html">Portal als App</a></li><li><a href="betrieb.html">Betrieb</a></li><li><a href="updates.html">Updates</a></li><li><a href="sicherheit.html">Sicherheit</a></li><li><a href="go-live.html">Go-Live-Checkliste</a></li><li><a href="architektur.html">Architektur</a></li></ul>
+      <h2>Sicherheitsprüfungen</h2>
+      <ul><li><a href="pruefungen.html">Übersicht</a></li><li><a href="sicherheitstest-2026-10-28.html">Sicherheitstest 28.10.2026</a></li><li><a href="review-2026-10.html">Review 27.10.2026</a></li><li><a href="lasttest.html">Lasttest 27.10.2026</a></li><li><a href="pentest.html">Penetrationstest 21.10.2026</a></li></ul>
+      
+    </details>
+  </aside>
+  <main class="doc" id="inhalt">
+<h1>Dokumentation</h1><p>Alles zum Einrichten, Bedienen und Betreiben des Portals. Neu hier? Am besten mit der <a href="installation.html">Installation</a> anfangen, danach die <a href="microsoft-anmeldung.html">Microsoft-Anmeldung</a>.</p><ul class="cards"><li><a href="installation.html"><b>Installation</b><span>Schritt für Schritt</span></a></li><li><a href="microsoft-anmeldung.html"><b>Microsoft-Anmeldung</b><span>App, Rechte, Gruppen</span></a></li><li><a href="bedienung.html"><b>Bedienung</b><span>Portal und Verwaltung</span></a></li><li><a href="app.html"><b>Portal als App</b><span>Installieren, per Intune verteilen</span></a></li><li><a href="betrieb.html"><b>Betrieb</b><span>Sicherung, Monitoring, Härtung</span></a></li><li><a href="updates.html"><b>Updates</b><span>Releases, Rollback</span></a></li><li><a href="sicherheit.html"><b>Sicherheit</b><span>Schutzmaßnahmen, Tests</span></a></li><li><a href="go-live.html"><b>Go-Live-Checkliste</b><span>vor dem Produktivbetrieb</span></a></li><li><a href="architektur.html"><b>Architektur</b><span>Aufbau und Datenfluss</span></a></li><li class="wide"><a href="pruefungen.html"><b>Sicherheitsprüfungen</b><span>Penetrationstest, Review, Lasttest und Sicherheitstest – mit allen Funden und ihrem Stand, nach Datum</span></a></li></ul>
+<p class="source"><span>Den Quelltext aller Anleitungen gibt es <a href="https://github.com/Hundexe/Zammad-Service-Portal/tree/main/docs">auf GitHub</a>.</span></p>
+  </main>
+</div>
+<script>
+  // Auf schmalen Bildschirmen startet das Menü zugeklappt
+  if (matchMedia('(max-width: 960px)').matches) document.querySelector('.side details').removeAttribute('open');
+</script>
+</body>
+</html>

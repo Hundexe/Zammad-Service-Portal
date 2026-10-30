@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architektur – Self-Service-Portal für Zammad</title>
+<meta name="description" content="Architektur: Aufbau und Datenfluss">
+<link rel="icon" href="../demo/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="doku.css">
+</head>
+<body>
+<header class="top"><div class="wrap"><nav class="nav" aria-label="Hauptnavigation">
+  <a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span>Self-Service-Portal für Zammad</a>
+  <div class="nav-links">
+    <a href="../#video">Video</a>
+    <a class="keep" href="./" aria-current="page">Dokumentation</a>
+    <a href="../demo/">Demo</a>
+    <a href="https://github.com/Hundexe/Zammad-Service-Portal">GitHub</a>
+  </div>
+</nav></div></header>
+<div class="wrap layout">
+  <aside class="side" aria-label="Dokumentation">
+    <details open><summary>Anleitungen und Inhalt</summary>
+      <h2>Anleitungen</h2>
+      <ul><li><a href="installation.html">Installation</a></li><li><a href="microsoft-anmeldung.html">Microsoft-Anmeldung</a></li><li><a href="bedienung.html">Bedienung</a></li><li><a href="app.html">Portal als App</a></li><li><a href="betrieb.html">Betrieb</a></li><li><a href="updates.html">Updates</a></li><li><a href="sicherheit.html">Sicherheit</a></li><li><a href="go-live.html">Go-Live-Checkliste</a></li><li><a href="architektur.html" aria-current="page">Architektur</a></li></ul>
+      <h2>Sicherheitsprüfungen</h2>
+      <ul><li><a href="pruefungen.html">Übersicht</a></li><li><a href="sicherheitstest-2026-10-28.html">Sicherheitstest 28.10.2026</a></li><li><a href="review-2026-10.html">Review 27.10.2026</a></li><li><a href="lasttest.html">Lasttest 27.10.2026</a></li><li><a href="pentest.html">Penetrationstest 21.10.2026</a></li></ul>
+      <h2>Auf dieser Seite</h2><ul class="toc"><li><a href="#überblick">Überblick</a></li><li><a href="#warum-ohne-fremdpakete">Warum ohne Fremdpakete?</a></li><li><a href="#ablauf-einer-anfrage">Ablauf einer Anfrage</a></li><li><a href="#zammad-anbindung">Zammad-Anbindung</a></li><li><a href="#gestaltung-und-stile">Gestaltung und Stile</a></li><li><a href="#code-aufbau">Code-Aufbau</a></li><li><a href="#status-und-störungen">Status und Störungen</a></li><li><a href="#portal-als-app">Portal als App</a></li><li><a href="#datenmodell">Datenmodell</a></li></ul>
+    </details>
+  </aside>
+  <main class="doc" id="inhalt">
+<h1 id="architektur">Architektur<a class="anchor" href="#architektur" aria-label="Link zu diesem Abschnitt">#</a></h1>
+<h2 id="überblick">Überblick<a class="anchor" href="#überblick" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<pre><code>                         internes Netz
+ Browser ──HTTPS 443──▶ ┌──────────────── Docker-Host (Proxmox-VM) ─────────────────┐
+                        │  caddy  ── edge ──▶  app  ── backend (intern) ──▶ clamav   │
+                        │  TLS, Header          │  ▲                                 │
+                        │                       │  │ SQLite (Volume portal-data)     │
+                        │                worker ┘  │                                 │
+                        │                   │      │                                 │
+                        │  updater ── updater-Netz (intern) ──▶ socket-proxy ─▶ Docker│
+                        └───────────────────┼──────┼─────────────────────────────────┘
+                                   egress   ▼      ▼
+                         Microsoft Entra ID / Graph      Zammad (eine oder mehrere)</code></pre>
+<div class="table"><table><thead><tr><th>Container</th><th>Aufgabe</th><th>Netze</th><th>Besonderheiten</th></tr></thead><tbody><tr><td><code>caddy</code></td><td>TLS, Sicherheits-Header, Weiterleitung an die App</td><td>edge</td><td>einziger veröffentlichter Port (443, 80 → 443)</td></tr><tr><td><code>app</code></td><td>Weboberfläche und API</td><td>edge, backend, egress</td><td>distroless, ohne root, nur lesbares Dateisystem</td></tr><tr><td><code>worker</code></td><td>stellt Anfragen an Zammad zu, räumt auf</td><td>backend, egress</td><td>gleiches Image wie <code>app</code></td></tr><tr><td><code>clamav</code></td><td>Virenscan der Uploads</td><td>backend, clamav-update</td><td>optional (Profil <code>clamav</code>)</td></tr><tr><td><code>updater</code></td><td>Updates aus der Oberfläche</td><td>updater, backend, egress</td><td>kein offener Port; optional (Profil <code>updater</code>)</td></tr><tr><td><code>socket-proxy</code></td><td>eingeschränkter Zugang zur Docker-API</td><td>updater (intern)</td><td>kein <code>exec</code>, keine Secrets, kein Swarm</td></tr></tbody></table></div>
+<h2 id="warum-ohne-fremdpakete">Warum ohne Fremdpakete?<a class="anchor" href="#warum-ohne-fremdpakete" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<p>Das Portal nutzt zur Laufzeit <strong>nur Node.js selbst</strong>:</p>
+<div class="table"><table><thead><tr><th>Bedarf</th><th>gelöst mit</th></tr></thead><tbody><tr><td>HTTP-Server, Router</td><td><code>node:http</code>, eigener kleiner Router (<code>src/server/http/core.ts</code>)</td></tr><tr><td>Datenbank</td><td><code>node:sqlite</code> (in Node eingebaut)</td></tr><tr><td>Passwort-Hashes, Verschlüsselung, TOTP, JWT-Prüfung</td><td><code>node:crypto</code> (scrypt, AES-256-GCM, HMAC, RSA)</td></tr><tr><td>TypeScript</td><td>Node führt <code>.ts</code> direkt aus; das Frontend wird mit dem eingebauten <code>stripTypeScriptTypes</code> gebaut</td></tr><tr><td>QR-Code für die 2FA-Einrichtung</td><td>eigener Generator (<code>src/server/qr.ts</code>), gegen OpenCV-Decoder getestet</td></tr></tbody></table></div>
+<p>Vorteile: keine Lieferkettenangriffe über npm-Pakete, keine Abhängigkeits-Updates, kleines und gut prüfbares Image. Entwicklerwerkzeuge (<code>typescript</code>, <code>@types/node</code>) werden nur für die Typprüfung gebraucht.</p>
+<h2 id="ablauf-einer-anfrage">Ablauf einer Anfrage<a class="anchor" href="#ablauf-einer-anfrage" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<pre><code>Benutzer          Portal (app)                       Worker                     Zammad
+   │ Formular ausfüllen │                                 │                           │
+   │───────────────────▶│ prüfen (Schema, Rechte,          │                           │
+   │                    │ Dateityp, Virenscan)             │                           │
+   │                    │ verschlüsselt speichern (Outbox) │                           │
+   │◀── „Gesendet“ ─────│                                  │                           │
+   │                    │                                  │ Kunde suchen/anlegen ────▶│
+   │                    │                                  │ Ticket im Namen des Kunden▶│ Trigger: Eingangsmail
+   │                    │                                  │ (Tag, Gruppe, Attribute)  │
+   │                    │                                  │ Inhalt + Anhänge löschen  │
+   │ Meine Tickets ────▶│ Tickets im Namen des Kunden ────────────────────────────────▶│
+   │◀── Liste/Verlauf ──│ (Zammad prüft Rechte, Portal prüft zusätzlich)               │</code></pre>
+<ul><li>Ist Zammad nicht erreichbar oder im Wartungsmodus, bleibt die Anfrage in der Warteschlange. Der Worker versucht es mit wachsenden Abständen erneut (30 s … 1 h, bis zu 20 Versuche).</li><li>Nach der Zustellung werden Formularinhalt und Anhänge sofort aus dem Portal gelöscht. Titel und Ticketnummer bleiben für „Meine Anfragen“; nach einem Jahr wird auch das gelöscht.</li></ul>
+<h3 id="mit-freigabe-durch-vorgesetzte">Mit Freigabe durch Vorgesetzte<a class="anchor" href="#mit-freigabe-durch-vorgesetzte" aria-label="Link zu diesem Abschnitt">#</a></h3>
+<p>Enthält das Formular ein sichtbares Feld „Freigabe durch Vorgesetzte(n)“, schiebt sich ein Schritt dazwischen:</p>
+<pre><code>Anfragende Person        Portal                                   Freigebende Person        Worker → Zammad
+   │ Formular + Adresse ─▶│ prüfen wie oben, Ticket fertig bauen,     │                          │
+   │                      │ verschlüsselt speichern                   │                          │
+   │                      │ Status awaiting_approval ─ Benachrichtigung ▶ Glocke, „Freigaben“    │
+   │◀ „Wartet auf Freigabe“│                                          │                          │
+   │                      │◀──────────────────────── Freigeben ───────│                          │
+   │                      │ Vermerk + Tag „freigegeben“ ins Ticket,   │                          │
+   │                      │ Status queued ───────────────────────────────────────────────────────▶│ zustellen wie oben
+   │◀─ Benachrichtigung ──│                                           │                          │
+   │                      │◀──────────────────────── Ablehnen ────────│  (Begründung Pflicht)    │
+   │◀─ Benachrichtigung ──│ Status rejected, Inhalt + Anhänge löschen │                          │</code></pre>
+<ul><li>Zustände von <code>requests</code>: <code>awaiting_approval</code> → <code>queued</code> → <code>sending</code> → <code>delivered</code> / <code>failed</code>, oder <code>awaiting_approval</code> → <code>rejected</code> / <code>withdrawn</code> (anfragende Person zieht zurück) / <code>expired</code> (Frist <code>APPROVAL_EXPIRE_DAYS</code>). Aus <code>failed</code>, <code>queued</code> und <code>awaiting_approval</code> kann die Verwaltung eine Anfrage abbrechen (<code>cancelled</code>). Der Worker fasst nur <code>queued</code> an.</li><li>Der Worker prüft stündlich die Fristen: einmalige Erinnerung nach <code>APPROVAL_REMIND_DAYS</code>, Ablauf nach <code>APPROVAL_EXPIRE_DAYS</code>.</li><li>Benachrichtigungen (<code>src/server/services/notifications.ts</code>) landen in der Tabelle <code>notifications</code> und erscheinen an der Glocke. Ziel ist ein Konto oder – für Personen, die sich vielleicht noch nie angemeldet haben – eine E-Mail-Adresse. Weitere Kanäle hängen sich über <code>registerChannel()</code> an; heute gibt es nur den Posteingang im Portal.</li></ul>
+<h2 id="zammad-anbindung">Zammad-Anbindung<a class="anchor" href="#zammad-anbindung" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<div class="table"><table><thead><tr><th>Zweck</th><th>Endpunkt</th><th>Kopfzeile</th></tr></thead><tbody><tr><td>Verbindungstest</td><td><code>GET /api/v1/users/me</code></td><td></td></tr><tr><td>Stammdaten</td><td><code>GET /api/v1/groups</code>, <code>ticket_states</code>, <code>ticket_priorities</code>, <code>object_manager_attributes</code></td><td></td></tr><tr><td>Kunde finden/anlegen</td><td><code>GET /api/v1/users/search</code>, <code>POST /api/v1/users</code></td><td></td></tr><tr><td>Ticket anlegen</td><td><code>POST /api/v1/tickets</code> (inkl. Artikel, Anhänge, Tags, Attribute)</td><td><code>X-On-Behalf-Of: &lt;Kunden-ID&gt;</code></td></tr><tr><td>Eigene Tickets</td><td><code>GET /api/v1/tickets/search?condition[ticket.customer_id]…&amp;sort_by=updated_at&amp;order_by=desc</code> (ohne Suchbegriff: direkt in der Datenbank, unabhängig von Elasticsearch); mit Organisations-Tickets zusätzlich <code>ticket.organization_id</code>. Ältere Zammad-Versionen: <code>GET /api/v1/tickets?expand=true</code></td><td><code>X-On-Behalf-Of</code></td></tr><tr><td>Organisation des Kunden</td><td><code>GET /api/v1/users/{id}</code> (nur mit „Tickets der eigenen Organisation anzeigen“)</td><td></td></tr><tr><td>Ticketverlauf</td><td><code>GET /api/v1/tickets/{id}</code>, <code>ticket_articles/by_ticket/{id}</code></td><td><code>X-On-Behalf-Of</code></td></tr><tr><td>Anhang</td><td><code>GET /api/v1/ticket_attachment/{t}/{a}/{id}</code></td><td><code>X-On-Behalf-Of</code></td></tr><tr><td>Antwort</td><td><code>POST /api/v1/ticket_articles</code></td><td><code>X-On-Behalf-Of</code></td></tr></tbody></table></div>
+<p>Mit <code>X-On-Behalf-Of</code> handelt Zammad als der Kunde selbst. Zammad entscheidet also, welche Tickets er sehen darf; das Portal zeigt davon nur eigene Tickets (bzw. die der eigenen Organisation). Das ist wichtig, wenn ein Kunde in Zammad zugleich Agent ist: Was er dort als Agent sieht, erscheint im Portal nicht. Interne Notizen werden doppelt ausgefiltert. Alle Aufrufe laufen über einen fetch mit SSRF-Schutz (<code>src/server/net/guarded-fetch.ts</code>): die aufgelöste IP wird bei jedem Verbindungsaufbau geprüft, Weiterleitungen werden nicht verfolgt. Nur freigegebene Attribute und erlaubte Gruppen gelangen ins Ticket (Details: <a href="sicherheit.html#zammad-was-das-portal-setzen-darf">SICHERHEIT.md</a>). HTML aus Zammad wird im Portal nie als HTML angezeigt, sondern serverseitig in Text umgewandelt.</p>
+<p><strong>Zammad-Objekte:</strong> Ticket-Attribute aus dem Objekt-Manager werden über <code>object_manager_attributes</code> gelesen. Unterstützt werden <code>input</code>, <code>textarea</code>, <code>select</code>, <code>multiselect</code>, <code>tree_select</code>, <code>multi_tree_select</code>, <code>boolean</code>, <code>integer</code> und <code>date</code>. Baumwerte haben in Zammad die Form <code>Eltern::Kind</code> und werden im Portal als „Eltern › Kind“ angezeigt.</p>
+<h2 id="gestaltung-und-stile">Gestaltung und Stile<a class="anchor" href="#gestaltung-und-stile" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<p>Die Oberfläche hängt an CSS-Variablen in <code>src/web/styles.css</code> (Farben, Flächen, Rundungen, Schriften). Das Branding des gewählten Ticketsystems setzt zwei Dinge:</p>
+<ul><li>die vier Farben als Variablen am <code>&lt;html&gt;</code> (<code>--brand</code>, <code>--brand-accent</code>, <code>--band</code>, <code>--band-text</code>);</li><li>den Stil als Attribut <code>data-style</code> (<code>standard</code>, <code>glas</code>, <code>fluent</code>, <code>material</code>, <code>kontrast</code>).</li></ul>
+<p>Jeder Stil besteht aus zwei Teilen:</p>
+<ol><li><strong>Variablen</strong> für hell und dunkel, unter <code>[data-style=&quot;…&quot;]</code>. Sie erben wie gewohnt.</li><li><strong>Bauteil-Regeln</strong> in einem <code>@scope ([data-style=&quot;…&quot;]) to ([data-style]:not([data-style=&quot;…&quot;]))</code>. Dadurch kann die Stil-Auswahl in der Verwaltung jede Vorschau in ihrem eigenen Stil zeigen, mitten in einer Seite mit anderem Stil.</li></ol>
+<p>Browser ohne <code>@scope</code> zeigen Farben, Rundungen und Schriften des Stils mit Standard-Bauteilen. Alles bleibt CSP-konform: keine Inline-Stile im HTML, Werte nur per CSSOM.</p>
+<h2 id="code-aufbau">Code-Aufbau<a class="anchor" href="#code-aufbau" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<pre><code>src/
+  shared/          läuft in Browser und Server
+    form.ts        Formular-Schema, Validierung, Sichtbarkeitsregeln
+    template.ts    Platzhalter-Vorlagen ohne Code
+    branding.ts    Stile, Farben, fertige Farbkombinationen, Kontrastprüfung (WCAG)
+    permissions.ts Rechte
+  server/
+    main.ts, worker.ts, cli.ts   Einstiegspunkte
+    server.ts      zentrale Prüfungen (Sitzung, CSRF, Herkunft, Rechte, Step-up)
+    http/          Router, Header, statische Dateien
+    auth/          Sitzungen, OIDC (Entra), TOTP
+    services/      Audit, Rechte, Benutzer, Formulare, Anfragen, Freigaben, Benachrichtigungen, Dateien, Zammad-Stammdaten
+    connectors/    Zammad-Anbindung
+    routes/        API: auth, portal, admin, itsm, pwa
+    db/            SQLite, Migrationen
+  web/             Frontend (ohne Framework, ohne innerHTML)
+updater/           Update-Dienst
+tools/             Build, Demo, Zammad- und Entra-Simulator, Screenshots
+test/              Tests (node:test)
+deploy/            Docker Compose, Caddy, Installationsskript</code></pre>
+<h2 id="status-und-störungen">Status und Störungen<a class="anchor" href="#status-und-störungen" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<p>Zammad bleibt das führende System für Tickets. Das Portal ergänzt eine Schicht davor: Services, Störungen, Wartungen und Probleme liegen im Portal (je Ticketsystem), Tickets nur in Zammad. Die Verbindung entsteht über <strong>Tags</strong>: Das führende Ticket einer Störung und Tickets, die während einer Störung aus einem zugeordneten Formular entstehen, tragen <code>inc-0003</code>; mit einem Problem verknüpfte Tickets <code>prb-0001</code>. Der Zustand eines Services ergibt sich bei jedem Abruf aus offenen Störungen, laufenden Wartungen und einem optionalen Zustand von Hand (der schlimmste gewinnt). „Ich bin auch betroffen“ speichert nur die Zuordnung Person ↔ Störung; Updates gehen als Benachrichtigung an diese Personen. Alle Funktionen sind über <code>settings.features</code> schaltbar (<code>src/shared/itsm.ts</code>, <code>src/server/services/itsm.ts</code>, <code>src/server/routes/itsm.ts</code>).</p>
+<h2 id="portal-als-app">Portal als App<a class="anchor" href="#portal-als-app" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<p>Das Portal ist eine Progressive Web App. <code>GET /api/app/manifest</code> liefert das Web-App-Manifest aus der globalen Gestaltung (Name, Farbe der Farbfläche, Kurzbefehle), <code>GET /api/app/icon/&lt;datei&gt;</code> die App-Symbole. Die Symbole zeichnet der Server selbst – ohne Bildbibliothek: Kantenglättung über vorzeichenbehaftete Abstände, PNG über <code>zlib</code> (<code>src/server/services/pwa.ts</code>); sie werden je Farbe zwischengespeichert. Der Service Worker <code>src/web/sw.js</code> trägt die Build-Kennung, damit Browser nach jedem Update die neue Fassung übernehmen, und speichert bewusst nichts zwischen. <code>GET /api/admin/settings/app</code> liefert den fertigen Wert für die Richtlinie <code>WebAppInstallForceList</code> (Intune). Schalter: <code>installApp</code> in <code>settings.features</code>. Anleitung: <a href="app.html">APP.md</a>.</p>
+<h2 id="datenmodell">Datenmodell<a class="anchor" href="#datenmodell" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<div class="table"><table><thead><tr><th>Tabelle</th><th>Inhalt</th></tr></thead><tbody><tr><td><code>users</code></td><td>Entra- und lokale Konten; Passwort-Hash (scrypt), TOTP-Geheimnis (verschlüsselt)</td></tr><tr><td><code>sessions</code></td><td>nur SHA-256-Hash der Sitzungs-ID, CSRF-Token, Zustand, Anmeldezeit</td></tr><tr><td><code>ticket_systems</code></td><td>Zammad-Instanzen; API-Token verschlüsselt; freigegebene Attribute</td></tr><tr><td><code>system_metadata</code></td><td>Zwischenspeicher der Zammad-Stammdaten (15 Min.)</td></tr><tr><td><code>forms</code>, <code>form_versions</code></td><td>Formulare und ihre Versionen (Entwurf, Freigabe, veröffentlicht, archiviert)</td></tr><tr><td><code>templates</code>, <code>overviews</code></td><td>Textbausteine und Ticket-Übersichten je System</td></tr><tr><td><code>branding_versions</code>, <code>assets</code></td><td>Stil, Farben und Texte versioniert, Logos</td></tr><tr><td><code>roles</code>, <code>role_assignments</code></td><td>Rollen und deren Zuordnung zu Benutzern, Gruppen oder allen</td></tr><tr><td><code>requests</code>, <code>request_files</code></td><td>Outbox (Inhalt verschlüsselt, Dateien verschlüsselt auf der Platte)</td></tr><tr><td><code>approvals</code></td><td>Freigabe je Anfrage: Adresse der freigebenden Person, Status, Frist; Ansicht für die freigebende Person und Hinweis verschlüsselt</td></tr><tr><td><code>notifications</code></td><td>Benachrichtigungen im Portal (an Konto oder E-Mail-Adresse), gelesen-Zeitpunkt; Löschung nach 90 Tagen</td></tr><tr><td><code>zammad_customers</code></td><td>Zuordnung Benutzer → Kunden-ID je System</td></tr><tr><td><code>settings</code></td><td>u. a. <code>features</code>: eingeschaltete Funktionen und Standorte</td></tr><tr><td><code>services</code></td><td>IT-Services je System, optional Zustand von Hand</td></tr><tr><td><code>incidents</code>, <code>incident_services</code>, <code>incident_updates</code>, <code>incident_affected</code></td><td>Störungen (Nummer, Auswirkung, Stand, Zeitraum, führendes Zammad-Ticket), Updates und wer sich als betroffen gemeldet hat</td></tr><tr><td><code>maintenances</code>, <code>maintenance_services</code></td><td>geplante Wartungen</td></tr><tr><td><code>problems</code>, <code>problem_tickets</code></td><td>Probleme mit Ursache und Workaround; verknüpfte Zammad-Tickets (in Zammad zusätzlich als Tag <code>prb-…</code>)</td></tr><tr><td><code>audit_log</code></td><td>nur anhängbar, Hash-Kette</td></tr><tr><td><code>update_state</code>, <code>update_jobs</code></td><td>Update-Status und Aufträge an den Updater</td></tr></tbody></table></div>
+<p>Alle Geheimnisse werden mit AES-256-GCM verschlüsselt. Für jeden Zweck (Token, TOTP, Anfrage, Freigabe, Upload, OIDC) wird per HKDF ein eigener Schlüssel aus dem Hauptschlüssel <code>SECRET_KEY</code> abgeleitet.</p><nav class="pager" aria-label="Weitere Anleitungen"><a href="go-live.html"><span>Zurück</span>Go-Live-Checkliste</a></nav><p class="source"><span>Diese Seite entsteht aus <a href="https://github.com/Hundexe/Zammad-Service-Portal/blob/main/docs/ARCHITEKTUR.md">docs/ARCHITEKTUR.md</a>.</span><a href="#inhalt">Nach oben</a></p>
+  </main>
+</div>
+<script>
+  // Auf schmalen Bildschirmen startet das Menü zugeklappt
+  if (matchMedia('(max-width: 960px)').matches) document.querySelector('.side details').removeAttribute('open');
+</script>
+</body>
+</html>

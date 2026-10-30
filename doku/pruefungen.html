@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sicherheitsprüfungen – Self-Service-Portal für Zammad</title>
+<meta name="description" content="Alle Sicherheitsprüfungen des Self-Service-Portals für Zammad, nach Datum">
+<link rel="icon" href="../demo/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="doku.css">
+</head>
+<body>
+<header class="top"><div class="wrap"><nav class="nav" aria-label="Hauptnavigation">
+  <a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span>Self-Service-Portal für Zammad</a>
+  <div class="nav-links">
+    <a href="../#video">Video</a>
+    <a class="keep" href="./" aria-current="page">Dokumentation</a>
+    <a href="../demo/">Demo</a>
+    <a href="https://github.com/Hundexe/Zammad-Service-Portal">GitHub</a>
+  </div>
+</nav></div></header>
+<div class="wrap layout">
+  <aside class="side" aria-label="Dokumentation">
+    <details open><summary>Anleitungen und Inhalt</summary>
+      <h2>Anleitungen</h2>
+      <ul><li><a href="installation.html">Installation</a></li><li><a href="microsoft-anmeldung.html">Microsoft-Anmeldung</a></li><li><a href="bedienung.html">Bedienung</a></li><li><a href="app.html">Portal als App</a></li><li><a href="betrieb.html">Betrieb</a></li><li><a href="updates.html">Updates</a></li><li><a href="sicherheit.html">Sicherheit</a></li><li><a href="go-live.html">Go-Live-Checkliste</a></li><li><a href="architektur.html">Architektur</a></li></ul>
+      <h2>Sicherheitsprüfungen</h2>
+      <ul><li><a href="pruefungen.html" aria-current="page">Übersicht</a></li><li><a href="sicherheitstest-2026-10-28.html">Sicherheitstest 28.10.2026</a></li><li><a href="review-2026-10.html">Review 27.10.2026</a></li><li><a href="lasttest.html">Lasttest 27.10.2026</a></li><li><a href="pentest.html">Penetrationstest 21.10.2026</a></li></ul>
+      
+    </details>
+  </aside>
+  <main class="doc" id="inhalt">
+<h1>Sicherheitsprüfungen</h1>
+<p class="lead">Zwischen dem 21.10.2026 und dem 28.10.2026 wurde das Portal 4-mal geprüft. Von 51 Funden sind 48 behoben; offen ist keiner mit hohem oder kritischem Risiko.</p>
+<div class="report-sum overall"><div class="sevbar" role="img" aria-label="51 Funde: 1 kritisch, 3 hoch, 12 mittel, 24 niedrig, 11 info"><span class="sev-kritisch" style="flex:1"></span><span class="sev-hoch" style="flex:3"></span><span class="sev-mittel" style="flex:12"></span><span class="sev-niedrig" style="flex:24"></span><span class="sev-info" style="flex:11"></span></div>
+<ul class="legend"><li><span class="dot sev-kritisch"></span><b>1</b> kritisch</li><li><span class="dot sev-hoch"></span><b>3</b> hoch</li><li><span class="dot sev-mittel"></span><b>12</b> mittel</li><li><span class="dot sev-niedrig"></span><b>24</b> niedrig</li><li><span class="dot sev-info"></span><b>11</b> info</li></ul><p class="states"><span class="state state-ok">48 behoben</span> <span class="state state-part">1 teilweise behoben</span> <span class="state state-part">1 Restrisiko dokumentiert</span> <span class="state state-part">1 beim Inhaber des Repositorys</span></p></div>
+<p class="small">Noch nicht ganz erledigt: <b>ST-28</b> (beim Inhaber des Repositorys), <b>ST-31</b> (teilweise behoben), <b>ST-33</b> (Restrisiko dokumentiert). Details stehen im jeweiligen Bericht.</p>
+<blockquote><p><strong>Einordnung:</strong> Die Prüfungen liefen während der Entwicklung in einer Testumgebung mit Simulatoren für Zammad, Microsoft Entra ID und ClamAV. Sie ersetzen keinen unabhängigen Penetrationstest gegen die echte Installation – der gehört zur <a href="go-live.html">Go-Live-Checkliste</a>.</p></blockquote>
+<h2 class="plain">Nach Datum, neueste zuerst</h2>
+<ol class="timeline">
+<li class="audit">
+  <div class="when"><time datetime="2026-10-28"><b>28.10.</b>2026</time></div>
+  <article class="audit-card">
+    <h2 id="sicherheitstest-2026-10-28"><a href="sicherheitstest-2026-10-28.html">Sicherheitstest der neuen Funktionen</a> <span class="kind kind-sicherheitstest">Sicherheitstest</span></h2>
+    <p class="meta">28.10.2026, Version 1.8.0, Korrekturen bis 1.10.2</p>
+    <p>Gesamter Quellcode und laufende Instanz hinter Caddy mit TLS. Schwerpunkt: Freigabe durch Vorgesetzte, Benachrichtigungen, Personensuche, Export und Import, Update-Dienst ohne Docker.</p>
+    <div class="sevbar" role="img" aria-label="35 Funde: 1 kritisch, 1 hoch, 7 mittel, 19 niedrig, 7 info"><span class="sev-kritisch" style="flex:1"></span><span class="sev-hoch" style="flex:1"></span><span class="sev-mittel" style="flex:7"></span><span class="sev-niedrig" style="flex:19"></span><span class="sev-info" style="flex:7"></span></div>
+<ul class="legend"><li><span class="dot sev-kritisch"></span><b>1</b> kritisch</li><li><span class="dot sev-hoch"></span><b>1</b> hoch</li><li><span class="dot sev-mittel"></span><b>7</b> mittel</li><li><span class="dot sev-niedrig"></span><b>19</b> niedrig</li><li><span class="dot sev-info"></span><b>7</b> info</li></ul><p class="states"><span class="state state-ok">32 behoben</span> <span class="state state-part">1 teilweise behoben</span> <span class="state state-part">1 Restrisiko dokumentiert</span> <span class="state state-part">1 beim Inhaber des Repositorys</span></p>
+    <p><a class="read" href="sicherheitstest-2026-10-28.html">Bericht lesen</a></p>
+  </article>
+</li>
+<li class="audit">
+  <div class="when"><time datetime="2026-10-27"><b>27.10.</b>2026</time></div>
+  <article class="audit-card">
+    <h2 id="review-2026-10"><a href="review-2026-10.html">Externes Review</a> <span class="kind kind-review">Review</span></h2>
+    <p class="meta">27.10.2026, Version 1.3.0, Nachträge 1.3.1 und 1.3.2</p>
+    <p>Architektur, Anmeldung, Rechteprüfung, Zammad-Anbindung, Uploads, SSRF, Updater, Container, SQLite, Tests und Projektzustand.</p>
+    <p class="result">Urteil des Reviews: Pilot ja, eingeschränkter Produktivbetrieb nach zusätzlichen Prüfungen. Alle 12 Punkte sind bearbeitet, zwei Fehler im Code gefunden und behoben, die Zahl der Tests stieg von 128 auf 196. Dazu ein zweites Review mit drei Schwerpunkten (IPv6 beim SSRF-Schutz, TLS-Prüfung, Schlüssel der Microsoft-Anmeldung).</p>
+    <p><a class="read" href="review-2026-10.html">Bericht lesen</a></p>
+  </article>
+</li>
+<li class="audit">
+  <div class="when"><time datetime="2026-10-27"><b>27.10.</b>2026</time></div>
+  <article class="audit-card">
+    <h2 id="lasttest"><a href="lasttest.html">Lasttest</a> <span class="kind kind-lasttest">Lasttest</span></h2>
+    <p class="meta">27.10.2026, Version 1.3.0</p>
+    <p>Anmeldespitze, Ticketansichten und gleichzeitige Anfragen mit Anhang, dazu Ausfall und Neustart von Zammad und Portal.</p>
+    <p class="result">50 Anmeldungen, 50 Ticketansichten und 20 gleichzeitige Anfragen mit 1 MB Anhang: keine Fehler, alle Antworten unter 0,6 Sekunden. Nach Ausfällen gehen keine Anfragen verloren und es entstehen keine doppelten Tickets.</p>
+    <p><a class="read" href="lasttest.html">Bericht lesen</a></p>
+  </article>
+</li>
+<li class="audit">
+  <div class="when"><time datetime="2026-10-21"><b>21.10.</b>2026</time></div>
+  <article class="audit-card">
+    <h2 id="pentest"><a href="pentest.html">Penetrationstest</a> <span class="kind kind-penetrationstest">Penetrationstest</span></h2>
+    <p class="meta">21. und 22.10.2026, Version 1.0.0, Nachprüfung mit 1.1.0</p>
+    <p>Web-Anwendung, Reverse Proxy mit TLS, Container-Konfiguration, Updater-Logik und Quellcode, mit Scannern (testssl.sh, nuclei, trivy, hadolint) und automatisierten Angriffstests.</p>
+    <div class="sevbar" role="img" aria-label="16 Funde: 2 hoch, 5 mittel, 5 niedrig, 4 info"><span class="sev-hoch" style="flex:2"></span><span class="sev-mittel" style="flex:5"></span><span class="sev-niedrig" style="flex:5"></span><span class="sev-info" style="flex:4"></span></div>
+<ul class="legend"><li><span class="dot sev-hoch"></span><b>2</b> hoch</li><li><span class="dot sev-mittel"></span><b>5</b> mittel</li><li><span class="dot sev-niedrig"></span><b>5</b> niedrig</li><li><span class="dot sev-info"></span><b>4</b> info</li></ul><p class="states"><span class="state state-ok">16 behoben</span></p>
+    <p><a class="read" href="pentest.html">Bericht lesen</a></p>
+  </article>
+</li>
+</ol>
+<p class="source"><span>Schwachstellen bitte vertraulich melden: <a href="https://github.com/Hundexe/Zammad-Service-Portal/blob/main/SECURITY.md">SECURITY.md</a>.</span><a href="#inhalt">Nach oben</a></p>
+  </main>
+</div>
+<script>
+  // Auf schmalen Bildschirmen startet das Menü zugeklappt
+  if (matchMedia('(max-width: 960px)').matches) document.querySelector('.side details').removeAttribute('open');
+</script>
+</body>
+</html>

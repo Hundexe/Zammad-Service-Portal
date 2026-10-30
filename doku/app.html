@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portal als App (PWA) und Verteilung per Intune – Self-Service-Portal für Zammad</title>
+<meta name="description" content="Portal als App: Installieren, per Intune verteilen">
+<link rel="icon" href="../demo/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="doku.css">
+</head>
+<body>
+<header class="top"><div class="wrap"><nav class="nav" aria-label="Hauptnavigation">
+  <a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span>Self-Service-Portal für Zammad</a>
+  <div class="nav-links">
+    <a href="../#video">Video</a>
+    <a class="keep" href="./" aria-current="page">Dokumentation</a>
+    <a href="../demo/">Demo</a>
+    <a href="https://github.com/Hundexe/Zammad-Service-Portal">GitHub</a>
+  </div>
+</nav></div></header>
+<div class="wrap layout">
+  <aside class="side" aria-label="Dokumentation">
+    <details open><summary>Anleitungen und Inhalt</summary>
+      <h2>Anleitungen</h2>
+      <ul><li><a href="installation.html">Installation</a></li><li><a href="microsoft-anmeldung.html">Microsoft-Anmeldung</a></li><li><a href="bedienung.html">Bedienung</a></li><li><a href="app.html" aria-current="page">Portal als App</a></li><li><a href="betrieb.html">Betrieb</a></li><li><a href="updates.html">Updates</a></li><li><a href="sicherheit.html">Sicherheit</a></li><li><a href="go-live.html">Go-Live-Checkliste</a></li><li><a href="architektur.html">Architektur</a></li></ul>
+      <h2>Sicherheitsprüfungen</h2>
+      <ul><li><a href="pruefungen.html">Übersicht</a></li><li><a href="sicherheitstest-2026-10-28.html">Sicherheitstest 28.10.2026</a></li><li><a href="review-2026-10.html">Review 27.10.2026</a></li><li><a href="lasttest.html">Lasttest 27.10.2026</a></li><li><a href="pentest.html">Penetrationstest 21.10.2026</a></li></ul>
+      <h2>Auf dieser Seite</h2><ul class="toc"><li><a href="#inhalt">Inhalt</a></li><li><a href="#was-die-app-kann">Was die App kann</a></li><li><a href="#einschalten">Einschalten</a></li><li><a href="#selbst-installieren">Selbst installieren</a></li><li><a href="#per-intune-verteilen">Per Intune verteilen</a></li><li><a href="#ohne-intune-gruppenrichtlinie-oder-registry">Ohne Intune: Gruppenrichtlinie oder Registry</a></li><li><a href="#handys-und-tablets">Handys und Tablets</a></li><li><a href="#sicherheit">Sicherheit</a></li><li><a href="#fehlersuche">Fehlersuche</a></li></ul>
+    </details>
+  </aside>
+  <main class="doc" id="inhalt">
+<h1 id="portal-als-app-pwa-und-verteilung-per-intune">Portal als App (PWA) und Verteilung per Intune<a class="anchor" href="#portal-als-app-pwa-und-verteilung-per-intune" aria-label="Link zu diesem Abschnitt">#</a></h1>
+<p>Das Self-Service-Portal lässt sich wie eine Anwendung installieren – ähnlich wie Spotify oder Teams im Browser. Es öffnet sich dann in einem <strong>eigenen Fenster</strong> ohne Adressleiste, hat ein <strong>Symbol im Startmenü, in der Taskleiste oder im Dock</strong> und eine Titelleiste in den Farben des Portals. Technisch ist das eine <em>Progressive Web App</em> (PWA): Es gibt keine zusätzliche Software, keinen App-Store und nichts zu aktualisieren – die App <strong>ist</strong> das Portal und ist nach jedem Portal-Update sofort auf dem neuen Stand.</p>
+<p>Für die IT besonders praktisch: Über <strong>Microsoft Intune</strong> (oder eine Gruppenrichtlinie) installiert Edge das Portal auf allen verwalteten Geräten automatisch.</p>
+<h2 id="inhalt">Inhalt<a class="anchor" href="#inhalt" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<ul><li><a href="#was-die-app-kann">Was die App kann</a></li><li><a href="#einschalten">Einschalten</a></li><li><a href="#selbst-installieren">Selbst installieren</a></li><li><a href="#per-intune-verteilen">Per Intune verteilen</a></li><li><a href="#ohne-intune-gruppenrichtlinie-oder-registry">Ohne Intune: Gruppenrichtlinie oder Registry</a></li><li><a href="#handys-und-tablets">Handys und Tablets</a></li><li><a href="#sicherheit">Sicherheit</a></li><li><a href="#fehlersuche">Fehlersuche</a></li></ul>
+<h2 id="was-die-app-kann">Was die App kann<a class="anchor" href="#was-die-app-kann" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<div class="table"><table><tbody><tr><td>Fenster</td><td>eigenes Fenster ohne Adressleiste, Titelleiste in der Farbe der Farbfläche</td></tr><tr><td>Symbol</td><td>Startmenü, Taskleiste, Dock oder Home-Bildschirm; Rechtsklick auf das Symbol bietet „Anfrage stellen“, „Meine Anfragen“ und – wenn eingeschaltet – „Status“</td></tr><tr><td>Anmeldung</td><td>wie im Browser über Microsoft. Edge und Chrome teilen die Anmeldung mit dem Browserprofil – mit Single Sign-on auf verwalteten Geräten meist ganz ohne Eingabe</td></tr><tr><td>Links</td><td>ein Klick auf einen Portal-Link (z. B. in einer Mail) öffnet das vorhandene App-Fenster statt eines zweiten</td></tr><tr><td>Benachrichtigungen</td><td>wie im Browser unter der Glocke (keine Push-Nachrichten)</td></tr><tr><td>Ohne Netz</td><td>eine verständliche Seite „Keine Verbindung zum Portal“ mit „Erneut versuchen“ statt der Fehlerseite des Browsers. Daten werden <strong>nicht</strong> auf dem Gerät gespeichert</td></tr><tr><td>Updates</td><td>kommen mit jedem Portal-Update automatisch</td></tr></tbody></table></div>
+<p><img src="../img/app-menue.jpg" width="49%" alt="Benutzermenü mit „Als App installieren“" loading="lazy"> <img src="../img/app-konto.jpg" width="49%" alt="Konto: Als App nutzen" loading="lazy"></p>
+<h2 id="einschalten">Einschalten<a class="anchor" href="#einschalten" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<p><strong>Verwaltung › Funktionen › Portal als App › Als App installierbar</strong> (Recht „Globale Einstellungen ändern“). Die Funktion ist <strong>standardmäßig an</strong>.</p>
+<ul><li><strong>Name</strong> der App ist der Name aus <strong>Stil, Farben, Logo</strong> der globalen Gestaltung (z. B. „IT-Self-Service-Portal“). Für Startbildschirm und Taskleiste wird er bei Bedarf an einer Wortgrenze auf 15 Zeichen gekürzt.</li><li><strong>Symbol:</strong> Das Portal erzeugt es selbst – drei Zeilen in der Schriftfarbe auf der Farbe der Farbfläche, in allen nötigen Größen und als „maskable“ Variante für runde Symbole auf Android. Ist unter <strong>Stil, Farben, Logo</strong> ein eigenes <strong>Favicon als SVG</strong> oder als quadratisches <strong>PNG ab 192 Pixeln</strong> hinterlegt, wird es zusätzlich angeboten. Ändern sich die Farben, holen sich die Browser das neue Symbol.</li><li><strong>Voraussetzung:</strong> HTTPS (im Produktivbetrieb immer gegeben).</li></ul>
+<p>Ausgeschaltet liefert das Portal kein Manifest mehr aus, die Browser bieten keine Installation mehr an, und der Service Worker meldet sich beim nächsten Aufruf ab. Bereits installierte Apps öffnen weiter einfach das Portal im eigenen Fenster; entfernen lassen sie sich wie jede App (bzw. per Intune, siehe unten).</p>
+<p><img src="../img/app-intune.jpg" alt="Verwaltung: Portal als App und Vorlage für Intune" loading="lazy"></p>
+<h2 id="selbst-installieren">Selbst installieren<a class="anchor" href="#selbst-installieren" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<p>Mitarbeitende finden <strong>„Als App installieren“</strong> im Menü unter ihrem Namen oben rechts, sobald der Browser die Installation anbietet, und eine Anleitung unter <strong>Konto und Sicherheit › Als App nutzen</strong>.</p>
+<div class="table"><table><thead><tr><th>Browser</th><th>So geht es</th></tr></thead><tbody><tr><td><strong>Edge</strong> (Windows, macOS)</td><td>Menü unter dem Namen › <strong>Als App installieren</strong> – oder in Edge: Menü „…“ › <strong>Apps</strong> › <strong>Diese Website als App installieren</strong></td></tr><tr><td><strong>Chrome</strong> (Windows, macOS, Linux, ChromeOS)</td><td>Menü unter dem Namen › <strong>Als App installieren</strong> – oder das Symbol „Installieren“ rechts in der Adressleiste</td></tr><tr><td><strong>Safari</strong> (iPhone, iPad)</td><td><strong>Teilen</strong> › <strong>Zum Home-Bildschirm</strong></td></tr><tr><td><strong>Safari</strong> (macOS ab Sonoma)</td><td><strong>Ablage</strong> › <strong>Zum Dock hinzufügen</strong></td></tr><tr><td><strong>Chrome</strong> (Android)</td><td>Menü „⋮“ › <strong>App installieren</strong> bzw. <strong>Zum Startbildschirm hinzufügen</strong></td></tr><tr><td><strong>Firefox</strong></td><td>installiert keine Web-Apps – bitte Edge oder Chrome verwenden</td></tr></tbody></table></div>
+<p>Deinstallieren: in der App oben rechts „…“ › <strong>App deinstallieren</strong>, oder wie jede andere App über Windows-Einstellungen bzw. das Startmenü.</p>
+<h2 id="per-intune-verteilen">Per Intune verteilen<a class="anchor" href="#per-intune-verteilen" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<p>Edge und Chrome kennen die Richtlinie <strong><code>WebAppInstallForceList</code></strong> („Configure list of force-installed Web Apps“): Alle Web-Apps in dieser Liste werden ohne Zutun installiert. Die Mitarbeitenden können sie nicht entfernen; fällt ein Gerät oder eine Person aus der Zuweisung, verschwindet die App wieder.</p>
+<p><strong>Den fertigen Wert gibt es in der Verwaltung</strong> unter <strong>Funktionen › Portal als App › Per Intune auf alle Geräte verteilen</strong> – mit der richtigen Adresse und einem Knopf zum Kopieren.</p>
+<ol><li><strong>Intune Admin Center</strong> › <strong>Geräte</strong> › <strong>Windows</strong> › <strong>Konfiguration</strong> › <strong>Erstellen</strong> › <strong>Neue Richtlinie</strong>.</li><li>Plattform <strong>Windows 10 und höher</strong>, Profiltyp <strong>Einstellungskatalog</strong>. Name z. B. „Edge – Self-Service-Portal als App“.</li><li><strong>Einstellungen hinzufügen</strong> › nach <code>WebAppInstallForceList</code> suchen › Kategorie <strong>Microsoft Edge</strong> › <strong>Configure list of force-installed Web Apps</strong> (die Geräteeinstellung).</li><li><p>Einstellung <strong>aktivieren</strong> und den Wert aus der Verwaltung in das Textfeld einfügen:</p>
+<pre data-lang="json"><code>[
+  {
+    &quot;url&quot;: &quot;https://portal.example.org/&quot;,
+    &quot;default_launch_container&quot;: &quot;window&quot;,
+    &quot;create_desktop_shortcut&quot;: false,
+    &quot;fallback_app_name&quot;: &quot;IT-Self-Service-Portal&quot;
+  }
+]</code></pre></li><li><p><strong>Zuweisungen:</strong> Geräte- oder Benutzergruppen wählen, dann <strong>Erstellen</strong>.</p></li></ol>
+<p>Nach der nächsten Synchronisierung des Geräts (spätestens nach einem Neustart von Edge) erscheint die App im Startmenü. Mit <code>&quot;create_desktop_shortcut&quot;: true</code> (Kästchen „Zusätzlich eine Verknüpfung auf dem Desktop anlegen“ in der Verwaltung) gibt es zusätzlich ein Symbol auf dem Desktop.</p>
+<div class="table"><table><thead><tr><th>Feld</th><th>Bedeutung</th></tr></thead><tbody><tr><td><code>url</code></td><td>Adresse des Portals (Startseite). Muss genau die Adresse sein, unter der das Portal läuft</td></tr><tr><td><code>default_launch_container</code></td><td><code>window</code> = eigenes App-Fenster, <code>tab</code> = Tab im Browser</td></tr><tr><td><code>create_desktop_shortcut</code></td><td>zusätzlich eine Verknüpfung auf dem Desktop</td></tr><tr><td><code>fallback_app_name</code></td><td>Name, bis Edge das Manifest des Portals geladen hat</td></tr></tbody></table></div>
+<p><strong>Google Chrome:</strong> Dieselbe Einstellung gibt es im Einstellungskatalog unter der Kategorie <strong>Google Chrome</strong> – gleicher Wert.</p>
+<p><strong>macOS:</strong> Für Edge auf dem Mac dieselbe Richtlinie als Einstellungsdatei (Konfigurationsprofil mit der Vorlage „Einstellungsdatei“ bzw. „Preference file“, Domäne <code>com.microsoft.Edge</code>):</p>
+<pre data-lang="xml"><code>&lt;key&gt;WebAppInstallForceList&lt;/key&gt;
+&lt;array&gt;
+  &lt;dict&gt;
+    &lt;key&gt;url&lt;/key&gt;&lt;string&gt;https://portal.example.org/&lt;/string&gt;
+    &lt;key&gt;default_launch_container&lt;/key&gt;&lt;string&gt;window&lt;/string&gt;
+  &lt;/dict&gt;
+&lt;/array&gt;</code></pre>
+<p><strong>Prüfen:</strong> Auf einem Zielgerät in Edge <code>edge://policy</code> öffnen (die Richtlinie steht dort mit Status „OK“) und <code>edge://apps</code> – dort steht das Portal als installierte App.</p>
+<h2 id="ohne-intune-gruppenrichtlinie-oder-registry">Ohne Intune: Gruppenrichtlinie oder Registry<a class="anchor" href="#ohne-intune-gruppenrichtlinie-oder-registry" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<ul><li><strong>Gruppenrichtlinie:</strong> Administrative Vorlagen › Microsoft Edge › <strong>Configure list of force-installed Web Apps</strong> (in deutschen Vorlagen übersetzt), Wert wie oben. Dafür werden die Edge-Vorlagen (<code>msedge.admx</code>) benötigt.</li><li><strong>Registry</strong> (z. B. per Skript), Typ <code>REG_SZ</code>, Inhalt ist die JSON-Liste in einer Zeile:
+<pre data-lang="powershell"><code>$key = 'HKLM:\SOFTWARE\Policies\Microsoft\Edge'
+New-Item -Path $key -Force | Out-Null
+Set-ItemProperty -Path $key -Name 'WebAppInstallForceList' -Value '[{&quot;url&quot;:&quot;https://portal.example.org/&quot;,&quot;default_launch_container&quot;:&quot;window&quot;}]'</code></pre>
+<p>Für Chrome entsprechend unter <code>HKLM:\SOFTWARE\Policies\Google\Chrome</code>.</p></li></ul>
+<h2 id="handys-und-tablets">Handys und Tablets<a class="anchor" href="#handys-und-tablets" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<p>Die Richtlinie gilt nur für Edge und Chrome auf Windows, macOS und Linux. Für verwaltete Handys und Tablets legt man in Intune eine App vom Typ <strong>Weblink</strong> mit der Adresse des Portals an (Apps › iOS/iPadOS bzw. Android › Hinzufügen › Weblink) und weist sie zu – das Portal erscheint dann als Symbol auf dem Home-Bildschirm. Mitarbeitende können es auf iPhone und iPad auch selbst über <strong>Teilen › Zum Home-Bildschirm</strong> hinzufügen.</p>
+<h2 id="sicherheit">Sicherheit<a class="anchor" href="#sicherheit" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<ul><li><strong>Keine Daten auf dem Gerät:</strong> Der Service Worker (<code>/sw.js</code>) speichert <strong>nichts</strong> zwischen – keine Seiten, keine Tickets, keine Anhänge. Er fängt nur Seitenaufrufe ab, um ohne Netz die Hinweisseite „Keine Verbindung“ zu zeigen. Aufrufe unter <code>/api/</code> – also Anmeldung, Daten und Weiterleitungen zu Microsoft – lässt er unberührt. Bei jeder Aktivierung leert er vorsorglich alle Zwischenspeicher des Portals.</li><li><strong>Gleiche Schutzmaßnahmen wie im Browser:</strong> Die App ist der Browser – Sitzungs-Cookies, CSRF-Schutz, Content-Security-Policy, Abmeldung nach Inaktivität und bedingter Zugriff von Microsoft gelten unverändert. Die CSP erlaubt Service Worker nur vom eigenen Server (<code>worker-src 'self'</code>), das Manifest nur vom eigenen Server (<code>manifest-src 'self'</code>).</li><li><strong>Öffentlich, aber ohne Inhalt:</strong> Manifest (<code>/api/app/manifest</code>) und Symbole (<code>/api/app/icon/…</code>) sind ohne Anmeldung abrufbar – das müssen sie, damit Edge die App auch vor der ersten Anmeldung installieren kann. Sie enthalten nur Name und Farben des Portals, die ohnehin auf der Anmeldeseite stehen.</li><li><strong>Ausschaltbar:</strong> Mit dem Schalter in <strong>Funktionen</strong> ist alles abgeschaltet (Manifest und Symbole antworten mit 404, der Service Worker meldet sich ab).</li></ul>
+<h2 id="fehlersuche">Fehlersuche<a class="anchor" href="#fehlersuche" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<div class="table"><table><thead><tr><th>Problem</th><th>Ursache und Lösung</th></tr></thead><tbody><tr><td>Kein „Als App installieren“ im Menü</td><td>Die App ist schon installiert, der Browser bietet keine Installation an (Firefox, Safari – siehe <a href="#selbst-installieren">Selbst installieren</a>) oder die Funktion ist ausgeschaltet. Im Menü erscheint der Eintrag nur, wenn Edge oder Chrome die Installation gerade anbieten</td></tr><tr><td>Edge zeigt das Symbol in der Adressleiste nicht</td><td>Portal ohne HTTPS aufgerufen oder Funktion aus. Prüfen: <code>https://&lt;portal&gt;/api/app/manifest</code> muss JSON liefern</td></tr><tr><td>Intune: App erscheint nicht</td><td><code>edge://policy</code> → steht <code>WebAppInstallForceList</code> dort? „Richtlinien neu laden“ klicken, Edge neu starten. Das Gerät muss das Portal zum Installieren erreichen können (ggf. VPN)</td></tr><tr><td>Intune: Status „Fehler“ in <code>edge://policy</code></td><td>Der Wert ist kein gültiges JSON – den Wert aus der Verwaltung unverändert einfügen</td></tr><tr><td>Falscher Name oder altes Symbol</td><td>Name und Farben unter <strong>Stil, Farben, Logo</strong> (global) ändern. Edge und Chrome übernehmen Änderungen beim nächsten Start der App, das kann bis zu einem Tag dauern</td></tr><tr><td>App öffnet Microsoft-Anmeldung in einem Fenster mit Adressleiste</td><td>So gewollt: Seiten außerhalb des Portals zeigt die App mit Adresse an, damit erkennbar ist, wo man sich anmeldet. Danach geht es im App-Fenster weiter</td></tr></tbody></table></div><nav class="pager" aria-label="Weitere Anleitungen"><a href="bedienung.html"><span>Zurück</span>Bedienung</a><a class="next" href="betrieb.html"><span>Weiter</span>Betrieb</a></nav><p class="source"><span>Diese Seite entsteht aus <a href="https://github.com/Hundexe/Zammad-Service-Portal/blob/main/docs/APP.md">docs/APP.md</a>.</span><a href="#inhalt">Nach oben</a></p>
+  </main>
+</div>
+<script>
+  // Auf schmalen Bildschirmen startet das Menü zugeklappt
+  if (matchMedia('(max-width: 960px)').matches) document.querySelector('.side details').removeAttribute('open');
+</script>
+</body>
+</html>

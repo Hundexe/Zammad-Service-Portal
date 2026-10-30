@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Updates – Self-Service-Portal für Zammad</title>
+<meta name="description" content="Updates: Releases, Rollback">
+<link rel="icon" href="../demo/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="doku.css">
+</head>
+<body>
+<header class="top"><div class="wrap"><nav class="nav" aria-label="Hauptnavigation">
+  <a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span>Self-Service-Portal für Zammad</a>
+  <div class="nav-links">
+    <a href="../#video">Video</a>
+    <a class="keep" href="./" aria-current="page">Dokumentation</a>
+    <a href="../demo/">Demo</a>
+    <a href="https://github.com/Hundexe/Zammad-Service-Portal">GitHub</a>
+  </div>
+</nav></div></header>
+<div class="wrap layout">
+  <aside class="side" aria-label="Dokumentation">
+    <details open><summary>Anleitungen und Inhalt</summary>
+      <h2>Anleitungen</h2>
+      <ul><li><a href="installation.html">Installation</a></li><li><a href="microsoft-anmeldung.html">Microsoft-Anmeldung</a></li><li><a href="bedienung.html">Bedienung</a></li><li><a href="app.html">Portal als App</a></li><li><a href="betrieb.html">Betrieb</a></li><li><a href="updates.html" aria-current="page">Updates</a></li><li><a href="sicherheit.html">Sicherheit</a></li><li><a href="go-live.html">Go-Live-Checkliste</a></li><li><a href="architektur.html">Architektur</a></li></ul>
+      <h2>Sicherheitsprüfungen</h2>
+      <ul><li><a href="pruefungen.html">Übersicht</a></li><li><a href="sicherheitstest-2026-10-28.html">Sicherheitstest 28.10.2026</a></li><li><a href="review-2026-10.html">Review 27.10.2026</a></li><li><a href="lasttest.html">Lasttest 27.10.2026</a></li><li><a href="pentest.html">Penetrationstest 21.10.2026</a></li></ul>
+      <h2>Auf dieser Seite</h2><ul class="toc"><li><a href="#so-läuft-ein-update-aus-der-oberfläche">So läuft ein Update aus der Oberfläche</a></li><li><a href="#einrichtung-einmalig">Einrichtung (einmalig)</a></li><li><a href="#installation-ohne-docker">Installation ohne Docker</a></li><li><a href="#eine-neue-version-veröffentlichen-auf-dem-build-pc">Eine neue Version veröffentlichen (auf dem Build-PC)</a></li><li><a href="#empfehlung-für-den-start-manuell-aktualisieren">Empfehlung für den Start: manuell aktualisieren</a></li><li><a href="#manuell-aktualisieren-ohne-updater">Manuell aktualisieren (ohne Updater)</a></li><li><a href="#manuell-zurückrollen">Manuell zurückrollen</a></li><li><a href="#alternative-signierte-images-aus-der-registry">Alternative: signierte Images aus der Registry</a></li><li><a href="#sicherheit-des-updaters">Sicherheit des Updaters</a></li></ul>
+    </details>
+  </aside>
+  <main class="doc" id="inhalt">
+<h1 id="updates">Updates<a class="anchor" href="#updates" aria-label="Link zu diesem Abschnitt">#</a></h1>
+<p>Neue Versionen werden als <strong>signierte Git-Tags</strong> (<code>vX.Y.Z</code>, siehe <strong>Releases</strong>) veröffentlicht. Der Update-Dienst auf der VM holt sie, prüft die Signatur, baut die Images <strong>auf der VM</strong> und startet das Portal neu. Dafür braucht es weder GitHub Actions noch eine Container-Registry.</p>
+<blockquote><p><strong>Installation ohne Docker</strong> (<code>deploy/native/install.sh</code>): Ab 1.8.0 gibt es den Update-Dienst auch dort – siehe <a href="#installation-ohne-docker">Installation ohne Docker</a>. Alternativ weiterhin den Installationsbefehl erneut ausführen.</p></blockquote>
+<h2 id="so-läuft-ein-update-aus-der-oberfläche">So läuft ein Update aus der Oberfläche<a class="anchor" href="#so-läuft-ein-update-aus-der-oberfläche" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<ol><li>Der Updater prüft alle 6 Stunden (oder nach <strong>Jetzt nach Updates suchen</strong>) die Tags im Repository.</li><li>Unter <strong>Verwaltung → Updates</strong> erscheint die neue Version mit Änderungsliste.</li><li><strong>Auf 1.1.0 aktualisieren</strong> (frische Anmeldung erforderlich). Der Updater:
+<ol><li>prüft die <strong>Signatur des Tags</strong> gegen <code>deploy/allowed_signers</code>,</li><li>sichert die Datenbank nach <code>/data/backups/vor-update-…sqlite</code>,</li><li>checkt den Tag aus und baut das Image,</li><li>startet <code>app</code> und <code>worker</code> neu (Datenbank-Migrationen laufen beim Start),</li><li>wartet, bis <code>/readyz</code> die neue Version meldet (höchstens 3 Minuten).</li></ol></li><li>Schlägt ein Schritt fehl, setzt der Updater <strong>automatisch zurück</strong>: alte Version auschecken, Datenbank aus dem Backup wiederherstellen, alte Version starten. Das Protokoll steht im Verlauf.</li></ol>
+<p>Das Portal ist während des Neustarts etwa eine Minute nicht erreichbar. Eingegangene Anfragen gehen nicht verloren – sie liegen in der Warteschlange.</p>
+<h2 id="einrichtung-einmalig">Einrichtung (einmalig)<a class="anchor" href="#einrichtung-einmalig" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<h3 id="auf-der-vm">Auf der VM<a class="anchor" href="#auf-der-vm" aria-label="Link zu diesem Abschnitt">#</a></h3>
+<p>Beim öffentlichen Repository (per <code>https://</code> geklont) ist dafür nichts weiter nötig. Bei einer privaten Kopie braucht der Updater den Deploy-Key aus der <a href="installation.html#3-code-holen">Installation</a> unter <code>deploy/secrets/deploy_key</code>.</p>
+<pre data-lang="bash"><code>cd /opt/zammad-service-portal/deploy
+ssh-keyscan -t ed25519 github.com &gt; known_hosts     # macht install.sh automatisch
+grep -v '^#' release_signers &gt; allowed_signers      # macht install.sh automatisch (offizieller Release-Schlüssel)
+grep COMPOSE_PROFILES .env                          # muss &quot;updater&quot; enthalten
+docker compose up -d</code></pre>
+<p>In <code>.env</code>:</p>
+<div class="table"><table><thead><tr><th>Variable</th><th>Bedeutung</th></tr></thead><tbody><tr><td><code>UPDATE_SOURCE=git</code></td><td>Tags holen und auf der VM bauen (Standard)</td></tr><tr><td><code>UPDATE_REQUIRE_SIGNED_TAGS=true</code></td><td>nur signierte Tags installieren (dringend empfohlen)</td></tr><tr><td><code>PORTAL_DIR</code></td><td>absoluter Pfad des Repositorys – muss stimmen, sonst findet Compose die Dateien nicht</td></tr></tbody></table></div>
+<h3 id="wer-releases-signiert">Wer Releases signiert<a class="anchor" href="#wer-releases-signiert" aria-label="Link zu diesem Abschnitt">#</a></h3>
+<p>Die Release-Tags dieses Repositorys sind mit dem Projektschlüssel aus <a href="https://github.com/Hundexe/Zammad-Service-Portal/blob/main/deploy/release_signers" rel="noopener"><code>deploy/release_signers</code></a> signiert (ed25519, Fingerabdruck <strong><code>SHA256:ddbtjFbMXjsaYtgyYjLPXZJMNgCOIWZIfWCok+RGZX8</code></strong>). Der Schlüssel wird bei der ersten Installation übernommen und danach nicht mehr aus dem Repository überschrieben – die Integrität hängt also am ersten Bezug: den Fingerabdruck, den die Installation anzeigt, mit diesem Wert vergleichen (am besten über einen zweiten Weg, z. B. die Release-Seite). <code>install.sh</code> übernimmt ihn automatisch nach <code>deploy/allowed_signers</code>, wenn dort noch nichts steht. Prüfen von Hand:</p>
+<pre data-lang="bash"><code>git -c gpg.ssh.allowedSignersFile=deploy/release_signers verify-tag v1.3.0</code></pre>
+<p>Wer ein <strong>eigenes Fork</strong> betreibt und selbst Releases baut, erzeugt einen eigenen Schlüssel (unten) und trägt nur diesen in <code>deploy/allowed_signers</code> ein – dann installiert der Updater ausschließlich Versionen aus dem eigenen Fork.</p>
+<h3 id="signaturschlüssel-für-eigene-releases-auf-dem-build-pc">Signaturschlüssel für eigene Releases (auf dem Build-PC)<a class="anchor" href="#signaturschlüssel-für-eigene-releases-auf-dem-build-pc" aria-label="Link zu diesem Abschnitt">#</a></h3>
+<p>Git kann Tags mit einem SSH-Schlüssel signieren:</p>
+<pre data-lang="bash"><code>ssh-keygen -t ed25519 -C &quot;release-signing&quot; -f ~/.ssh/release_signing
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/release_signing.pub</code></pre>
+<p>Den öffentlichen Schlüssel auf der VM in <code>deploy/allowed_signers</code> eintragen:</p>
+<pre><code>release@example.com ssh-ed25519 AAAAC3Nz… release-signing</code></pre>
+<p>Die E-Mail muss zur Git-Konfiguration (<code>user.email</code>) passen, mit der der Tag erstellt wird.</p>
+<h2 id="installation-ohne-docker">Installation ohne Docker<a class="anchor" href="#installation-ohne-docker" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<p><code>deploy/native/install.sh</code> richtet den systemd-Dienst <code>zammad-service-portal-updater</code> ein (läuft als root, hat keinen offenen Port). root braucht er nur für <code>git</code>, <code>systemctl</code> und <code>install.sh</code>; die Datenbank (Aufträge, Status, Sicherung, Wiederherstellung) öffnet ein Helfer-Prozess mit den Rechten des Dienstbenutzers (<code>updater/db-agent.ts</code>). Er arbeitet wie der Docker-Updater, nur ohne Images:</p>
+<ol><li>prüft alle 6 Stunden (oder nach <strong>Jetzt nach Updates suchen</strong>) die Tags <code>vX.Y.Z</code> im Repository,</li><li>prüft die <strong>Signatur des Tags</strong> gegen <code>/etc/zammad-service-portal/allowed_signers</code> (beim ersten Lauf aus <code>deploy/release_signers</code> übernommen),</li><li>sichert die Datenbank nach <code>/var/lib/zammad-service-portal/backups/vor-update-…sqlite</code>,</li><li>checkt den Tag aus und führt <code>deploy/native/install.sh --ja</code> aus (Oberfläche bauen, Web und Worker neu starten, Benutzer bleiben unverändert),</li><li>wartet, bis <code>http://127.0.0.1:3000/readyz</code> die neue Version meldet,</li><li>setzt bei einem Fehler <strong>automatisch zurück</strong> (Dienste stoppen, Datenbank wiederherstellen, alten Stand auschecken, <code>install.sh</code> erneut).</li></ol>
+<p>Danach startet sich der Update-Dienst selbst mit dem neuen Code neu.</p>
+<p><strong>Installationen vor 1.8.0</strong> haben den Dienst noch nicht – einmal den Installationsbefehl ausführen, danach geht es über die Verwaltung:</p>
+<pre data-lang="bash"><code>curl -fsSL https://raw.githubusercontent.com/Hundexe/Zammad-Service-Portal/main/setup.sh | sudo bash
+systemctl status zammad-service-portal-updater        # läuft er?
+journalctl -u zammad-service-portal-updater -n 50     # was hat er zuletzt getan?</code></pre>
+<div class="table"><table><thead><tr><th>Einstellung in <code>portal.env</code></th><th>Bedeutung</th></tr></thead><tbody><tr><td><code>UPDATER_ENABLED=false</code></td><td>Update-Dienst abschalten (danach <code>install.sh</code> erneut ausführen)</td></tr><tr><td><code>UPDATE_ALLOWED_SIGNERS</code></td><td>Datei mit erlaubten Signaturschlüsseln (Standard <code>/etc/zammad-service-portal/allowed_signers</code>)</td></tr><tr><td><code>UPDATE_REQUIRE_SIGNED_TAGS=false</code></td><td>Signatur nicht prüfen – nicht empfohlen</td></tr><tr><td><code>CHECK_INTERVAL_HOURS</code></td><td>Prüfabstand (Standard 6)</td></tr></tbody></table></div>
+<p>Solange im Repository <strong>kein signierter Tag</strong> liegt, zeigt die Seite „noch keine veröffentlichte Version“ – siehe nächster Abschnitt.</p>
+<h2 id="eine-neue-version-veröffentlichen-auf-dem-build-pc">Eine neue Version veröffentlichen (auf dem Build-PC)<a class="anchor" href="#eine-neue-version-veröffentlichen-auf-dem-build-pc" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<pre data-lang="bash"><code># CHANGELOG.md ergänzen (## 1.3.0 – Datum), Version in package.json erhöhen, committen
+bash tools/release.sh 1.3.0</code></pre>
+<p><code>tools/release.sh</code> prüft Arbeitsstand, Version und Changelog, lässt Typprüfung, alle Tests und den Secret-Scan laufen, erstellt den <strong>signierten</strong> Tag, prüft die Signatur gegen <code>deploy/allowed_signers</code> und lädt Commit und Tag hoch. Ist die GitHub-CLI angemeldet, legt es auch das GitHub-Release mit dem Text aus dem Changelog an; sonst auf der Webseite unter <strong>Releases → Draft a new release</strong> den Tag auswählen.</p>
+<p>Danach erscheint die Version spätestens nach 6 Stunden in der Oberfläche, sofort nach <strong>Jetzt nach Updates suchen</strong>.</p>
+<blockquote><p>Welche Versionen es gibt, steht unter <strong>Releases</strong> bzw. <code>git tag -l 'v*'</code>. In dieser Anleitung steht <code>vX.Y.Z</code> für die gewünschte Version.</p></blockquote>
+<h2 id="empfehlung-für-den-start-manuell-aktualisieren">Empfehlung für den Start: manuell aktualisieren<a class="anchor" href="#empfehlung-für-den-start-manuell-aktualisieren" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<p>Der Updater kann Images bauen und Container starten – wer ihn übernimmt, hat weitgehende Rechte auf der VM. Für die ersten Monate empfiehlt sich deshalb: Profil <code>updater</code> <strong>weglassen</strong> (<code>COMPOSE_PROFILES=clamav</code> in <code>.env</code>), Updates von Hand nach dem folgenden Ablauf, vorher <strong>VM-Snapshot</strong>. Wer ein eigenes Fork pflegt, prüft die Änderungen dort (<code>git log</code>, <code>git diff vALT..vNEU</code>) und installiert nur eigene, signierte Tags – nie direkt <code>main</code>.</p>
+<h2 id="manuell-aktualisieren-ohne-updater">Manuell aktualisieren (ohne Updater)<a class="anchor" href="#manuell-aktualisieren-ohne-updater" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<pre data-lang="bash"><code>cd /opt/zammad-service-portal
+git fetch --tags
+git tag -l 'v*' | sort -V | tail -3                                   # verfügbare Versionen
+git -c gpg.ssh.allowedSignersFile=deploy/allowed_signers verify-tag vX.Y.Z   # muss &quot;Good signature&quot; melden
+cd deploy
+docker compose exec app /nodejs/bin/node src/server/cli.ts backup --out /data/backups/vor-update.sqlite
+docker compose exec app /nodejs/bin/node src/server/cli.ts backup:verify /data/backups/vor-update.sqlite
+git checkout vX.Y.Z
+sed -i 's/^APP_VERSION=.*/APP_VERSION=X.Y.Z/' .env
+docker compose build &amp;&amp; docker compose up -d
+docker compose ps                                                      # app muss &quot;healthy&quot; sein
+docker compose exec app /nodejs/bin/node src/server/cli.ts status      # Exit-Code 0 = alles in Ordnung
+bash ../tools/check-hardening.sh                                       # Härtung unverändert?</code></pre>
+<p>Ohne Docker: <code>git -C /opt/zammad-service-portal fetch --tags &amp;&amp; git -C /opt/zammad-service-portal checkout vX.Y.Z</code>, Signatur wie oben prüfen, <code>service-portal-cli backup</code>, dann <code>/opt/zammad-service-portal/deploy/native/install.sh</code>.</p>
+<h2 id="manuell-zurückrollen">Manuell zurückrollen<a class="anchor" href="#manuell-zurückrollen" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<pre data-lang="bash"><code>cd /opt/zammad-service-portal/deploy
+docker compose stop app worker
+git checkout vALT                                                      # vorher installierte Version
+sed -i 's/^APP_VERSION=.*/APP_VERSION=ALT/' .env
+docker compose build
+# Datenbank vom Stand vor dem Update zurückholen (prüft die Datei, sichert den aktuellen Stand vorher):
+docker compose run --rm --no-deps app restore /data/backups/vor-update.sqlite --yes
+docker compose up -d
+docker compose exec app /nodejs/bin/node src/server/cli.ts status</code></pre>
+<p>Der Rückweg ist nötig, weil neuere Versionen die Datenbank migrieren können; eine ältere Version startet nicht mit einer Datenbank aus der Zukunft (<code>backup:verify</code> meldet das). Ohne Docker: Dienste stoppen, alten Tag auschecken, <code>service-portal-cli restore DATEI --yes</code>, <code>install.sh</code> erneut ausführen.</p>
+<h2 id="alternative-signierte-images-aus-der-registry">Alternative: signierte Images aus der Registry<a class="anchor" href="#alternative-signierte-images-aus-der-registry" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<p>Wer nicht auf der VM bauen möchte: <code>UPDATE_SOURCE=registry</code> und <code>REGISTRY_IMAGE=ghcr.io/hundexe/zammad-service-portal</code>. Die Images entstehen dann mit dem Workflow <strong>Release-Images</strong> (nur auf Knopfdruck) und werden schlüssellos mit cosign signiert. Der Updater prüft die Signatur mit <code>cosign verify</code> gegen die Identität des Workflows. Für ein privates Repository braucht die VM ein Token mit <code>read:packages</code> (<code>REGISTRY_USER</code>, <code>REGISTRY_TOKEN_FILE</code>).</p>
+<h2 id="sicherheit-des-updaters">Sicherheit des Updaters<a class="anchor" href="#sicherheit-des-updaters" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<ul><li>Der Updater hat <strong>keinen</strong> offenen Port. Er liest nur Aufträge aus der Datenbank, die ausschließlich Benutzer mit dem Recht <code>update.install</code> nach frischer Anmeldung anlegen können, und nur für Versionen, die er selbst gefunden hat.</li><li>Versionsangaben werden streng geprüft (<code>x.y.z</code>); Befehle werden ohne Shell ausgeführt.</li><li><p>Docker spricht er nur über den Socket-Proxy an. Der Proxy lässt nur die Teile der Docker-API durch, die <code>docker compose build/pull/up/stop</code> braucht:</p>
+<div class="table"><table><thead><tr><th>Bereich</th><th>erlaubt</th><th>Warum</th></tr></thead><tbody><tr><td>Container, Start/Stop/Neustart</td><td>ja</td><td><code>app</code> und <code>worker</code> neu erstellen und starten</td></tr><tr><td>Images</td><td>ja</td><td>neues Image bauen bzw. laden</td></tr><tr><td>Build</td><td>ja bei <code>UPDATE_SOURCE=git</code>, sonst mit <code>UPDATER_ALLOW_BUILD=0</code> abschaltbar</td><td>auf der VM bauen</td></tr><tr><td>Netzwerke, Volumes</td><td>ja (nur weil Compose sie prüft)</td><td><code>up</code> kontrolliert die vorhandenen Netze und das Datenvolume</td></tr><tr><td><code>exec</code>, Secrets, Swarm, Plugins, Anmeldedaten, System</td><td><strong>nein</strong></td><td>–</td></tr></tbody></table></div></li><li><p><strong>Restrisiko, ehrlich benannt:</strong> Die Docker-API lässt sich an dieser Stelle nicht feiner begrenzen – ein Socket-Proxy kann nur ganze Bereiche erlauben, nicht den Inhalt eines Aufrufs prüfen. Wer den Updater-Container selbst übernimmt, könnte über die erlaubten Aufrufe einen Container mit Zugriff auf das Dateisystem der VM starten und hätte damit <strong>root-Rechte auf der VM</strong>. Der Updater ist deshalb so klein wie möglich gehalten: kein offener Port, keine Shell, feste Befehle, nur signierte Versionen.</p></li><li><p><strong>Wie man das Risiko verkleinert:</strong></p>
+<ol><li>Am sichersten: Profil <code>updater</code> weglassen und manuell aktualisieren (Go-Live-Empfehlung für den Start).</li><li>Mit Updater: fertige, signierte Images aus der Registry nutzen (<code>UPDATE_SOURCE=registry</code>) und <code>UPDATER_ALLOW_BUILD=0</code> setzen – dann fällt das Bauen über die API weg.</li><li>Die Docker-VM nur für das Portal nutzen, damit „root auf der VM“ nichts anderes betrifft.</li></ol></li><li><p>Ohne Docker gibt es keinen Socket-Proxy; dort läuft der Update-Dienst als systemd-Dienst (siehe <a href="#installation-ohne-docker">Installation ohne Docker</a>).</p></li></ul><nav class="pager" aria-label="Weitere Anleitungen"><a href="betrieb.html"><span>Zurück</span>Betrieb</a><a class="next" href="sicherheit.html"><span>Weiter</span>Sicherheit</a></nav><p class="source"><span>Diese Seite entsteht aus <a href="https://github.com/Hundexe/Zammad-Service-Portal/blob/main/docs/UPDATES.md">docs/UPDATES.md</a>.</span><a href="#inhalt">Nach oben</a></p>
+  </main>
+</div>
+<script>
+  // Auf schmalen Bildschirmen startet das Menü zugeklappt
+  if (matchMedia('(max-width: 960px)').matches) document.querySelector('.side details').removeAttribute('open');
+</script>
+</body>
+</html>
