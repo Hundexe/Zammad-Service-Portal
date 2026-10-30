@@ -151,10 +151,12 @@ export function registerPortalRoutes(router: Router, app: App): void {
     const def = resolveDefinition(parseJson<FormDefinition>(version.definition, { fields: [], settings: {} as any }), sys, meta, ctx.user!);
     const r = await submitRequest(app, ctx.user!, sys, form, version, def, { values, files });
     ticketCache.delete(`${sys.id}:${ctx.user!.id}`);
-    audit(app.db, actorOf(ctx), { action: 'request.created', targetType: 'request', targetId: r.id, systemId: sys.id, details: { form: form.slug } });
-    if (r.approval) audit(app.db, actorOf(ctx), { action: 'approval.requested', targetType: 'request', targetId: r.id, systemId: sys.id, details: { approver: r.approval.email } });
+    ticketCache.delete(`${r.system.id}:${ctx.user!.id}`);
+    audit(app.db, actorOf(ctx), { action: 'request.created', targetType: 'request', targetId: r.id, systemId: r.system.id, details: { form: form.slug, ...(r.system.routed ? { formSystem: sys.id } : {}) } });
+    if (r.approval) audit(app.db, actorOf(ctx), { action: 'approval.requested', targetType: 'request', targetId: r.id, systemId: r.system.id, details: { approver: r.approval.email } });
     return {
       created: true, id: r.id, title: r.title, successText: def.settings.successText ?? '',
+      system: r.system.routed ? { id: r.system.id, name: r.system.name } : null,
       approval: r.approval ? { email: r.approval.email, name: r.approval.name, known: r.approval.known } : null,
     };
   });

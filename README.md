@@ -1,37 +1,43 @@
 # Zammad Service-Portal
 
-Self-Service-Portal für IT-Abteilungen mit einem oder mehreren Zammad-Systemen: Mitarbeitende melden sich mit ihrem Microsoft-Konto an, wählen das Ticketsystem, füllen ein passendes Formular aus und sehen ihre offenen Tickets. Das Portal legt Tickets **ausschließlich über die Zammad-API** an und liest sie dort. Es verschickt selbst keine E-Mails – Eingangsbestätigungen und Antworten kommen wie gewohnt aus Zammad.
+Self-Service-Portal für IT-Abteilungen mit einem oder mehreren Zammad-Systemen: Mitarbeitende melden sich mit ihrem Microsoft-Konto an, füllen ein passendes Formular aus und sehen jederzeit, was aus ihrer Anfrage geworden ist. Die IT bekommt saubere Tickets – mit Gruppe, Priorität, Feldern und, wo nötig, der Freigabe der Führungskraft.
 
-**[▶ Demo im Browser ansehen](https://hundexe.github.io/Zammad-Service-Portal/)** – ohne Installation, mit Beispieldaten (Portal und Verwaltung zum Durchklicken).
+**[Webseite mit Video](https://hundexe.github.io/Zammad-Service-Portal/)** · **[Online-Demo zum Durchklicken](https://hundexe.github.io/Zammad-Service-Portal/demo/)** · [Installation](#installation-mit-einem-befehl) · [Dokumentation](#dokumentation)
 
-## Einführung im Video (2:32)
+[![Video-Einführung (2:32): Anmeldung, Formulare, Freigabe, Tickets, hell und dunkel, Verwaltung](docs/video/vorschau.gif)](https://hundexe.github.io/Zammad-Service-Portal/#video)
 
-[![Video-Einführung: Anmeldung, Formulare, Freigabe, Tickets, hell und dunkel, Verwaltung](docs/video/vorschau.gif)](https://hundexe.github.io/Zammad-Service-Portal/video/)
+Die Einführung im Video (2:32, mit Sprecher und Untertiteln) zeigt Anmeldung, Formulare mit Prüfung und Bedingungen, Freigabe durch die Führungskraft, Ticketverlauf und Benachrichtigungen, helles und dunkles Design, Baukasten, Stile, Verwaltung und Sicherheit. [Mit Ton auf der Webseite ansehen](https://hundexe.github.io/Zammad-Service-Portal/#video) oder [herunterladen](docs/video/service-portal-demo.mp4) ([Untertitel](docs/video/service-portal-demo.srt)).
 
-**[▶ Video mit Ton ansehen](https://hundexe.github.io/Zammad-Service-Portal/video/)** · [Video herunterladen](docs/video/service-portal-demo.mp4) · [Untertitel (.srt)](docs/video/service-portal-demo.srt)
+**Aktuelle Version: 1.11.0** – neu: Weiterleiten aus dem Formular an andere Ticketsysteme, Ansicht „Einfach“ und „Erweitert“ in der Verwaltung, Produkt-Webseite. Alle [Änderungen](CHANGELOG.md), externes Review: [was geändert wurde](docs/REVIEW-2026-10.md).
 
-Was zu sehen ist: Anmeldung mit Microsoft, Formulare mit Prüfung und bedingten Feldern, Freigabe durch die Führungskraft, Ticketverlauf und Benachrichtigungen, helles und dunkles Design, Formular-Baukasten, fünf Stile, Verwaltung und Sicherheit.
-
-**Aktuelle Version: 1.10.3** – [Änderungen](CHANGELOG.md), externes Architektur- und Sicherheits-Review: [was geändert wurde](docs/REVIEW-2026-10.md).
-
-![Startseite des Portals im Stil „Glas“](docs/screenshots/31-stil-glas.png)
-
-<img src="docs/screenshots/33-stil-fluent.png" width="32%" alt="Stil Fluent"> <img src="docs/screenshots/34-stil-material.png" width="32%" alt="Stil Material"> <img src="docs/screenshots/35-stil-kontrast.png" width="32%" alt="Stil Kontrast">
+<img src="docs/website/img/start.jpg" width="49%" alt="Startseite der Zentralen IT"> <img src="docs/website/img/ticket.jpg" width="49%" alt="Ticketverlauf als Chat">
+<img src="docs/website/img/freigabe.jpg" width="49%" alt="Freigabe durch die Führungskraft"> <img src="docs/website/img/editor-weiterleitung.jpg" width="49%" alt="Formular-Editor mit Weiterleitung an IT Nord">
 
 ## Was das Portal kann
 
+**Für Mitarbeitende**
+
+- **Anmelden mit Microsoft** (Entra ID, Mehrfaktor nach Ihrer Richtlinie) – kein eigenes Passwort
+- **Formulare** nach Themen sortiert, mit Pflichtfeldern, verständlichen Fehlermeldungen, Feldern, die nur bei Bedarf erscheinen, Datei-Anhängen mit Virenscan und Vorbelegung aus dem Profil
+- **Freigabe durch die Führungskraft**, wo es etwas kostet: Die Anfrage wartet im Portal und geht erst danach an die IT – mit Erinnerung, Frist und Vermerk im Ticket
+- **Meine Tickets** mit Verlauf wie im Chat (ohne doppelte Zitate und interne Notizen), Antworten direkt aus dem Portal und **Glocke**, sobald die IT antwortet
+- Hell oder dunkel, Handy oder Desktop, barrierearm (Tastatur, Screenreader, geprüfte Kontraste)
+
+**Für die IT**
+
 | Bereich | Funktionen |
 | --- | --- |
-| Anmeldung | Microsoft Entra ID (SSO, mehrere Tenants mit Vertrauensstellung), lokale Konten mit generiertem Passwort für Start und Notfall, Zwei-Faktor-Anmeldung (Authenticator-App) für lokale Admins |
-| Mehrere Ticketsysteme | Beliebig viele Zammad-Instanzen; Benutzer wählen, wohin die Anfrage geht. Pro System eigene Formulare, Vorlagen, Übersichten, Farben und Logos |
-| Formulare | Editor mit Drag-and-Drop, Live-Vorschau, Pflichtfeldern, Prüfmustern, Sichtbarkeitsregeln, Feldern nur für bestimmte Gruppen, Datei-Uploads, Versionierung und optionalem Vier-Augen-Prinzip |
-| Freigabe durch Vorgesetzte | Formularfeld „Freigabe durch Vorgesetzte(n)“, z. B. für Hardware oder kostenpflichtige Software – auch nur unter Bedingungen. Die anfragende Person trägt die freigebende Person ein (mit Vorschlägen), die Anfrage wartet im Portal und geht erst nach der Freigabe ins Ticketsystem, mit Vermerk im Ticket. Ablehnen mit Begründung, Zurückziehen, andere Person wählen, Erinnerung und Ablauf nach Frist. Benachrichtigungen im Portal (Glocke) |
-| Zammad-Objekte | Ticket-Attribute aus dem Zammad-Objekt-Manager (z. B. `sec_status` als tree_select) werden gezielt freigegeben – inklusive Auswahl der erlaubten Werte – und erscheinen als Auswahlfelder |
-| Tickets | Ticket wird im Namen des Benutzers angelegt (`X-On-Behalf-Of` mit der Zammad-Kunden-ID), bekommt einen Portal-Tag, Gruppe, Priorität, Tags und freigegebene Attribute aus dem Formular – nur in **erlaubte Zammad-Gruppen**, Kernfelder wie Besitzer oder Status setzt nie ein Formular. Mitarbeitende sehen ihre Tickets in konfigurierbaren Übersichten, lesen den Verlauf ohne interne Notizen und ohne E-Mail-Adressen der Bearbeiter (auf Wunsch ganz ohne Namen) und können antworten |
-| Verwaltung | Rollen und Rechte global oder pro Ticketsystem (Entra-Gruppen, App-Rollen, Personen), Benutzerverwaltung, Audit-Log mit Hash-Kette, Zustellungsübersicht (Anfragen erneut senden oder abbrechen), Export und Import aller Ticketsysteme in ein anderes Portal, Updates per Klick mit automatischem Rollback |
-| Oberfläche | Pro Ticketsystem wählbarer **Stil** – Standard, Glas (Apple), Fluent (Microsoft), Material (Google), Kontrast – mit passenden Farben oder eigenen Farben (fertige Kombinationen oder frei wählbar); dunkles Design per Schalter, für Handy und Desktop, barrierearm (Tastatur, Screenreader, Kontrastprüfung) |
-| Ausfallsicherheit | Anfragen landen verschlüsselt in einer Warteschlange und werden zugestellt, sobald Zammad erreichbar ist – auch nach Neustart oder Absturz, ohne doppelte Tickets |
-| Betrieb | Docker-Compose-Stack oder direkt auf Debian/Ubuntu (systemd), Installation mit einem Befehl, nur intern erreichbar, Caddy mit TLS, ClamAV-Virenscan, verschlüsselte Ablage, keine npm-Laufzeitabhängigkeiten. Befehle für Status/Monitoring, Virenscanner-Test, Sicherung prüfen und wiederherstellen; Alarm bei jeder lokalen Anmeldung |
+| Mehrere Ticketsysteme | Beliebig viele Zammad-Instanzen an einem Portal, je System eigene Formulare, Vorlagen, Übersichten, Farben und Logos. **Neu:** Ein Auswahlfeld im Formular kann die Anfrage an ein anderes Ticketsystem oder eine andere Abteilung weiterleiten |
+| Formular-Baukasten | Ziehen und Ablegen, Live-Vorschau, Bedingungen, Prüfmuster, Felder nur für bestimmte Gruppen, Versionen, optional Vier-Augen-Prinzip, Formulare und Vorlagen als Datei |
+| Ansicht Einfach / Erweitert | **Neu:** „Einfach“ zeigt nur, was man im Alltag braucht, „Erweitert“ jede Stellschraube – der Server prüft in beiden gleich |
+| Tickets in Zammad | Angelegt im Namen der Person, mit Gruppe, Priorität, Tags und freigegebenen Zammad-Feldern – nur in **erlaubte Gruppen**; Kernfelder wie Besitzer oder Status setzt nie ein Formular |
+| Zammad-Objekte | Ticket-Attribute aus dem Objekt-Manager gezielt freigeben, inklusive der erlaubten Werte |
+| Rechte und Nachvollziehbarkeit | Rollen global oder je Ticketsystem (Entra-Gruppen, App-Rollen, Personen), lokale Notfallkonten mit Zwei-Faktor-Anmeldung, Audit-Log mit Hash-Kette, Zustellungsübersicht |
+| Gestaltung | Fünf Stile (Standard, Glas, Fluent, Material, Kontrast), eigene Farben und Logos, eigene Anmeldeseite |
+| Ausfallsicherheit | Anfragen warten verschlüsselt, bis Zammad erreichbar ist – auch nach Neustart, ohne doppelte Tickets |
+| Betrieb | Docker oder direkt auf Debian/Ubuntu, Installation mit einem Befehl, Caddy mit TLS, ClamAV, verschlüsselte Ablage, keine npm-Laufzeitabhängigkeiten, Status auf der Server-Konsole, Sicherung und Wiederherstellung, signierte Updates per Klick mit Rollback |
+
+Das Portal legt Tickets **ausschließlich über die Zammad-API** an und verschickt selbst keine E-Mails – Eingangsbestätigungen und Antworten kommen wie gewohnt aus Zammad.
 
 ## Installation mit einem Befehl
 
@@ -51,7 +57,7 @@ Das Skript fragt, wie das Portal laufen soll, und erledigt den Rest:
 
 Danach fragt es Hostname oder IP, Ports (Vorschlag eines freien Ports, falls 443/80 belegt sind), Virenscanner und optional die Microsoft-Anmeldung ab und legt den ersten Admin mit generiertem Passwort an. Ohne Menü: `… | sudo bash -s -- --docker` (bzw. `--debian`, `--demo`). Erneut ausführen aktualisiert das Portal; Einstellungen und Daten bleiben.
 
-**Nur ansehen, ohne Server:** Die [Online-Demo](https://hundexe.github.io/Zammad-Service-Portal/) läuft komplett im Browser. Mit echtem Server im Hintergrund (simuliertes Zammad) geht es mit Node.js ≥ 22.18 auf dem eigenen Rechner:
+**Nur ansehen, ohne Server:** Die [Online-Demo](https://hundexe.github.io/Zammad-Service-Portal/demo/) läuft komplett im Browser. Mit echtem Server im Hintergrund (simuliertes Zammad) geht es mit Node.js ≥ 22.18 auf dem eigenen Rechner:
 
 ```bash
 git clone https://github.com/Hundexe/Zammad-Service-Portal.git && cd Zammad-Service-Portal && npm run demo
@@ -96,7 +102,7 @@ Mehr dazu, inklusive Alarmregeln, Log-Weiterleitung und Egress-Firewall: [docs/B
 | [Go-Live](docs/GO-LIVE.md) | Checkliste mit Prüfanleitung vor dem Produktivbetrieb |
 | [Lasttest](docs/LASTTEST.md) | Messwerte, Ausfall- und Neustart-Szenarien |
 | [Review 2026-10](docs/REVIEW-2026-10.md) | Externes Review und was daraus geändert wurde |
-| [Entwicklung](docs/ENTWICKLUNG.md) | Lokale Demo, Tests, Screenshots |
+| [Entwicklung](docs/ENTWICKLUNG.md) | Lokale Demo, Tests, Screenshots, Webseite und Online-Demo bauen |
 
 ## Technik in einem Satz
 
@@ -105,22 +111,19 @@ TypeScript auf Node.js 24 ohne externe Laufzeitpakete (HTTP, Krypto, SQLite und 
 ## Tests
 
 ```bash
-npm test                        # 283 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
+npm test                        # 313 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
 npm run typecheck
 node tools/loadtest.ts          # Lasttest: 50 Logins, 50 Ticketansichten, 20 Anfragen mit Anhang
 bash tools/secret-scan.sh       # vor jeder Veröffentlichung: keine Geheimnisse im Repository
 ```
 
-| Bereich | Tests |
-| --- | ---: |
-| Sicherheit: Anmeldung, Sitzungen, CSRF, Rechte, OIDC | 34 |
-| Sicherheit: IDOR, Injection, Uploads, SSRF, Datenablage, Audit-Log | 30 |
-| Sicherheit: lokale Anmeldung, Sperre, 2FA | 20 |
-| Review: Token-Prüfung im Detail, Schlüsselwechsel, JWKS-Erneuerung und Höchstalter | 33 |
-| Review: Zugriffe, Zammad-Felder und -Gruppen, Kundenzuordnung, SSRF-Schutz (inkl. IPv6 und TLS), Uploads, Backup/Restore, Zustellung, Step-up, Monitoring | 40 |
-| Freigabe durch Vorgesetzte: Ablauf, Rechte (404 für Fremde, keine Selbstfreigabe), Fristen, Benachrichtigungen, Migration | 14 |
-| Grundfunktionen, Ende-zu-Ende, Ticketliste, Verwaltung (inkl. Abbrechen, Export/Import, Formulare und Vorlagen aus Datei), Stile, Updater (Docker und ohne Docker), nicht erreichbares Zammad | 74 |
-| Sicherheitstest 28.10.2026: JSON- und Speichergrenzen, lineare Prüfmuster, Identität über Tenant-Domains, Freigabe-Gruppen, Token-Umleitung, Vier-Augen bei Formular-Angaben, SVG-Allowlist, Vorlagen-HTML, Doppel-Tickets, Verschlüsselung | 37 |
+| Bereich | Was geprüft wird |
+| --- | --- |
+| Sicherheit | Anmeldung, Sitzungen, CSRF, Rechte, OIDC im Detail, IDOR, Injection, Uploads, SSRF (inkl. IPv6 und TLS), Datenablage, Audit-Log, lokale Anmeldung mit Sperre und 2FA |
+| Review und Sicherheitstests | alle Punkte aus dem externen Review und den Sicherheitstests vom Oktober 2026 |
+| Freigabe durch Vorgesetzte | Ablauf, Rechte (404 für Fremde, keine Selbstfreigabe), Fristen, Benachrichtigungen |
+| Weiterleitung | Ziel je Auswahl, Rechte beim Speichern und Absenden, erlaubte Gruppen, Felder im Ziel, Export mit Kürzel |
+| Grundfunktionen | Ende-zu-Ende, Ticketliste und Verlauf, Benachrichtigungen, Verwaltung, Export und Import, Stile, Updater mit und ohne Docker, nicht erreichbares Zammad, Ladezeiten |
 
 Die Tests starten Portal, Zammad- und Microsoft-Simulator im selben Prozess – es wird nichts weiter benötigt. Lasttest-Ergebnisse: [docs/LASTTEST.md](docs/LASTTEST.md).
 

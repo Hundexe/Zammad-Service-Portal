@@ -108,8 +108,8 @@ export function textarea(value: string, onInput: (v: string) => void, attrs: Rec
   return el;
 }
 
-export function select(value: string, options: { value: string; label: string }[], onChange: (v: string) => void, opts: { empty?: string; id?: string } = {}): HTMLSelectElement {
-  const el = h('select', { id: opts.id },
+export function select(value: string, options: { value: string; label: string }[], onChange: (v: string) => void, opts: { empty?: string; id?: string; ariaLabel?: string } = {}): HTMLSelectElement {
+  const el = h('select', { id: opts.id, attrs: { 'aria-label': opts.ariaLabel } },
     opts.empty !== undefined ? h('option', { attrs: { value: '' } }, opts.empty) : null,
     ...options.map((o) => h('option', { attrs: { value: o.value } }, o.label)),
   );

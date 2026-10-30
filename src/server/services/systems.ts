@@ -28,6 +28,11 @@ export function getSystem(app: App, id: string): SystemRow | undefined {
   return app.db.get<SystemRow>('SELECT * FROM ticket_systems WHERE id = ?', id);
 }
 
+/** Ticketsystem über ID oder Kürzel (Weiterleitungen aus übertragenen Konfigurationen tragen das Kürzel). */
+export function findSystem(app: App, ref: string): SystemRow | undefined {
+  return getSystem(app, ref) ?? app.db.get<SystemRow>('SELECT * FROM ticket_systems WHERE slug = ?', ref);
+}
+
 export function listSystems(app: App): SystemRow[] {
   return app.db.all<SystemRow>('SELECT * FROM ticket_systems ORDER BY sort, name');
 }

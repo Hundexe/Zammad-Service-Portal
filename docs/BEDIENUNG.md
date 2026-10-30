@@ -122,6 +122,17 @@ Unter dem Namen oben rechts: **Meine Anfragen** (alles, was über das Portal ges
 
 Die Verwaltung erreichen alle mit einer Admin-Rolle über das Menü oben rechts → **Verwaltung**. Links steht oben das Ticketsystem, das gerade bearbeitet wird, darunter die globalen Bereiche.
 
+### Ansicht: Einfach oder Erweitert
+
+Unten links in der Verwaltung wählt jede Person ihre **Ansicht** (gespeichert im Browser):
+
+- **Einfach** (Standard) zeigt, was man im Alltag braucht: Felder, Pflichtangaben, Optionen, Bedingungen, Gruppe und Priorität je Auswahl (als Auswahlliste), Titel, Text nach dem Absenden, Verbindung und Sichtbarkeit.
+- **Erweitert** zeigt zusätzlich Feld-IDs, Prüfmuster und Höchstlängen, Felder nur für bestimmte Gruppen, freies Übersetzen von Werten, Zammad-Felder, **Weiterleiten an andere Ticketsysteme**, den Tickettext als HTML-Vorlage und beim Ticketsystem Anlage-Modus, Portal-Tag, „erledigt“-Status und Reihenfolge.
+
+Die Ansicht ändert nur, was angezeigt wird – geprüft wird auf dem Server immer alles. Einstellungen, die schon einen Wert haben, bleiben auch in der einfachen Ansicht sichtbar. Ungespeicherte Änderungen im Formular-Editor bleiben beim Umschalten erhalten.
+
+<img src="website/img/editor-einfach.jpg" width="49%" alt="Formular-Editor, Ansicht Einfach"> <img src="website/img/editor-erweitert.jpg" width="49%" alt="Formular-Editor, Ansicht Erweitert">
+
 ### Übersicht
 
 Zeigt offene Aufgaben (z. B. Sicherheitshinweise zur Konfiguration), Zahlen zur Zustellung (auch wie viele Anfragen noch bei Vorgesetzten liegen) und Formular- oder Stil-Versionen, die auf Freigabe warten.
@@ -178,7 +189,18 @@ Der Editor hat vier Reiter:
 | Prüfmuster | regulärer Ausdruck, z. B. `\d{4}` für Kostenstellen |
 | Nur anzeigen, wenn … | Feld erscheint abhängig von einem anderen Feld |
 | Nur für bestimmte Gruppen | Feld nur für Mitglieder bestimmter Entra-Gruppen |
-| Übernahme ins Ticket | nur Tickettext, als Tag, bestimmt Gruppe oder Priorität, in ein Zammad-Feld schreiben, oder gar nicht |
+| Übernahme ins Ticket | nur Tickettext, als Tag, bestimmt Gruppe oder Priorität, in ein Zammad-Feld schreiben, **leitet an ein Ticketsystem weiter** (Ansicht „Erweitert“), oder gar nicht |
+
+**Weiterleiten an ein anderes Ticketsystem:** Bei einem Auswahlfeld (eine Auswahl) unter **Übernahme ins Ticket** → **Leitet an ein Ticketsystem weiter** wählen. Für jede Option lässt sich ein Ziel festlegen: ein anderes Ticketsystem und optional eine Gruppe dort. Beispiel: „Wo arbeiten Sie?“ – „Standort Nord“ geht an IT Nord, „Zentrale“ bleibt bei der Zentralen IT.
+
+![Weiterleitung im Formular-Editor](website/img/editor-weiterleitung.jpg)
+
+- Optionen ohne Ziel bleiben im Ticketsystem des Formulars. Ein Formular hat höchstens ein weiterleitendes Feld; ist es ausgeblendet („Nur anzeigen, wenn …“), wird nicht weitergeleitet.
+- Im Ziel gilt die gewählte Gruppe, sonst dessen Standard-Gruppe. Gruppe und Gruppenfelder des Formulars gelten nur im eigenen Ticketsystem. Die Gruppe muss im Ziel erlaubt sein.
+- Zammad-Felder kommen nur an, wenn sie im Ziel freigegeben sind; sonst stehen die Angaben nur im Tickettext. Tag des Portals, Kunde und Freigabe richten sich nach dem Ziel.
+- **Rechte:** Weiterleiten darf nur, wer auch im Ziel Formulare bearbeiten darf (beim Veröffentlichen: veröffentlichen, bei Vier-Augen: freigeben). Mitarbeitende brauchen im Ziel das Recht „Anfragen stellen“ – sonst lehnt das Portal die Anfrage mit einer Meldung ab, statt sie still woanders abzulegen.
+- Nach dem Absenden steht dort, an welches Ticketsystem die Anfrage gegangen ist; unter **Meine Anfragen** erscheint sie mit diesem Ticketsystem. Im Audit-Log steht sie beim Ziel, mit Verweis auf das Formular-System.
+- In Exportdateien steht statt der internen ID das Kürzel des Ziels, damit die Weiterleitung auch in einem anderen Portal funktioniert.
 
 **Ticket** – wie das Ticket entsteht: Gruppe, Priorität, zusätzliche Tags, Titel- und Textvorlage, Text nach dem Absenden. `{{alle_felder}}` fügt eine Tabelle mit allen ausgefüllten Feldern ein. Eingaben werden immer sicher maskiert, Vorlagen können keinen Code ausführen.
 

@@ -9,7 +9,7 @@ import { sha256 } from '../crypto.ts';
 import { audit, diff, verifyAuditChain } from '../services/audit.ts';
 import { can, canAnywhere, systemsWith, type AuthUser, type Permissions } from '../services/rbac.ts';
 import { ADMIN_PERMISSIONS, GLOBAL_PERMISSIONS, PERMISSION_KEYS, PERMISSIONS } from '../../shared/permissions.ts';
-import { connectorFor, getSystem, listSystems, publishedBranding, globalBranding, validateSystemUrl, allowedGroups, type SystemRow } from '../services/systems.ts';
+import { connectorFor, findSystem, getSystem, listSystems, publishedBranding, globalBranding, validateSystemUrl, allowedGroups, type SystemRow } from '../services/systems.ts';
 import { getMetadata, metadataState, releasedAttributes, releasedWithOptions, validateRelease } from '../services/metadata.ts';
 import {
   emptyDefinition, getForm, latestVersion, publishVersion, publishedVersion, resolveDefinition, saveDraft, stageFormMeta,
@@ -456,7 +456,30 @@ export function registerAdminRoutes(router: Router, app: App): void {
     return out;
   }
 
-  function checkDefinition(s: SystemRow, def: unknown): FormDefinition {
+  /**
+   * Weiterleitungen in andere Ticketsysteme: Ziel muss existieren, die handelnde Person braucht dort dasselbe Recht
+   * (Entwurf: Formulare bearbeiten, Veröffentlichen/Import: veröffentlichen, Freigabe: freigeben) – sonst könnte
+   * jemand mit Rechten nur für System A Tickets in System B anlegen lassen. Gruppen müssen im Ziel erlaubt sein.
+   */
+  function routeProblems(s: SystemRow, d: FormDefinition, user: AuthUser | undefined, perm: string): string[] {
+    const out: string[] = [];
+    for (const f of d.fields) {
+      if (f.mapping?.target !== 'system') continue;
+      for (const [value, r] of Object.entries(f.mapping.routes ?? {})) {
+        const label = f.options?.find((o) => o.value === value)?.label ?? value;
+        const t = r.system === s.id || r.system === s.slug ? s : findSystem(app, r.system);
+        if (!t) { out.push(`Feld „${f.label}“: „${label}“ leitet an ein Ticketsystem weiter, das es nicht gibt`); continue; }
+        if (t.id !== s.id && !can(user, perm, t.id)) { out.push(`Feld „${f.label}“: Für „${t.name}“ fehlt Ihnen das Recht, Formulare zu ${perm === 'form.edit' ? 'bearbeiten' : perm === 'form.approve' ? 'freigeben' : 'veröffentlichen'} – Weiterleitung dorthin nicht erlaubt`); continue; }
+        const group = r.group || (t.id === s.id ? d.settings.group || t.default_group : t.default_group) || '';
+        if (!group) out.push(`Feld „${f.label}“: Für „${label}“ ist keine Gruppe festgelegt und „${t.name}“ hat keine Standardgruppe`);
+        const allowed = allowedGroups(t);
+        if (group && allowed.length && !allowed.includes(group)) out.push(`Feld „${f.label}“: Gruppe „${group}“ ist in „${t.name}“ nicht erlaubt`);
+      }
+    }
+    return out;
+  }
+
+  function checkDefinition(s: SystemRow, def: unknown, user?: AuthUser, perm = 'form.publish'): FormDefinition {
     const problems = validateDefinition(def);
     const d = def as FormDefinition;
     if (!problems.length) {
@@ -466,7 +489,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
       for (const f of d.fields) {
         if (f.mapping?.target === 'zammad_field' && f.mapping.name && !released.has(f.mapping.name)) problems.push(`Feld „${f.label}“: Zammad-Feld „${f.mapping.name}“ ist nicht freigegeben (Ticketsystem → Zammad-Felder)`);
       }
-      problems.push(...groupProblems(s, d));
+      problems.push(...groupProblems(s, d), ...routeProblems(s, d, user, perm));
       for (const tpl of [d.settings.titleTemplate, d.settings.bodyTemplate]) {
         for (const p of placeholders(tpl)) {
           const root = p.split('.')[0];
@@ -483,7 +506,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
     const s = sysOr404(ctx.params.systemId);
     const f = formOr404(s.id, ctx.params.formId);
     const b = ctx.body as Body;
-    const def = checkDefinition(s, b.definition);
+    const def = checkDefinition(s, b.definition, ctx.user, 'form.edit');
     let v: FormVersionRow;
     try { v = saveDraft(app, f.id, def, ctx.user!.id, str(b, 'note', 300)); } catch (err) { throw new HttpError(409, (err as Error).message, 'conflict'); }
     audit(app.db, actor(ctx), { action: 'form.draft_saved', targetType: 'form', targetId: f.id, systemId: s.id, details: { version: v.version } });
@@ -504,7 +527,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
     const f = formOr404(s.id, ctx.params.formId);
     const v = latestVersion(app, f.id);
     if (!v || v.status !== 'draft') throw new HttpError(409, 'Kein Entwurf zum Veröffentlichen vorhanden', 'conflict');
-    checkDefinition(s, parseJson(v.definition, {}));
+    checkDefinition(s, parseJson(v.definition, {}), ctx.user, 'form.publish');
     if (s.require_approval === 1) {
       app.db.run("UPDATE form_versions SET status = 'pending', submitted_by = ? WHERE id = ?", ctx.user!.id, v.id);
       audit(app.db, actor(ctx), { action: 'form.submitted_for_approval', targetType: 'form', targetId: f.id, systemId: s.id, details: { version: v.version } });
@@ -554,7 +577,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
       let meta: ReturnType<typeof readFormMeta>;
       try { meta = readFormMeta(f, existing); } catch (err) { errors.push(`Formular „${sl}“: ${(err as Error).message}`); continue; }
       let def: FormDefinition | null = null;
-      try { def = checkDefinition(s, f.definition); } catch (err) {
+      try { def = checkDefinition(s, f.definition, ctx.user, 'form.publish'); } catch (err) {
         const d = err instanceof HttpError && Array.isArray(err.details) ? (err.details as string[]).slice(0, 5).join('; ') : (err as Error).message;
         errors.push(`Formular „${sl}“: ${d}`); continue;
       }
@@ -624,6 +647,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
     const v = app.db.get<FormVersionRow>("SELECT * FROM form_versions WHERE id = ? AND form_id = ? AND status = 'pending'", ctx.params.versionId, f.id);
     if (!v) throw new HttpError(404, 'Keine wartende Version', 'not_found');
     if (v.submitted_by === ctx.user!.id || v.created_by === ctx.user!.id) throw new HttpError(403, 'Vier-Augen-Prinzip: Freigeben muss eine andere Person', 'four_eyes');
+    checkDefinition(sysOr404(f.system_id), parseJson(v.definition, {}), ctx.user, 'form.approve');
     publishVersion(app, v, ctx.user!.id);
     audit(app.db, actor(ctx), { action: 'form.approved', targetType: 'form', targetId: f.id, systemId: f.system_id, details: { version: v.version } });
     return { status: 'published' };

@@ -4,6 +4,7 @@ import { get, post, put, del } from '../lib/api.ts';
 import { badge, button, checkbox, confirmDialog, dialog, errorText, fieldWrap, input, listInput, notice, pageHead, select, statusBadge, table, toast, emptyState } from '../lib/ui.ts';
 import { can, link, navigate } from '../lib/app.ts';
 import { admin, adminSystem, loadAdminSystems, type AdminSystem } from './common.ts';
+import { isAdvanced, showAdvanced } from './mode.ts';
 
 interface Meta {
   groups: { id: number; name: string }[];
@@ -82,10 +83,10 @@ export async function systemEditPage(p: Record<string, string>) {
         fieldWrap(input(v.name, (x) => { v.name = x; }), { label: 'Name' }),
         fieldWrap(input(v.baseUrl, (x) => { v.baseUrl = x; }, { type: 'url' }), { label: 'Zammad-Adresse' }),
         fieldWrap(input('', (x) => { v.apiToken = x; }, { type: 'password', autocomplete: 'off', placeholder: s.hasToken ? '•••••••• (gespeichert)' : '' }), { label: 'API-Token', help: 'Leer lassen, um das gespeicherte Token zu behalten. Es wird verschlüsselt gespeichert und nie wieder angezeigt.' }),
-        fieldWrap(select(v.creationMode, [
+        showAdvanced(v.creationMode !== 'on_behalf_of') ? fieldWrap(select(v.creationMode, [
           { value: 'on_behalf_of', label: 'Im Namen des Kunden (X-On-Behalf-Of, empfohlen)' },
           { value: 'customer_field', label: 'Als Portal-Benutzer mit Kundenfeld' },
-        ], (x) => { v.creationMode = x as AdminSystem['creationMode']; }), { label: 'Tickets anlegen', help: '„Im Namen des Kunden“: Zammad prüft selbst, welche Tickets ein Kunde sehen darf.' }),
+        ], (x) => { v.creationMode = x as AdminSystem['creationMode']; }), { label: 'Tickets anlegen', help: '„Im Namen des Kunden“: Zammad prüft selbst, welche Tickets ein Kunde sehen darf.' }) : null,
       ),
       h('div', { class: 'row' }, button('Verbindung testen', async () => {
         mount(testResult, h('span', { class: 'muted' }, 'Teste …'));
@@ -97,11 +98,11 @@ export async function systemEditPage(p: Record<string, string>) {
       h('h2', null, 'Tickets und Sichtbarkeit'),
       h('div', { class: 'grid-2' },
         fieldWrap(groupOptions.length ? select(v.defaultGroup ?? '', groupOptions, (x) => { v.defaultGroup = x; }, { empty: '–' }) : input(v.defaultGroup ?? '', (x) => { v.defaultGroup = x; }), { label: 'Standard-Gruppe in Zammad' }),
-        fieldWrap(input(v.portalTag, (x) => { v.portalTag = x; }), { label: 'Tag für Portal-Tickets', help: 'Jedes Ticket aus dem Portal bekommt diesen Tag. Damit können Zammad-Trigger z. B. die Eingangsbestätigung schicken.' }),
+        showAdvanced(v.portalTag !== 'service-portal') ? fieldWrap(input(v.portalTag, (x) => { v.portalTag = x; }), { label: 'Tag für Portal-Tickets', help: 'Jedes Ticket aus dem Portal bekommt diesen Tag. Damit können Zammad-Trigger z. B. die Eingangsbestätigung schicken.' }) : null,
         fieldWrap(select(v.status, [{ value: 'active', label: 'Aktiv' }, { value: 'maintenance', label: 'Wartung (Anfragen werden gesammelt)' }, { value: 'inactive', label: 'Deaktiviert (nicht sichtbar)' }], (x) => { v.status = x as AdminSystem['status']; }), { label: 'Status' }),
-        fieldWrap(input(String(v.sort), (x) => { v.sort = Number(x) || 0; }, { type: 'number' }), { label: 'Reihenfolge' }),
+        showAdvanced(v.sort !== 0) ? fieldWrap(input(String(v.sort), (x) => { v.sort = Number(x) || 0; }, { type: 'number' }), { label: 'Reihenfolge' }) : null,
         fieldWrap(listInput(v.visibleGroups, (x) => { v.visibleGroups = x; }, 'Leer = für alle'), { label: 'Sichtbar für Entra-Gruppen', help: 'Objekt-IDs der Gruppen, eine pro Zeile. Leer = alle angemeldeten Benutzer.' }),
-        fieldWrap(listInput(v.closedStates, (x) => { v.closedStates = x; }), { label: 'Zammad-Status, die als „erledigt“ gelten' }),
+        showAdvanced() ? fieldWrap(listInput(v.closedStates, (x) => { v.closedStates = x; }), { label: 'Zammad-Status, die als „erledigt“ gelten' }) : null,
         fieldWrap(listInput(v.allowedGroups, (x) => { v.allowedGroups = x; }, groupOptions.length ? groupOptions.slice(0, 3).map((o) => o.value).join('\n') : 'IT-Support'), {
           label: 'Erlaubte Zammad-Gruppen',
           help: 'Nur in diese Gruppen darf das Portal Tickets legen – Formulare mit anderen Gruppen lassen sich nicht speichern. Eine pro Zeile. Leer = keine Einschränkung (nicht empfohlen).',
@@ -110,6 +111,7 @@ export async function systemEditPage(p: Record<string, string>) {
       !v.allowedGroups.length ? notice('warn', 'Es sind keine erlaubten Gruppen festgelegt. Ein Formular könnte Tickets in jede Gruppe legen, die der API-Benutzer sieht.') : null,
       checkbox(v.allowReplies, 'Antworten über das Portal erlauben', (x) => { v.allowReplies = x; }),
       checkbox(v.showOrgTickets, 'Tickets der eigenen Organisation anzeigen (nicht nur eigene)', (x) => { v.showOrgTickets = x; }),
+      !isAdvanced() ? h('p', { class: 'small muted' }, 'Weitere Einstellungen (Anlage-Modus, Tag, „erledigt“-Status, Reihenfolge) zeigt die Ansicht „Erweitert“ unten links.') : null,
       checkbox(v.hideAgentNames, `Namen der Bearbeiter ausblenden (Antworten erscheinen als „${s.name}“)`, (x) => { v.hideAgentNames = x; }),
       checkbox(v.requireApproval, 'Vier-Augen-Prinzip: Formulare und Branding erst nach Freigabe durch eine zweite Person veröffentlichen', (x) => { v.requireApproval = x; }),
     ),

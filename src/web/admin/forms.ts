@@ -8,6 +8,7 @@ import {
 import { can, link, navigate, state, curPath } from '../lib/app.ts';
 import { renderForm } from '../lib/formrender.ts';
 import { admin, adminSystem, loadAdminSystems } from './common.ts';
+import { isAdvanced, onModeChange, showAdvanced } from './mode.ts';
 import { FILE_KINDS, type FormDefinition, type FormField, type FieldType } from '../../shared/form.ts';
 
 interface VersionInfo { id: string; version: number; status: string; note: string; createdAt: number; createdBy: string | null; submittedBy: string | null; createdByName?: string | null; submittedByName?: string | null; approvedByName?: string | null; publishedAt: number | null; pendingMeta?: { name: string; description: string; visibleGroups: string[]; active: boolean } | null }
@@ -19,7 +20,9 @@ const TYPE_LABEL: Record<string, string> = {
   select: 'Auswahl', multiselect: 'Mehrfachauswahl', file: 'Datei-Upload', info: 'Hinweistext', approver: 'Freigabe durch Vorgesetzte(n)', zammad: 'Zammad-Objekt',
 };
 const FILE_LABEL: Record<string, string> = { pdf: 'PDF', image: 'Bilder', office: 'Office-Dokumente', text: 'Text/CSV' };
-const MAP_LABEL: Record<string, string> = { article: 'Nur im Tickettext', tag: 'Als Tag', group: 'Bestimmt die Gruppe', priority: 'Bestimmt die Priorität', zammad_field: 'In Zammad-Feld schreiben', none: 'Nicht übernehmen', title: 'Nur für den Titel' };
+const MAP_LABEL: Record<string, string> = { article: 'Nur im Tickettext', tag: 'Als Tag', group: 'Bestimmt die Gruppe', priority: 'Bestimmt die Priorität', zammad_field: 'In Zammad-Feld schreiben', system: 'Leitet an ein Ticketsystem weiter', none: 'Nicht übernehmen', title: 'Nur für den Titel' };
+/** In der einfachen Ansicht wählbar (ein schon gesetztes Ziel bleibt immer sichtbar). */
+const SIMPLE_TARGETS = new Set(['article', 'tag', 'group', 'priority', 'none']);
 
 export function slugify(label: string, taken: Set<string>): string {
   let base = label.toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
@@ -314,6 +317,41 @@ export async function formEditorPage(p: Record<string, string>) {
     });
   }
 
+  /** Weiterleitung je Option: Ticketsystem und Gruppe. Ziel nur, wo man Formulare bearbeiten darf (prüft auch der Server). */
+  function routesEditor(f: FormField, m: NonNullable<FormField['mapping']>): HTMLElement {
+    const targets = admin.systems.filter((x) => x.id === s.id || can('form.edit', x.id));
+    const ownGroups = (metaRes?.metadata.groups ?? []).map((g) => g.name);
+    const groupsOf = (id: string) => {
+      const t = admin.systems.find((x) => x.id === id || x.slug === id);
+      if (!t) return [];
+      const list = t.id === s.id ? (t.allowedGroups.length ? t.allowedGroups : ownGroups) : t.allowedGroups;
+      return list.map((g) => ({ value: g, label: g }));
+    };
+    const setRoute = (value: string, r: { system: string; group?: string } | null) => {
+      const routes = { ...(m.routes ?? {}) };
+      if (r) routes[value] = r; else delete routes[value];
+      f.mapping = { ...m, routes: Object.keys(routes).length ? routes : undefined };
+      markDirty(); draw();
+    };
+    return h('div', { class: 'stack' },
+      h('p', { class: 'small muted' }, `Ohne Ziel bleibt die Anfrage in „${s.name}“. Im anderen System gilt die gewählte Gruppe, sonst dessen Standardgruppe. Zammad-Felder, die dort nicht freigegeben sind, stehen nur im Tickettext.`),
+      targets.length < 2 ? notice('warn', 'Es gibt kein weiteres Ticketsystem, für das Sie Formulare bearbeiten dürfen.') : null,
+      h('div', { class: 'map-rows' }, ...(f.options ?? []).map((o) => {
+        const r = m.routes?.[o.value];
+        const known = !r || targets.some((t) => t.id === r.system || t.slug === r.system);
+        const groups = r ? groupsOf(r.system) : [];
+        const sysId = r ? targets.find((t) => t.id === r.system || t.slug === r.system)?.id ?? r.system : '';
+        const defaultGroup = r ? (admin.systems.find((t) => t.id === sysId)?.defaultGroup ?? '–') : '';
+        return h('div', { class: 'map-row map-row-route' },
+          h('span', { class: 'map-from' }, o.label),
+          h('span', { class: 'map-arrow', attrs: { 'aria-hidden': 'true' } }, '→'),
+          select(sysId, [...(known ? [] : [{ value: sysId, label: 'Unbekanntes Ticketsystem' }]), ...targets.map((t) => ({ value: t.id, label: t.name }))], (x) => setRoute(o.value, x ? { system: x } : null), { empty: `bleibt in ${s.name}`, ariaLabel: `${o.label}: Ticketsystem` }),
+          r ? (groups.length
+            ? select(r.group ?? '', groups, (x) => setRoute(o.value, { system: r.system, ...(x ? { group: x } : {}) }), { empty: 'Standardgruppe', ariaLabel: `${o.label}: Gruppe (Standard: ${defaultGroup})` })
+            : input(r.group ?? '', (x) => { const routes = { ...(m.routes ?? {}) }; routes[o.value] = { system: r.system, ...(x.trim() ? { group: x.trim() } : {}) }; f.mapping = { ...m, routes }; markDirty(); }, { placeholder: `Standardgruppe (${defaultGroup})`, 'aria-label': `${o.label}: Gruppe`, title: `Leer = Standardgruppe ${defaultGroup}` })) : null);
+      })));
+  }
+
   function properties(): HTMLElement {
     const f = def.fields.find((x) => x.id === selected);
     if (!f) return h('div', { class: 'col col-props' }, h('p', { class: 'muted' }, 'Feld links auswählen.'));
@@ -325,7 +363,7 @@ export async function formEditorPage(p: Record<string, string>) {
     const items: Child[] = [
       h('h2', null, 'Eigenschaften'),
       fieldWrap(input(f.label, (x) => upd(() => { f.label = x; })), { label: 'Bezeichnung' }),
-      f.type !== 'info' ? fieldWrap(input(f.id, (x) => upd(() => {
+      f.type !== 'info' && showAdvanced() ? fieldWrap(input(f.id, (x) => upd(() => {
         const old = f.id;
         if (/^[a-z][a-z0-9_]{0,39}$/.test(x) && !taken.has(x)) {
           f.id = x; selected = x;
@@ -338,10 +376,10 @@ export async function formEditorPage(p: Record<string, string>) {
       items.push(notice('info', 'Die anfragende Person gibt hier ihre Vorgesetzte bzw. ihren Vorgesetzten an. Die Anfrage wartet im Portal, bis diese Person sie unter „Freigaben“ freigibt – erst dann landet sie im Ticketsystem. Bei Ablehnung oder ohne Entscheidung wird sie gelöscht.'),
         checkbox(f.knownOnly === true, 'Nur Personen, die sich schon im Portal angemeldet haben', (x) => upd(() => { f.knownOnly = x || undefined; }),
           'Schützt vor Tippfehlern und erfundenen Adressen. Wer sich noch nie angemeldet hat, kann dann nicht gewählt werden.'),
-        fieldWrap(listInput(f.approverGroups ?? [], (x) => upd(() => { f.approverGroups = x.length ? x : undefined; })), {
+        showAdvanced(Boolean(f.approverGroups?.length)) ? fieldWrap(listInput(f.approverGroups ?? [], (x) => upd(() => { f.approverGroups = x.length ? x : undefined; })), {
           label: 'Freigeben dürfen nur Mitglieder dieser Gruppen',
           help: 'Entra-Gruppen (Objekt-IDs) oder App-Rollen (approle:…), z. B. die Gruppe der Führungskräfte. Leer = jedes Microsoft-Konto. Verhindert Freigaben über ein eigenes Zweitkonto.',
-        }),
+        }) : null,
         h('p', { class: 'small muted' }, 'Das Feld ist immer Pflicht, sobald es sichtbar ist. Mit „Nur anzeigen, wenn …“ lässt sich die Freigabe auf bestimmte Fälle beschränken, z. B. nur bei teurer Hardware.'));
     }
     if (f.type !== 'info' && f.type !== 'approver') {
@@ -355,7 +393,7 @@ export async function formEditorPage(p: Record<string, string>) {
         fieldWrap(input(f.default ?? '', (x) => upd(() => { f.default = x || undefined; })), { label: 'Standardwert' }),
         fieldWrap(select(f.defaultFrom ?? '', [{ value: 'user.name', label: 'Name des Benutzers' }, { value: 'user.email', label: 'E-Mail des Benutzers' }, { value: 'user.department', label: 'Abteilung des Benutzers' }], (x) => upd(() => { f.defaultFrom = (x || undefined) as FormField['defaultFrom']; }), { empty: '–' }), { label: 'Vorbelegen mit' })));
     }
-    if (f.type === 'text' || f.type === 'textarea') {
+    if ((f.type === 'text' || f.type === 'textarea') && showAdvanced(Boolean(f.maxLength || f.pattern))) {
       items.push(h('div', { class: 'grid-2' },
         fieldWrap(input(String(f.maxLength ?? ''), (x) => upd(() => { f.maxLength = x ? Number(x) : undefined; }), { type: 'number', min: 1 }), { label: 'Höchstlänge' }),
         fieldWrap(input(f.pattern ?? '', (x) => upd(() => { f.pattern = x || undefined; })), { label: 'Prüfmuster (Regex)', help: 'z. B. [A-Z]{2}-\\d{4} für Inventarnummern' })));
@@ -398,20 +436,40 @@ export async function formEditorPage(p: Record<string, string>) {
         rule ? h('div', { class: 'grid-2' },
           fieldWrap(select(rule.op, [{ value: 'eq', label: 'ist gleich' }, { value: 'neq', label: 'ist nicht' }, { value: 'in', label: 'ist einer von (Komma)' }, { value: 'notEmpty', label: 'ist ausgefüllt' }], (x) => upd(() => { rule.op = x as typeof rule.op; }, true)), { label: 'Bedingung' }),
           rule.op !== 'notEmpty' ? fieldWrap(input(Array.isArray(rule.value) ? rule.value.join(',') : rule.value ?? '', (x) => upd(() => { rule.value = x; })), { label: 'Wert', help: 'Bei Auswahlfeldern der Optionswert' }) : null) : null));
-      items.push(h('details', { class: 'more', attrs: { open: Boolean(f.groups?.length) || undefined } }, h('summary', null, 'Nur für bestimmte Gruppen'),
+      if (showAdvanced(Boolean(f.groups?.length))) items.push(h('details', { class: 'more', attrs: { open: Boolean(f.groups?.length) || undefined } }, h('summary', null, 'Nur für bestimmte Gruppen'),
         fieldWrap(listInput(f.groups ?? [], (x) => upd(() => { f.groups = x.length ? x : undefined; })), { label: 'Entra-Gruppen (Objekt-IDs)', help: 'Leer = für alle. Sonst sehen nur Mitglieder dieser Gruppen das Feld.' })));
     }
     if (f.type !== 'info' && f.type !== 'zammad') {
       const m = f.mapping ?? { target: 'article' as const };
-      const targets = Object.entries(MAP_LABEL).filter(([k]) => f.type !== 'approver' || k === 'article' || k === 'none');
+      const targets = Object.entries(MAP_LABEL).filter(([k]) => (f.type !== 'approver' || k === 'article' || k === 'none')
+        && (k !== 'system' || f.type === 'select')
+        && (isAdvanced() || SIMPLE_TARGETS.has(k) || k === m.target));
+      const setMap = (next: typeof m, redraw = false) => upd(() => { f.mapping = next; }, redraw);
+      // Werte übersetzen: einfach als Auswahl je Option, erweitert zusätzlich frei als Text
+      const perOption = (choices: { value: string; label: string }[], emptyLabel: string) => h('div', { class: 'map-rows' },
+        ...(f.options ?? []).map((o) => h('div', { class: 'map-row' },
+          h('span', { class: 'map-from' }, o.label),
+          h('span', { class: 'map-arrow', attrs: { 'aria-hidden': 'true' } }, '→'),
+          select(m.valueMap?.[o.value] ?? '', choices.some((c) => c.value === m.valueMap?.[o.value]) || !m.valueMap?.[o.value] ? choices : [{ value: m.valueMap[o.value], label: m.valueMap[o.value] }, ...choices], (x) => {
+            const map = { ...(m.valueMap ?? {}) };
+            if (x) map[o.value] = x; else delete map[o.value];
+            setMap({ ...m, valueMap: Object.keys(map).length ? map : undefined });
+          }, { empty: emptyLabel, ariaLabel: `${o.label}: Ziel` }))));
+      const groupChoices = (metaRes?.metadata.groups ?? []).map((g) => ({ value: g.name, label: g.name }));
+      const prioChoices = (metaRes?.metadata.priorities ?? []).map((g) => ({ value: g.name, label: g.name }));
+      const valueMapText = () => fieldWrap(textarea(Object.entries(m.valueMap ?? {}).map(([k, v]) => `${k} = ${v}`).join('\n'), (x) => upd(() => {
+        const map: Record<string, string> = {};
+        x.split('\n').forEach((l) => { const i = l.indexOf('='); if (i > 0) map[l.slice(0, i).trim()] = l.slice(i + 1).trim(); });
+        f.mapping = { ...m, valueMap: Object.keys(map).length ? map : undefined };
+      }), { rows: 3 }), { label: 'Werte übersetzen', help: m.target === 'group' ? 'z. B. „netzwerk = IT-Support::Netzwerk“' : 'Formularwert = Wert in Zammad' });
+      let translate: Child = null;
+      if (f.options?.length && m.target === 'group' && groupChoices.length && !isAdvanced()) translate = fieldWrap(perOption(groupChoices, 'Wert wie er ist'), { label: 'Welche Auswahl kommt in welche Gruppe?' });
+      else if (f.options?.length && m.target === 'priority' && prioChoices.length && !isAdvanced()) translate = fieldWrap(perOption(prioChoices, 'Wert wie er ist'), { label: 'Welche Auswahl ergibt welche Priorität?' });
+      else if (f.options?.length && ['tag', 'group', 'priority', 'zammad_field'].includes(m.target) && showAdvanced(Boolean(m.valueMap))) translate = valueMapText();
       items.push(h('details', { class: 'more', attrs: { open: m.target !== 'article' || undefined } }, h('summary', null, 'Übernahme ins Ticket'),
-        fieldWrap(select(m.target, targets.map(([value, label]) => ({ value, label })), (x) => upd(() => { f.mapping = { ...m, target: x as typeof m.target }; }, true)), { label: 'Verwendung', help: 'Alle Felder stehen außerdem im Tickettext ({{alle_felder}}), außer „Nicht übernehmen“.' }),
+        fieldWrap(select(m.target, targets.map(([value, label]) => ({ value, label })), (x) => setMap({ target: x as typeof m.target, ...(m.name ? { name: m.name } : {}), ...(x === 'system' ? { routes: m.routes } : { valueMap: m.valueMap }) }, true)), { label: 'Verwendung', help: m.target === 'system' ? 'Je nach Auswahl geht die Anfrage an ein anderes Ticketsystem bzw. eine andere Abteilung.' : 'Alle Felder stehen außerdem im Tickettext ({{alle_felder}}), außer „Nicht übernehmen“.' }),
         m.target === 'zammad_field' ? fieldWrap(input(m.name ?? '', (x) => upd(() => { f.mapping = { ...m, name: x }; })), { label: 'Name des Zammad-Feldes' }) : null,
-        ['tag', 'group', 'priority', 'zammad_field'].includes(m.target) && (f.options?.length) ? fieldWrap(textarea(Object.entries(m.valueMap ?? {}).map(([k, v]) => `${k} = ${v}`).join('\n'), (x) => upd(() => {
-          const map: Record<string, string> = {};
-          x.split('\n').forEach((l) => { const i = l.indexOf('='); if (i > 0) map[l.slice(0, i).trim()] = l.slice(i + 1).trim(); });
-          f.mapping = { ...m, valueMap: Object.keys(map).length ? map : undefined };
-        }), { rows: 3 }), { label: 'Werte übersetzen', help: m.target === 'group' ? 'z. B. „netzwerk = IT-Support::Netzwerk“' : 'Formularwert = Wert in Zammad' }) : null));
+        m.target === 'system' ? routesEditor(f, m) : translate));
     }
     if (editable) items.push(h('div', { class: 'row' }, button('Feld entfernen', async () => {
       if (!await confirmDialog('Feld entfernen?', `„${f.label}“ wird aus dem Entwurf entfernt.`, 'Entfernen', true)) return;
@@ -449,8 +507,9 @@ export async function formEditorPage(p: Record<string, string>) {
       fieldWrap(listInput(st.tags ?? [], (x) => { st.tags = x; markDirty(); }), { label: 'Zusätzliche Tags', help: `Der Tag „${s.portalTag}“ wird immer gesetzt.` }),
       fieldWrap(input(st.titleTemplate, (x) => { st.titleTemplate = x; markDirty(); }), { label: 'Ticket-Titel', help: `Platzhalter: ${fieldsHelp}, {{benutzer.name}}, {{benutzer.abteilung}}, {{formular.name}}, {{datum}}` }),
       tpl('title', (c) => { st.titleTemplate = c; }),
-      fieldWrap(textarea(st.bodyTemplate, (x) => { st.bodyTemplate = x; markDirty(); }, { rows: 8, class: 'code' }), { label: 'Tickettext (HTML)', help: '{{alle_felder}} fügt eine Tabelle mit allen ausgefüllten Feldern ein. Eingaben der Benutzer werden immer sicher maskiert.' }),
-      tpl('body', (c) => { st.bodyTemplate = c; }),
+      isAdvanced() ? fieldWrap(textarea(st.bodyTemplate, (x) => { st.bodyTemplate = x; markDirty(); }, { rows: 8, class: 'code' }), { label: 'Tickettext (HTML)', help: '{{alle_felder}} fügt eine Tabelle mit allen ausgefüllten Feldern ein. Eingaben der Benutzer werden immer sicher maskiert.' })
+        : h('div', { class: 'field' }, h('p', { class: 'label' }, 'Tickettext'), h('p', { class: 'small muted' }, 'Das Ticket enthält alle ausgefüllten Felder als übersichtliche Tabelle. Eigenen Text (HTML) gestalten: Ansicht „Erweitert“ unten links.')),
+      isAdvanced() ? tpl('body', (c) => { st.bodyTemplate = c; }) : null,
       fieldWrap(textarea(st.successText ?? '', (x) => { st.successText = x; markDirty(); }, { rows: 3 }), { label: 'Text nach dem Absenden' }),
       tpl('success', (c) => { st.successText = c; }),
     );
@@ -523,5 +582,6 @@ export async function formEditorPage(p: Record<string, string>) {
     if (tab === 'felder') drawPreview();
   }
   draw();
+  onModeChange(() => { if (!host.isConnected) return false; draw(); return true; });
   return host;
 }

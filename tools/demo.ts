@@ -176,6 +176,16 @@ export async function seedDemo(app: App, urls: { zentral: string; nord: string }
     ],
     settings: settings('Störung: {{betreff}}', 'IT-Support', ['stoerung']),
   }, 1);
+  // Weiterleitung: die Auswahl bestimmt das Ticketsystem (hier: Standort Nord → IT Nord)
+  forms.anfrage = addForm(app, zentral, 'anfrage', 'Allgemeine Anfrage', 'Sonstiges', 'Frage oder Wunsch an die IT – geht automatisch an das zuständige Team', {
+    fields: [
+      { id: 'team', type: 'select', label: 'Wo arbeiten Sie?', required: true, help: 'Die Anfrage geht direkt an das IT-Team Ihres Standorts.', options: [{ value: 'zentrale', label: 'Zentrale' }, { value: 'nord', label: 'Standort Nord' }],
+        mapping: { target: 'system', routes: { nord: { system: nord } } } },
+      { id: 'betreff', type: 'text', label: 'Worum geht es?', required: true, maxLength: 120 },
+      { id: 'beschreibung', type: 'textarea', label: 'Ihre Frage oder Ihr Wunsch', required: true },
+    ],
+    settings: settings('Anfrage: {{betreff}}', 'IT-Support', ['anfrage']),
+  }, 7);
   // Entwurf, der auf Freigabe wartet (für Screenshots der Admin-Übersicht)
   addForm(app, zentral, 'neuer-mitarbeiter', 'Neue Mitarbeiterin / neuer Mitarbeiter', 'Zugänge und Rechte', 'Arbeitsplatz und Zugänge für neue Kolleginnen und Kollegen', {
     fields: [

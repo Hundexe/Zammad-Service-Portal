@@ -23,7 +23,7 @@ export function isProtectedZammadField(name: string): boolean {
   return PROTECTED_ZAMMAD_FIELDS.includes(name) || /_ids?$/.test(name);
 }
 
-export const MAPPING_TARGETS = ['article', 'title', 'zammad_field', 'tag', 'group', 'priority', 'none'] as const;
+export const MAPPING_TARGETS = ['article', 'title', 'zammad_field', 'tag', 'group', 'priority', 'system', 'none'] as const;
 export type MappingTarget = (typeof MAPPING_TARGETS)[number];
 
 export const FILE_KINDS = ['pdf', 'image', 'office', 'text'] as const;
@@ -43,6 +43,25 @@ export interface FieldMapping {
   name?: string;
   /** Übersetzt Formularwerte in Zammad-Werte, z. B. Gruppenname */
   valueMap?: Record<string, string>;
+  /**
+   * Weiterleitung (nur bei target 'system', nur Auswahlfelder): Optionswert → Ticketsystem (ID) und optional Gruppe.
+   * Werte ohne Eintrag bleiben im Ticketsystem des Formulars.
+   */
+  routes?: Record<string, FieldRoute>;
+}
+
+export interface FieldRoute { system: string; group?: string }
+
+/** Ziel einer Anfrage nach den Weiterleitungsregeln. null = Ticketsystem des Formulars. */
+export function routeOf(def: FormDefinition, values: FormValues): (FieldRoute & { field: string }) | null {
+  for (const f of def.fields) {
+    if (f.mapping?.target !== 'system' || f.type !== 'select') continue;
+    if (!isVisible(f, values, def.fields)) continue;
+    const v = values[f.id];
+    if (typeof v !== 'string' || !f.mapping.routes || !Object.hasOwn(f.mapping.routes, v)) continue;
+    return { ...f.mapping.routes[v], field: f.id };
+  }
+  return null;
 }
 
 export interface FormField {
@@ -294,6 +313,7 @@ export function validateDefinition(def: unknown): string[] {
   const ids = new Set<string>();
   const approvers = d.fields.filter((f) => f?.type === 'approver').length;
   if (approvers > 1) problems.push('Ein Formular kann nur ein Feld „Freigabe durch Vorgesetzte(n)“ haben');
+  if (d.fields.filter((f) => f?.mapping?.target === 'system').length > 1) problems.push('Ein Formular kann nur ein Feld haben, das an ein Ticketsystem weiterleitet');
   for (const [i, f] of d.fields.entries()) {
     const where = `Feld ${i + 1}`;
     if (!f || typeof f !== 'object') { problems.push(`${where}: ungültig`); continue; }
@@ -324,6 +344,17 @@ export function validateDefinition(def: unknown): string[] {
       if (!(MAPPING_TARGETS as readonly string[]).includes(f.mapping.target)) problems.push(`${where}: unbekanntes Ziel im Ticket`);
       if (f.mapping.target === 'zammad_field' && !/^[a-z][a-z0-9_]{0,60}$/.test(f.mapping.name ?? '')) problems.push(`${where}: Zammad-Feldname ungültig`);
       else if (f.mapping.target === 'zammad_field' && isProtectedZammadField(f.mapping.name!)) problems.push(`${where}: Das Zammad-Feld „${f.mapping.name}“ setzt das Portal selbst – es darf nicht aus einem Formular kommen`);
+      if (f.mapping.routes !== undefined) {
+        const r = f.mapping.routes;
+        if (f.mapping.target !== 'system') problems.push(`${where}: Weiterleitungen gibt es nur bei „Leitet an ein Ticketsystem weiter“`);
+        else if (!r || typeof r !== 'object' || Array.isArray(r) || Object.keys(r).length > LIMITS.maxOptions) problems.push(`${where}: Weiterleitungen ungültig`);
+        else for (const [k, v] of Object.entries(r)) {
+          if (!f.options?.some((o) => o.value === k)) problems.push(`${where}: Weiterleitung für unbekannten Wert „${k}“`);
+          if (!v || typeof v !== 'object' || typeof v.system !== 'string' || !/^[A-Za-z0-9-]{1,64}$/.test(v.system)) problems.push(`${where}: Weiterleitung „${k}“ ohne gültiges Ticketsystem`);
+          else if (v.group !== undefined && (typeof v.group !== 'string' || !v.group.trim() || v.group.length > 200)) problems.push(`${where}: Gruppe der Weiterleitung „${k}“ ungültig`);
+        }
+      }
+      if (f.mapping.target === 'system' && f.type !== 'select') problems.push(`${where}: Weiterleiten kann nur ein Auswahlfeld (eine Auswahl)`);
     }
     if (f.type === 'approver') {
       if (f.mapping && !['article', 'none'].includes(f.mapping.target)) problems.push(`${where}: Die freigebende Person kann nur in den Tickettext übernommen werden`);

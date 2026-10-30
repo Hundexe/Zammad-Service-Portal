@@ -7,11 +7,12 @@ import { HttpError } from '../http/core.ts';
 import { log } from '../log.ts';
 import { sha256 } from '../crypto.ts';
 import { openTitle, PURGED_TITLE, sealTitle } from './request-title.ts';
-import { displayValue, isProtectedZammadField, isVisible, LIMITS, validateSubmission, type FormDefinition, type FormValues, type FileMeta } from '../../shared/form.ts';
+import { displayValue, isProtectedZammadField, isVisible, LIMITS, routeOf, validateSubmission, type FieldRoute, type FormDefinition, type FormValues, type FileMeta } from '../../shared/form.ts';
 import { escapeHtml, renderTemplate, textToHtml, type TemplateVars } from '../../shared/template.ts';
 import type { AuthUser } from './rbac.ts';
 import { checkFiles, loadFile, removeRequestFiles, storeFile, type CheckedFile, type IncomingFile } from './files.ts';
-import { allowedGroups, connectorFor, getSystem, type SystemRow } from './systems.ts';
+import { allowedGroups, connectorFor, findSystem, getSystem, type SystemRow } from './systems.ts';
+import { can } from './rbac.ts';
 import { releasedAttributes } from './metadata.ts';
 import type { FormRow, FormVersionRow } from './forms.ts';
 import { ConnectorError, type CustomerRef } from '../connectors/types.ts';
@@ -27,9 +28,16 @@ export interface TicketPayload {
   customer: { email: string; displayName: string };
 }
 
+/**
+ * Baut das Ticket für `sys` – das ist das Ziel-Ticketsystem (bei Weiterleitung nicht das des Formulars).
+ * `route`: Weiterleitung aus dem Formular. Geht sie in ein anderes System als `formSystemId`, gelten Gruppe aus
+ * der Weiterleitung bzw. Standardgruppe des Ziels; Gruppen-Einstellungen des Formulars beziehen sich auf das eigene System.
+ */
 export function buildTicket(
   sys: SystemRow, form: FormRow, def: FormDefinition, values: FormValues, user: AuthUser, requestId: string,
+  route: FieldRoute | null = null,
 ): TicketPayload {
+  const foreign = Boolean(form.system_id) && form.system_id !== sys.id;
   const vars: TemplateVars = {
     benutzer: { name: user.displayName, email: user.email ?? '', abteilung: user.department ?? '' },
     formular: { name: form.name },
@@ -40,7 +48,7 @@ export function buildTicket(
   const rows: string[] = [];
   const zammadFields: Record<string, unknown> = {};
   const tags = new Set<string>([sys.portal_tag, ...(def.settings.tags ?? [])].map((t) => t.trim()).filter(Boolean));
-  let group = def.settings.group || sys.default_group || '';
+  let group = foreign ? '' : def.settings.group || sys.default_group || '';
   let priority = def.settings.priority || undefined;
   // Zweite Verteidigungslinie: auch wenn eine gespeicherte Definition älter ist als die Prüfung im Editor,
   // landen nur freigegebene Felder und erlaubte Gruppen im Ticket.
@@ -70,7 +78,7 @@ export function buildTicket(
         (Array.isArray(v) ? v.map(String) : [String(v)]).map(mapOne).forEach((t) => tags.add(t.slice(0, 60)));
         break;
       case 'group':
-        group = mapOne(String(v));
+        if (!foreign) group = mapOne(String(v));
         break;
       case 'priority':
         priority = mapOne(String(v));
@@ -79,6 +87,9 @@ export function buildTicket(
         break;
     }
   }
+
+  if (route?.group) group = route.group;
+  else if (foreign) group = sys.default_group || '';
 
   const table = rows.length ? `<table border="1" cellpadding="4" cellspacing="0">${rows.join('')}</table>` : '';
   const title = renderTemplate(def.settings.titleTemplate, vars, 'text') || form.name;
@@ -107,7 +118,7 @@ export interface SubmitInput { values: FormValues; files: Record<string, Incomin
 
 export async function submitRequest(
   app: App, user: AuthUser, sys: SystemRow, form: FormRow, version: FormVersionRow, def: FormDefinition, input: SubmitInput,
-): Promise<{ id: string; title: string; approval: ApproverChoice | null }> {
+): Promise<{ id: string; title: string; approval: ApproverChoice | null; system: { id: string; name: string; routed: boolean } }> {
   // Dateien: zuerst nur Metadaten für die Formularprüfung
   const values: FormValues = { ...(input.values ?? {}) };
   const fileFields = def.fields.filter((f) => f.type === 'file');
@@ -122,6 +133,9 @@ export async function submitRequest(
   }
   const result = validateSubmission(def, values);
   if (!result.ok) throw new HttpError(422, 'Bitte die markierten Felder prüfen', 'validation', result.errors);
+  // Weiterleitung: Auswahl im Formular bestimmt das Ticketsystem (siehe routeOf)
+  const route = routeOf(def, result.values);
+  const target = targetSystem(app, user, sys, route);
   // Freigabe durch Vorgesetzte nötig? Dann bleibt die Anfrage bis zur Entscheidung im Portal.
   const approval = approverFor(app, user, def, result.values);
 
@@ -147,17 +161,17 @@ export async function submitRequest(
     const mine = checked.filter((c) => c.fieldId === f.id);
     if (mine.length) result.values[f.id] = mine.map((c) => ({ name: c.file.filename, size: c.file.data.length }));
   }
-  const payload = buildTicket(sys, form, def, result.values, user, id);
+  const payload = buildTicket(target, form, def, result.values, user, id, route);
   const t = Date.now();
   let approvalId: string | null = null;
   app.db.tx(() => {
     app.db.run(
       `INSERT INTO requests (id, user_id, system_id, form_id, form_version_id, title, payload, status, attempts, next_attempt_at, created_at, queued_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
-      id, user.id, sys.id, form.id, version.id, sealTitle(app.box, payload.title), app.box.encrypt('request', JSON.stringify(payload)),
+      id, user.id, target.id, form.id, version.id, sealTitle(app.box, payload.title), app.box.encrypt('request', JSON.stringify(payload)),
       approval ? 'awaiting_approval' : 'queued', t, t, approval ? null : t,
     );
-    if (approval) approvalId = insertApproval(app, id, approval, buildSummary(def, result.values, user, form.name, sys.name));
+    if (approval) approvalId = insertApproval(app, id, approval, buildSummary(def, result.values, user, form.name, target.name));
     for (const c of checked) {
       const fileId = uuid();
       app.db.run(
@@ -168,7 +182,19 @@ export async function submitRequest(
     }
   });
   if (approvalId) notifyRequested(app, approvalId);
-  return { id, title: payload.title, approval };
+  return { id, title: payload.title, approval, system: { id: target.id, name: target.name, routed: target.id !== sys.id } };
+}
+
+/** Ziel der Anfrage: das System des Formulars oder das der Weiterleitung – nur wenn es aktiv ist und die Person dort Anfragen stellen darf. */
+function targetSystem(app: App, user: AuthUser, sys: SystemRow, route: FieldRoute | null): SystemRow {
+  if (!route || route.system === sys.id || route.system === sys.slug) return sys;
+  const t = findSystem(app, route.system);
+  if (!t || t.status === 'inactive') {
+    log.warn('form.route_target_missing', { system: sys.id, target: route.system });
+    throw new HttpError(422, 'Ihre Auswahl leitet an ein Ticketsystem weiter, das es nicht (mehr) gibt. Bitte die IT informieren.', 'route_target_missing');
+  }
+  if (!can(user, 'portal.use', t.id)) throw new HttpError(403, `Anfragen an „${t.name}“ sind für Ihr Konto nicht freigeschaltet`, 'forbidden');
+  return t;
 }
 
 // ---------------------------------------------------------------- Zustellung

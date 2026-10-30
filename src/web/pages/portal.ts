@@ -126,14 +126,16 @@ export async function formPage(p: Record<string, string>) {
         files[fid] = await Promise.all(list.map(async (f) => ({ name: f.name, type: f.type, data: await fileToBase64(f) })));
       }
       const values = Object.fromEntries(Object.entries(form.values).filter(([k]) => !files[k] && !data.definition.fields.some((f) => f.id === k && f.type === 'file')));
-      const r = await post<{ id: string; title: string; successText: string; approval: { email: string; name: string | null; known: boolean } | null }>(`/api/portal/forms/${p.formId}/submit`, { values, files, version: data.form.version });
+      const r = await post<{ id: string; title: string; successText: string; approval: { email: string; name: string | null; known: boolean } | null; system: { id: string; name: string } | null }>(`/api/portal/forms/${p.formId}/submit`, { values, files, version: data.form.version });
+      // Weiterleitung: Ticket geht an ein anderes Ticketsystem (Abteilung) als das des Formulars
+      const dest = r.system ?? data.system;
       if (r.approval) {
         const who = r.approval.name ? `${r.approval.name} (${r.approval.email})` : r.approval.email;
         mount(host, h('div', { class: 'success' },
           h('div', { class: 'success-mark wait', attrs: { 'aria-hidden': 'true' } }, icon('shield', 28)),
           h('h1', null, 'Wartet auf Freigabe'),
           h('p', null, 'Ihre Anfrage ist eingegangen.'),
-          h('p', { class: 'muted' }, `„${r.title}“ geht erst an ${data.system.name}, wenn ${who} sie freigegeben hat. Sie werden hier im Portal benachrichtigt.`),
+          h('p', { class: 'muted' }, `„${r.title}“ geht erst an ${dest.name}, wenn ${who} sie freigegeben hat. Sie werden hier im Portal benachrichtigt.`),
           !r.approval.known ? notice('warn', `${r.approval.email} hat sich noch nie im Portal angemeldet. Bitte geben Sie der Person Bescheid – sie findet die Anfrage nach der Anmeldung unter „Freigaben“.`) : null,
           h('div', { class: 'row' }, link('/anfragen', 'Zu meinen Anfragen'), link(`/s/${data.system.id}`, 'Weitere Anfrage stellen'))));
         window.scrollTo({ top: 0 });
@@ -143,8 +145,8 @@ export async function formPage(p: Record<string, string>) {
         h('div', { class: 'success-mark', attrs: { 'aria-hidden': 'true' } }, icon('check', 28)),
         h('h1', null, 'Anfrage gesendet'),
         h('p', null, r.successText || 'Ihre Anfrage ist eingegangen.'),
-        h('p', { class: 'muted' }, `„${r.title}“ wird jetzt an ${data.system.name} übermittelt. Die Ticketnummer sehen Sie gleich unter „Meine Tickets“.`),
-        h('div', { class: 'row' }, link(`/s/${data.system.id}/tickets`, 'Zu meinen Tickets'), link(`/s/${data.system.id}`, 'Weitere Anfrage stellen'))));
+        h('p', { class: 'muted' }, `„${r.title}“ wird jetzt an ${dest.name} übermittelt. Die Ticketnummer sehen Sie gleich unter „Meine Tickets“.`),
+        h('div', { class: 'row' }, link(`/s/${dest.id}/tickets`, 'Zu meinen Tickets'), link(`/s/${data.system.id}`, 'Weitere Anfrage stellen'))));
       window.scrollTo({ top: 0 });
     } catch (err) {
       if (err instanceof ApiError && err.code === 'validation' && err.details && typeof err.details === 'object' && !Array.isArray(err.details)) form.setErrors(err.details as Record<string, string>);

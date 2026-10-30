@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Service-Portal für Zammad</title>
+<meta name="description" content="Self-Service-Portal für IT-Abteilungen mit Zammad: Anmeldung mit Microsoft, Formulare, Freigabe durch Vorgesetzte, Tickets im Blick, mehrere Ticketsysteme. Open Source.">
+<meta property="og:title" content="Service-Portal für Zammad">
+<meta property="og:description" content="Anfragen an die IT, die als fertiges Ticket ankommen. Mit Video und Online-Demo.">
+<meta property="og:image" content="video/poster.jpg">
+<link rel="icon" href="demo/favicon.svg" type="image/svg+xml">
+<script>
+  // Alte Links auf die Demo (…/#/s/…) führen weiter zur Demo
+  if (/^#\/./.test(location.hash)) location.replace('demo/' + location.hash);
+</script>
+<style>
+  @font-face { font-family: "Site Sans"; src: url("demo/fonts/inter-400.woff") format("woff"); font-weight: 400; font-display: swap; }
+  @font-face { font-family: "Site Sans"; src: url("demo/fonts/inter-500.woff") format("woff"); font-weight: 500; font-display: swap; }
+  @font-face { font-family: "Site Sans"; src: url("demo/fonts/inter-600.woff") format("woff"); font-weight: 600 700; font-display: swap; }
+  @font-face { font-family: "Site Display"; src: url("demo/fonts/inter-display-600.woff") format("woff"); font-weight: 600; font-display: swap; }
+  @font-face { font-family: "Site Display"; src: url("demo/fonts/inter-display-700.woff") format("woff"); font-weight: 700; font-display: swap; }
+
+  :root {
+    --ink: #0e2238;        /* Kopfband – die Farbe der Zentrale-IT-Demo */
+    --ink-2: #16314f;
+    --paper: #f3f5f8;
+    --white: #ffffff;
+    --text: #172233;
+    --muted: #556275;
+    --line: #d8dfe8;
+    --blue: #1662a8;
+    --teal: #0f8a6a;
+    --amber: #b8770f;
+    --wine: #9b2335;       /* IT Nord */
+    --r-shot: 14px;
+    --wide: 1180px;
+    --sans: "Site Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --display: "Site Display", "Site Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body { margin: 0; background: var(--paper); color: var(--text); font: 400 17px/1.6 var(--sans); }
+  img { display: block; max-width: 100%; height: auto; }
+  a { color: var(--blue); text-underline-offset: 3px; }
+  :focus-visible { outline: 3px solid #5aa0f0; outline-offset: 3px; border-radius: 6px; }
+  .wrap { width: min(var(--wide), 100% - 48px); margin: 0 auto; }
+  @media (max-width: 640px) { .wrap { width: calc(100% - 32px); } body { font-size: 16px; } }
+
+  /* ---------------------------------------------------------------- Kopf */
+  .top { background: linear-gradient(to bottom, var(--ink) 0, var(--ink) calc(100% - clamp(70px, 12vw, 170px)), var(--paper) 0); color: #dfe8f4; }
+  .nav { display: flex; align-items: center; gap: 28px; height: 68px; }
+  .brand { display: flex; align-items: center; gap: 10px; color: #fff; text-decoration: none; font: 600 17px/1 var(--display); letter-spacing: -.01em; }
+  .brand-mark { width: 26px; height: 26px; border-radius: 50%; border: 3px solid #fff; }
+  .nav-links { display: flex; gap: 22px; margin-left: auto; }
+  .nav-links a { color: #c3d1e3; text-decoration: none; font-size: 15px; }
+  .nav-links a:hover { color: #fff; }
+  .nav .gh { color: #fff; font-size: 15px; font-weight: 500; text-decoration: none; padding: 7px 14px; border: 1px solid #3a5577; border-radius: 999px; }
+  .nav .gh:hover { border-color: #fff; }
+  @media (max-width: 860px) { .nav-links { display: none; } .nav .gh { margin-left: auto; } }
+
+  .hero { padding: 72px 0 0; }
+  .hero h1 { font: 700 clamp(40px, 6.4vw, 84px)/.98 var(--display); letter-spacing: -.035em; color: #fff; margin: 0; max-width: 14ch; }
+  .hero h1 .soft { color: #8fb2da; }
+  .hero-lede { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 32px 48px; align-items: end; margin-top: 28px; }
+  .hero p { margin: 0; max-width: 56ch; font-size: 19px; color: #c3d1e3; }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn { display: inline-flex; align-items: center; gap: 10px; padding: 13px 22px; border-radius: 999px; font: 600 16px/1 var(--sans); text-decoration: none; border: 0; cursor: pointer; }
+  .btn-light { background: #fff; color: var(--ink); }
+  .btn-light:hover { background: #e3ecf7; }
+  .btn-line { color: #fff; border: 1px solid #4d6a8f; }
+  .btn-line:hover { border-color: #fff; }
+  .btn svg { width: 14px; height: 14px; }
+  @media (max-width: 860px) { .hero-lede { grid-template-columns: 1fr; } }
+
+  /* Video sitzt auf der Kante zwischen dunklem Kopf und hellem Inhalt */
+  .stage { position: relative; margin-top: 56px; }
+  .player { position: relative; z-index: 1; border-radius: 18px; overflow: hidden; background: #000; box-shadow: 0 40px 90px -30px rgba(6, 18, 34, .65), 0 0 0 1px rgba(255, 255, 255, .06); }
+  .player video { display: block; width: 100%; aspect-ratio: 16 / 9; background: #000; }
+  .video-note { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 6px 22px; padding: 14px 4px 0; font-size: 14.5px; color: var(--muted); }
+
+  /* ---------------------------------------------------------------- Abschnitte */
+  section { padding: 104px 0 0; }
+  .head { max-width: 760px; }
+  h2 { font: 700 clamp(30px, 4vw, 48px)/1.05 var(--display); letter-spacing: -.03em; margin: 0 0 18px; }
+  .head p { margin: 0; color: var(--muted); font-size: 18.5px; max-width: 62ch; }
+  h3 { font: 600 23px/1.2 var(--display); letter-spacing: -.015em; margin: 0 0 10px; }
+  .shot { border-radius: var(--r-shot); box-shadow: 0 1px 2px rgba(14, 34, 56, .08), 0 18px 44px -18px rgba(14, 34, 56, .28); background: #fff; cursor: zoom-in; }
+  .shot-btn { display: block; padding: 0; border: 0; background: none; width: 100%; border-radius: var(--r-shot); }
+  .new { display: inline-block; margin-bottom: 12px; padding: 3px 10px; border-radius: 999px; background: #dff3ec; color: #0b6b52; font: 600 13px/1.4 var(--sans); letter-spacing: 0; }
+
+  /* Der Weg einer Anfrage: echte Reihenfolge, daher nummeriert */
+  .path { list-style: none; margin: 56px 0 0; padding: 0; position: relative; }
+  .path::before { content: ""; position: absolute; left: 21px; top: 8px; bottom: 40px; width: 2px; background: linear-gradient(var(--blue), var(--teal)); }
+  .step { position: relative; display: grid; grid-template-columns: 44px minmax(0, 5fr) minmax(0, 7fr); gap: 28px 40px; padding-bottom: 72px; }
+  .step-no { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--paper); border: 2px solid var(--blue); color: var(--blue); font: 700 18px/1 var(--display); position: relative; }
+  .step:nth-child(2) .step-no { border-color: var(--amber); color: var(--amber); }
+  .step:nth-child(3) .step-no, .step:nth-child(4) .step-no { border-color: var(--teal); color: var(--teal); }
+  .step-text { padding-top: 6px; }
+  .step-text p { margin: 0 0 12px; color: var(--muted); }
+  .step-text ul { margin: 0; padding-left: 18px; color: var(--text); }
+  .step-text li { margin: 4px 0; }
+  @media (max-width: 900px) {
+    .step { grid-template-columns: 44px minmax(0, 1fr); }
+    .step .shot-btn { grid-column: 2; }
+  }
+
+  /* Mehrere Teams */
+  .teams { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 48px; }
+  .teams figure { margin: 0; }
+  figcaption { margin-top: 12px; font-size: 15px; color: var(--muted); }
+  figcaption b { color: var(--text); font-weight: 600; }
+  .route { margin-top: 64px; display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: 40px; align-items: start; }
+  .route-flow { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .route-flow figure:first-child { grid-column: 1 / -1; }
+  .route p { color: var(--muted); margin: 0 0 14px; }
+  .route .rule { border-left: 3px solid var(--wine); padding: 2px 0 2px 16px; margin: 20px 0; color: var(--text); }
+  @media (max-width: 900px) { .teams, .route, .route-flow { grid-template-columns: 1fr; } }
+
+  /* Einfach / Erweitert */
+  .modes { margin-top: 48px; display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: 40px; align-items: start; }
+  .switch { display: inline-grid; grid-auto-flow: column; padding: 4px; gap: 4px; border-radius: 999px; background: #fff; border: 1px solid var(--line); margin-bottom: 22px; }
+  .switch button { border: 0; background: none; padding: 9px 20px; border-radius: 999px; font: 600 15px/1 var(--sans); color: var(--muted); cursor: pointer; }
+  .switch button[aria-pressed="true"] { background: var(--blue); color: #fff; }
+  .mode-text { display: none; }
+  .mode-text.on { display: block; }
+  .mode-text p { margin: 0 0 12px; color: var(--muted); }
+  .mode-text ul { margin: 0; padding-left: 18px; }
+  .mode-shots { position: relative; }
+  .mode-shots .shot-btn + .shot-btn { position: absolute; inset: 0; }
+  .mode-shots .shot-btn { transition: opacity .25s ease; }
+  .mode-shots .shot-btn[hidden] { display: block; opacity: 0; pointer-events: none; }
+  @media (prefers-reduced-motion: reduce) { .mode-shots .shot-btn { transition: none; } }
+  @media (max-width: 900px) { .modes { grid-template-columns: 1fr; } }
+
+  /* Aussehen */
+  .looks { margin-top: 48px; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 24px; }
+  .looks figure { margin: 0; }
+  .looks .a { grid-column: span 7; }
+  .looks .b { grid-column: span 5; }
+  .looks .c { grid-column: span 6; }
+  .looks .d { grid-column: span 6; }
+  @media (max-width: 900px) { .looks > * { grid-column: 1 / -1 !important; } }
+
+  /* Betrieb und Sicherheit: dunkel wie der Kopf */
+  .ops { background: var(--ink); color: #dfe8f4; margin-top: 104px; padding: 96px 0 104px; }
+  .ops h2 { color: #fff; }
+  .ops .head p { color: #a9bbd2; }
+  .facts { margin: 56px 0 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px 48px; }
+  .facts dt { font: 600 18px/1.3 var(--display); color: #fff; margin-bottom: 8px; }
+  .facts dd { margin: 0; color: #a9bbd2; font-size: 15.5px; }
+  .ops-shots { margin-top: 64px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+  .ops-shots .shot { box-shadow: 0 0 0 1px rgba(255, 255, 255, .08), 0 24px 50px -24px rgba(0, 0, 0, .6); }
+  .ops figcaption { color: #a9bbd2; }
+  .ops figure { margin: 0; }
+  @media (max-width: 900px) { .facts, .ops-shots { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 600px) { .facts, .ops-shots { grid-template-columns: 1fr; } }
+
+  /* Installation: drei Schritte nacheinander */
+  .install { padding-bottom: 104px; }
+  .install-grid { margin-top: 48px; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 40px; align-items: start; }
+  pre { white-space: pre-wrap; word-break: break-all; margin: 0; background: var(--ink); color: #e6eef8; border-radius: 12px; padding: 20px 22px; overflow-x: auto; font: 14.5px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  .steps3 { margin: 24px 0 0; padding-left: 22px; }
+  .steps3 li { margin: 0 0 14px; padding-left: 6px; }
+  .steps3 li::marker { font-weight: 700; color: var(--blue); }
+  .docs { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  .docs li { border-bottom: 1px solid var(--line); }
+  .docs a { display: flex; justify-content: space-between; gap: 16px; padding: 14px 2px; text-decoration: none; color: var(--text); }
+  .docs a span:last-child { color: var(--muted); font-size: 15px; text-align: right; }
+  .docs a:hover span:first-child { color: var(--blue); }
+  @media (max-width: 900px) { .install-grid { grid-template-columns: 1fr; } }
+
+  footer { border-top: 1px solid var(--line); padding: 32px 0 48px; font-size: 14.5px; color: var(--muted); }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; justify-content: space-between; }
+  footer nav { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+
+  /* Großansicht */
+  dialog.zoom { padding: 0; border: 0; background: transparent; max-width: min(1600px, 96vw); max-height: 94vh; }
+  dialog.zoom::backdrop { background: rgba(6, 16, 30, .82); }
+  dialog.zoom img { max-height: 90vh; width: auto; border-radius: 10px; cursor: zoom-out; }
+  dialog.zoom p { color: #dfe8f4; margin: 10px 4px 0; font-size: 15px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <nav class="nav" aria-label="Hauptnavigation">
+      <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true"></span>Service-Portal für Zammad</a>
+      <div class="nav-links">
+        <a href="#ablauf">Ablauf</a>
+        <a href="#teams">Mehrere Teams</a>
+        <a href="#verwaltung">Verwaltung</a>
+        <a href="#sicherheit">Sicherheit</a>
+        <a href="#installation">Installation</a>
+      </div>
+      <a class="gh" href="https://github.com/Hundexe/Zammad-Service-Portal">GitHub</a>
+    </nav>
+    <div class="hero" id="top">
+      <h1>Anfragen an die IT, <span class="soft">die als fertiges Ticket ankommen.</span></h1>
+      <div class="hero-lede">
+        <p>Mitarbeitende melden sich mit ihrem Microsoft-Konto an, wählen ein Formular und sehen jederzeit, was aus ihrer Anfrage geworden ist. Die IT bekommt saubere Tickets in Zammad – mit Gruppe, Priorität, Feldern und, wo nötig, der Freigabe der Führungskraft.</p>
+        <div class="actions">
+          <a class="btn btn-light" href="#video" id="play"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5v11l9.5-5.5z" fill="currentColor"/></svg>Video abspielen</a>
+          <a class="btn btn-line" href="demo/">Demo ausprobieren</a>
+        </div>
+      </div>
+    </div>
+    <div class="stage" id="video">
+      <div class="player">
+        <video controls playsinline preload="metadata" poster="video/poster.jpg" aria-label="Video-Einführung in das Service-Portal, 2 Minuten 32 Sekunden">
+          <source src="video/service-portal-demo.mp4" type="video/mp4">
+          <track kind="captions" src="video/service-portal-demo.de.vtt" srclang="de" label="Deutsch" default>
+        </video>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="video-note">
+      <span>Einführung in 2:32, mit Sprecher und Untertiteln.</span>
+      <a href="video/service-portal-demo.mp4" download>Video herunterladen (MP4)</a>
+      <a href="video/service-portal-demo.srt" download>Untertitel (SRT)</a>
+    </div>
+  </div>
+
+  <!-- ------------------------------------------------------------ Ablauf -->
+  <section id="ablauf">
+    <div class="wrap">
+      <div class="head">
+        <h2>So läuft eine Anfrage</h2>
+        <p>Vom Formular bis zur Antwort der IT bleibt alles an einem Ort. E-Mails verschickt das Portal nicht selbst – Bestätigungen und Antworten kommen wie gewohnt aus Zammad.</p>
+      </div>
+      <ol class="path">
+        <li class="step">
+          <span class="step-no" aria-hidden="true">1</span>
+          <div class="step-text">
+            <h3>Formular wählen und ausfüllen</h3>
+            <p>Die Startseite zeigt die passenden Formulare, nach Themen sortiert. Felder erscheinen nur, wenn sie gebraucht werden, und das Portal sagt sofort, was fehlt.</p>
+            <ul>
+              <li>Pflichtfelder, Prüfmuster, Datei-Anhänge mit Virenscan</li>
+              <li>Name, E-Mail und Abteilung werden vorbelegt</li>
+              <li>Auswahlwerte direkt aus Zammad</li>
+            </ul>
+          </div>
+          <button class="shot-btn" type="button"><img class="shot" src="img/formular.jpg" width="2160" height="1350" loading="lazy" alt="Formular „Störung melden“: Bei „Programm“ erscheint zusätzlich das Feld „Welches Programm?“"></button>
+        </li>
+        <li class="step">
+          <span class="step-no" aria-hidden="true">2</span>
+          <div class="step-text">
+            <h3>Freigabe durch die Führungskraft</h3>
+            <p>Kostet etwas Geld, fragt das Formular nach der Person, die freigibt. Die Anfrage wartet im Portal und geht erst nach der Freigabe an die IT – mit Vermerk im Ticket.</p>
+            <ul>
+              <li>Auch nur unter Bedingungen, z. B. bei kostenpflichtiger Software</li>
+              <li>Freigeben oder ablehnen mit Begründung, Erinnerung und Frist</li>
+              <li>Keine Selbstfreigabe, optional nur bestimmte Gruppen</li>
+            </ul>
+          </div>
+          <button class="shot-btn" type="button"><img class="shot" src="img/freigabe.jpg" width="2160" height="1350" loading="lazy" alt="Freigabe-Seite mit Inhalt der Anfrage, Kommentarfeld und den Knöpfen „Freigeben“ und „Ablehnen“"></button>
+        </li>
+        <li class="step">
+          <span class="step-no" aria-hidden="true">3</span>
+          <div class="step-text">
+            <h3>Ticket in Zammad</h3>
+            <p>Das Portal legt das Ticket im Namen der Person an. Gruppe, Priorität, Tags und freigegebene Zammad-Felder kommen aus dem Formular – aber nur in Gruppen, die Sie erlaubt haben.</p>
+            <ul>
+              <li>Ist Zammad nicht erreichbar, wartet die Anfrage verschlüsselt und wird automatisch zugestellt</li>
+              <li>Keine doppelten Tickets, auch nach Neustart</li>
+            </ul>
+          </div>
+          <button class="shot-btn" type="button"><img class="shot" src="img/tickets.jpg" width="2160" height="1350" loading="lazy" alt="Meine Tickets: eine Anfrage wartet auf Freigabe, zwei Tickets sind in Bearbeitung"></button>
+        </li>
+        <li class="step">
+          <span class="step-no" aria-hidden="true">4</span>
+          <div class="step-text">
+            <h3>Antwort lesen, direkt zurückschreiben</h3>
+            <p>Der Verlauf liest sich wie ein Chat: ohne doppelte Zitate, mit aufgeräumten Signaturen und ohne interne Notizen. Antwortet die IT, meldet sich die Glocke.</p>
+            <ul>
+              <li>Antworten gehen mit Verlauf an Zammad zurück</li>
+              <li>Namen der Bearbeiter auf Wunsch ausgeblendet</li>
+            </ul>
+          </div>
+          <button class="shot-btn" type="button"><img class="shot" src="img/ticket.jpg" width="2160" height="1350" loading="lazy" alt="Ticketverlauf als Chat mit Anfrage, Antwort des Supports und Antwortfeld"></button>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------ Mehrere Teams -->
+  <section id="teams">
+    <div class="wrap">
+      <div class="head">
+        <h2>Ein Portal für mehrere Teams</h2>
+        <p>Beliebig viele Zammad-Systeme hängen an einem Portal. Jedes bekommt eigene Formulare, Farben und Logos – und wer nur für ein Team zuständig ist, verwaltet nur dieses.</p>
+      </div>
+      <div class="teams">
+        <figure>
+          <button class="shot-btn" type="button"><img class="shot" src="img/start.jpg" width="2160" height="1350" loading="lazy" alt="Startseite der Zentralen IT in Blau"></button>
+          <figcaption><b>Zentrale IT</b> im Stil Glas</figcaption>
+        </figure>
+        <figure>
+          <button class="shot-btn" type="button"><img class="shot" src="img/start-nord.jpg" width="2160" height="1350" loading="lazy" alt="Startseite von IT Nord in Weinrot"></button>
+          <figcaption><b>IT Nord</b> im Stil Fluent – ein Klick wechselt das Ziel</figcaption>
+        </figure>
+      </div>
+
+      <div class="route">
+        <div>
+          <span class="new">Neu in 1.11</span>
+          <h3>Weiterleiten aus dem Formular</h3>
+          <p>Ein Auswahlfeld kann entscheiden, wohin die Anfrage geht. „Standort Nord“ landet bei IT Nord, „Zentrale“ bleibt bei der Zentralen IT – im selben Formular, ohne dass jemand das richtige Team kennen muss.</p>
+          <p>Je Auswahl legen Sie Ticketsystem und Gruppe fest. Die Person sieht nach dem Absenden, wohin ihre Anfrage gegangen ist.</p>
+          <p class="rule">Weiterleiten darf nur, wer im Ziel selbst Formulare bearbeiten darf. Gruppen müssen dort erlaubt sein, Zammad-Felder kommen nur an, wenn sie im Ziel freigegeben sind.</p>
+        </div>
+        <div class="route-flow">
+          <figure>
+            <button class="shot-btn" type="button"><img class="shot" src="img/editor-weiterleitung.jpg" width="2160" height="1350" loading="lazy" alt="Formular-Editor: Feld „Wo arbeiten Sie?“ leitet „Standort Nord“ an IT Nord weiter"></button>
+            <figcaption><b>Im Editor</b> je Auswahl ein Ziel</figcaption>
+          </figure>
+          <figure>
+            <button class="shot-btn" type="button"><img class="shot" src="img/weiterleitung-formular.jpg" width="2160" height="1350" loading="lazy" alt="Formular „Allgemeine Anfrage“ mit Auswahl „Standort Nord“"></button>
+            <figcaption><b>Im Portal</b> eine normale Auswahl</figcaption>
+          </figure>
+          <figure>
+            <button class="shot-btn" type="button"><img class="shot" src="img/weiterleitung-gesendet.jpg" width="2160" height="1350" loading="lazy" alt="Bestätigung: Die Anfrage wird an IT Nord übermittelt"></button>
+            <figcaption><b>Nach dem Absenden</b> „wird an IT Nord übermittelt“</figcaption>
+          </figure>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------ Verwaltung -->
+  <section id="verwaltung">
+    <div class="wrap">
+      <div class="head">
+        <h2>Einstellen ohne eine Zeile Code</h2>
+        <p>Formulare entstehen im Baukasten mit Live-Vorschau. Die Verwaltung hat zwei Ansichten: „Einfach“ reicht für fast alles, „Erweitert“ zeigt jede Stellschraube. Schalten Sie selbst um.</p>
+      </div>
+      <div class="modes">
+        <div>
+          <div class="switch" role="group" aria-label="Ansicht der Verwaltung">
+            <button type="button" data-mode="einfach" aria-pressed="true">Einfach</button>
+            <button type="button" data-mode="erweitert" aria-pressed="false">Erweitert</button>
+          </div>
+          <div class="mode-text on" data-mode="einfach">
+            <p>Für den Alltag: Felder anlegen, Pflichtangaben, Optionen, Bedingungen, Gruppe und Priorität je Auswahl, Titel und Text nach dem Absenden.</p>
+            <ul>
+              <li>Gruppen und Prioritäten als Auswahlliste statt Tipparbeit</li>
+              <li>Das Ticket enthält automatisch alle Angaben als Tabelle</li>
+              <li>Einstellungen mit Wert bleiben immer sichtbar</li>
+            </ul>
+          </div>
+          <div class="mode-text" data-mode="erweitert">
+            <p>Für Fälle, die mehr brauchen – alles, was der Server prüft, ist hier einstellbar.</p>
+            <ul>
+              <li>Feld-IDs für Vorlagen, Prüfmuster, Höchstlängen</li>
+              <li>Felder nur für bestimmte Entra-Gruppen</li>
+              <li>Werte frei übersetzen, in Zammad-Felder schreiben</li>
+              <li>Weiterleiten an andere Ticketsysteme</li>
+              <li>Tickettext als eigene HTML-Vorlage</li>
+            </ul>
+          </div>
+        </div>
+        <div class="mode-shots">
+          <button class="shot-btn" type="button" data-mode="einfach"><img class="shot" src="img/editor-einfach.jpg" width="2160" height="1350" loading="lazy" alt="Formular-Editor in der einfachen Ansicht"></button>
+          <button class="shot-btn" type="button" data-mode="erweitert" hidden><img class="shot" src="img/editor-erweitert.jpg" width="2160" height="1350" loading="lazy" alt="Formular-Editor in der erweiterten Ansicht mit Feld-ID und Gruppen"></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------ Aussehen -->
+  <section id="aussehen">
+    <div class="wrap">
+      <div class="head">
+        <h2>Sieht aus wie Ihre IT</h2>
+        <p>Fünf Stile – Standard, Glas, Fluent, Material und Kontrast – mit eigenen Farben und Logos. Hell oder dunkel folgt dem Gerät, die Kontraste prüft die Verwaltung beim Speichern.</p>
+      </div>
+      <div class="looks">
+        <figure class="a">
+          <button class="shot-btn" type="button"><img class="shot" src="img/branding.jpg" width="2160" height="1350" loading="lazy" alt="Verwaltung: Stil, Farben und Logo mit Vorschau"></button>
+          <figcaption><b>Stil, Farben, Logo</b> mit Vorschau und Kontrastprüfung</figcaption>
+        </figure>
+        <figure class="b">
+          <button class="shot-btn" type="button"><img class="shot" src="img/login.jpg" width="2160" height="1350" loading="lazy" alt="Anmeldeseite mit Microsoft-Anmeldung"></button>
+          <figcaption><b>Anmeldung</b> mit Microsoft, Mehrfaktor inklusive</figcaption>
+        </figure>
+        <figure class="c">
+          <button class="shot-btn" type="button"><img class="shot" src="img/start-dunkel.jpg" width="2160" height="1350" loading="lazy" alt="Startseite im dunklen Design"></button>
+          <figcaption><b>Dunkles Design</b> automatisch oder per Klick</figcaption>
+        </figure>
+        <figure class="d">
+          <button class="shot-btn" type="button"><img class="shot" src="img/stil-kontrast.jpg" width="2160" height="1350" loading="lazy" alt="Startseite im Stil Kontrast"></button>
+          <figcaption><b>Kontrast</b> für bestmögliche Lesbarkeit</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------ Sicherheit -->
+  <section class="ops" id="sicherheit">
+    <div class="wrap">
+      <div class="head">
+        <h2>Gebaut für den Betrieb im Unternehmen</h2>
+        <p>Klein gehalten, ohne fremde Laufzeitpakete, mit über 300 automatischen Tests und zwei dokumentierten Sicherheitstests.</p>
+      </div>
+      <dl class="facts">
+        <div><dt>Microsoft Entra ID</dt><dd>Anmeldung per SSO mit Ihrer Mehrfaktor-Richtlinie. Rechte über Entra-Gruppen oder App-Rollen, global oder je Ticketsystem.</dd></div>
+        <div><dt>Verschlüsselte Ablage</dt><dd>Anfragen, Titel, Tokens und Anhänge liegen verschlüsselt, bis Zammad sie hat – danach wird gelöscht.</dd></div>
+        <div><dt>Virenscan</dt><dd>Anhänge laufen durch ClamAV, bevor sie ins Ticket gehen. Dateitypen je Formular einschränkbar.</dd></div>
+        <div><dt>Lückenloses Audit-Log</dt><dd>Jede Änderung mit Hash-Kette, prüfbar und als CSV exportierbar.</dd></div>
+        <div><dt>Vier-Augen-Prinzip</dt><dd>Formulare und Branding auf Wunsch erst nach Freigabe durch eine zweite Person.</dd></div>
+        <div><dt>Signierte Updates</dt><dd>Neue Versionen aus der Verwaltung, mit Signaturprüfung, Sicherung und automatischem Rollback.</dd></div>
+      </dl>
+      <div class="ops-shots">
+        <figure>
+          <button class="shot-btn" type="button"><img class="shot" src="img/admin.jpg" width="2160" height="1350" loading="lazy" alt="Übersicht der Verwaltung"></button>
+          <figcaption>Übersicht mit offenen Punkten</figcaption>
+        </figure>
+        <figure>
+          <button class="shot-btn" type="button"><img class="shot" src="img/rollen.jpg" width="2160" height="1350" loading="lazy" alt="Rollen und Rechte"></button>
+          <figcaption>Rollen und Rechte</figcaption>
+        </figure>
+        <figure>
+          <button class="shot-btn" type="button"><img class="shot" src="img/audit.jpg" width="2160" height="1350" loading="lazy" alt="Audit-Log"></button>
+          <figcaption>Audit-Log mit Integritätsprüfung</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------ Installation -->
+  <section class="install" id="installation">
+    <div class="wrap">
+      <div class="head">
+        <h2>Startklar mit einem Befehl</h2>
+        <p>Ein Linux-Server im internen Netz genügt – mit Docker oder direkt auf Debian und Ubuntu. Open Source unter MIT-Lizenz.</p>
+      </div>
+      <div class="install-grid">
+        <div>
+          <pre><code>curl -fsSL https://raw.githubusercontent.com/Hundexe/Zammad-Service-Portal/main/setup.sh | sudo bash</code></pre>
+          <ol class="steps3">
+            <li>In Zammad einen API-Benutzer mit Token anlegen.</li>
+            <li>In Microsoft Entra eine App registrieren – die Anleitung zeigt jeden Klick.</li>
+            <li>Das Skript ausführen: Es fragt Variante, Adresse und Virenscanner ab und legt den ersten Admin an.</li>
+          </ol>
+        </div>
+        <ul class="docs">
+          <li><a href="https://github.com/Hundexe/Zammad-Service-Portal/blob/main/docs/INSTALLATION.md"><span>Installation</span><span>Schritt für Schritt</span></a></li>
+          <li><a href="https://github.com/Hundexe/Zammad-Service-Portal/blob/main/docs/ENTRA.md"><span>Microsoft-Anmeldung</span><span>App, Rechte, Gruppen</span></a></li>
+          <li><a href="https://github.com/Hundexe/Zammad-Service-Portal/blob/main/docs/BEDIENUNG.md"><span>Bedienung</span><span>Portal und Verwaltung</span></a></li>
+          <li><a href="https://github.com/Hundexe/Zammad-Service-Portal/blob/main/docs/SICHERHEIT.md"><span>Sicherheit</span><span>Schutzmaßnahmen, Tests</span></a></li>
+          <li><a href="https://github.com/Hundexe/Zammad-Service-Portal/blob/main/docs/GO-LIVE.md"><span>Go-Live-Checkliste</span><span>vor dem Produktivbetrieb</span></a></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Service-Portal für Zammad, MIT-Lizenz. Kein offizielles Produkt der Zammad Foundation oder von Microsoft.</span>
+    <nav aria-label="Weitere Links">
+      <a href="demo/">Online-Demo</a>
+      <a href="https://github.com/Hundexe/Zammad-Service-Portal">GitHub</a>
+      <a href="https://github.com/Hundexe/Zammad-Service-Portal/blob/main/CHANGELOG.md">Änderungen</a>
+    </nav>
+  </div>
+</footer>
+
+<dialog class="zoom" aria-label="Bild in voller Größe">
+  <form method="dialog"><button style="all:unset;display:block" aria-label="Schließen"><img alt=""></button></form>
+  <p></p>
+</dialog>
+
+<script>
+  // Video aus dem Kopf heraus starten
+  const video = document.querySelector('video');
+  document.getElementById('play').addEventListener('click', () => { video.play().catch(() => {}); });
+
+  // Ansicht „Einfach / Erweitert“ wie in der Verwaltung
+  const switchBtns = document.querySelectorAll('.switch button');
+  switchBtns.forEach((b) => b.addEventListener('click', () => {
+    const m = b.dataset.mode;
+    switchBtns.forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    document.querySelectorAll('.mode-text').forEach((t) => t.classList.toggle('on', t.dataset.mode === m));
+    document.querySelectorAll('.mode-shots .shot-btn').forEach((s) => { s.hidden = s.dataset.mode !== m; });
+  }));
+
+  // Bilder in voller Größe
+  const zoom = document.querySelector('dialog.zoom');
+  document.querySelectorAll('.shot-btn').forEach((b) => b.addEventListener('click', () => {
+    const img = b.querySelector('img');
+    zoom.querySelector('img').src = img.src;
+    zoom.querySelector('img').alt = img.alt;
+    zoom.querySelector('p').textContent = img.alt;
+    zoom.showModal();
+  }));
+  zoom.addEventListener('click', (e) => { if (e.target === zoom) zoom.close(); });
+</script>
+</body>
+</html>

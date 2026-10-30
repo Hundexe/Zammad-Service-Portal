@@ -103,17 +103,20 @@ await demo.close();
 
 // Statische Seite zusammenstellen: relative Pfade (Unterverzeichnis auf github.io), Demo-Kennzeichen
 rmSync(out, { recursive: true, force: true });
-mkdirSync(out, { recursive: true });
-cpSync(join(root, 'dist/web'), out, { recursive: true });
-const index = readFileSync(join(out, 'index.html'), 'utf8')
+// Aufbau: Produkt-Webseite im Wurzelverzeichnis, Demo zum Durchklicken unter demo/, Video unter video/
+const demoOut = join(out, 'demo');
+mkdirSync(demoOut, { recursive: true });
+cpSync(join(root, 'dist/web'), demoOut, { recursive: true });
+const index = readFileSync(join(demoOut, 'index.html'), 'utf8')
   .replace('<meta name="robots" content="noindex, nofollow">', '<meta name="robots" content="noindex, nofollow">\n  <meta name="zsp-demo" content="1">')
   .replace(/(href|src)="\/(?!\/)/g, '$1="./')
   .replace('<title>Service-Portal</title>', '<title>Service-Portal – Demo</title>');
-writeFileSync(join(out, 'index.html'), index);
-writeFileSync(join(out, 'styles.css'), readFileSync(join(out, 'styles.css'), 'utf8').replace(/url\("\/fonts\//g, 'url("fonts/'));
-writeFileSync(join(out, 'demo-data.json'), JSON.stringify({ recordedAt: Date.now(), responses, assets }));
+writeFileSync(join(demoOut, 'index.html'), index);
+writeFileSync(join(demoOut, 'styles.css'), readFileSync(join(demoOut, 'styles.css'), 'utf8').replace(/url\("\/fonts\//g, 'url("fonts/'));
+writeFileSync(join(demoOut, 'demo-data.json'), JSON.stringify({ recordedAt: Date.now(), responses, assets }));
 writeFileSync(join(out, '.nojekyll'), '');
 // Video-Einführung unter /video/ (Seite, Video, Untertitel, Vorschaubild)
 cpSync(join(root, 'docs/video'), join(out, 'video'), { recursive: true });
-console.log(`Demo gebaut: ${out}`);
+cpSync(join(root, 'docs/website'), out, { recursive: true });
+console.log(`Webseite und Demo gebaut: ${out}`);
 process.exit(0);

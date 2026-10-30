@@ -1,7 +1,8 @@
 // Gemeinsames für die Verwaltung: Systemliste, Navigation.
 import { h, icon } from '../lib/dom.ts';
 import { get } from '../lib/api.ts';
-import { can, canAnywhere, link, navigate, state } from '../lib/app.ts';
+import { can, canAnywhere, curPath, link, navigate, state } from '../lib/app.ts';
+import { modeToggle } from './mode.ts';
 
 export interface AdminSystem {
   id: string; slug: string; name: string; type: string; baseUrl: string; hasToken: boolean; defaultGroup: string | null;
@@ -73,6 +74,7 @@ export function sidebar(path: string): HTMLElement {
       item('/admin/updates', 'Updates', can('update.read') || can('update.install')),
       item('/admin/einstellungen', 'Anmeldeseite', can('settings.manage')),
     ),
+    modeToggle(() => navigate(curPath(), true)),
     h('div', { class: 'sidebar-foot' }, link('/', icon('back', 14), 'Zum Portal'), h('span', { class: 'muted small' }, state.me?.user.displayName ?? '')),
   );
 }

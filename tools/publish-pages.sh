@@ -1,11 +1,13 @@
 #!/bin/sh
-# Baut die statische Demo und veröffentlicht sie im Branch "gh-pages".
+# Baut Webseite und statische Demo und veröffentlicht sie im Branch "gh-pages".
 # GitHub Pages zeigt sie dann kostenlos unter https://<konto>.github.io/<repo>/ an
 # (einmalig aktivieren: Settings → Pages → Branch "gh-pages", Ordner "/ (root)").
 # Voraussetzung: Playwright mit Chromium (docs/ENTWICKLUNG.md).
 set -eu
 cd "$(dirname "$0")/.."
 node --disable-warning=ExperimentalWarning tools/build-pages.ts
+# Nichts veröffentlichen, was Geheimnisse oder gesperrte Begriffe enthält
+bash tools/secret-scan.sh dist/pages
 remote="$(git remote get-url origin)"
 name="$(git config user.name || echo Demo)"
 email="$(git config user.email || echo demo@example.invalid)"

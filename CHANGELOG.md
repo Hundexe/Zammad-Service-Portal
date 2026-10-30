@@ -1,5 +1,17 @@
 # Änderungen
 
+## 1.11.0 – 30.10.2026
+
+- **Weiterleiten aus dem Formular:** Ein Auswahlfeld kann bestimmen, an welches Ticketsystem (und welche Gruppe) eine Anfrage geht – z. B. „Standort Nord“ an IT Nord. Neues Ziel „Leitet an ein Ticketsystem weiter“ unter „Übernahme ins Ticket“, je Option Ticketsystem und Gruppe
+  - Rechteprüfung beim Speichern, Veröffentlichen, Freigeben und Import: Ziele nur, wo die handelnde Person dieselben Formular-Rechte hat; Gruppe muss im Ziel erlaubt sein
+  - Beim Absenden: Ziel muss aktiv sein, die Person braucht dort „Anfragen stellen“; Zammad-Felder nur, wenn im Ziel freigegeben
+  - Bestätigung nennt das Ziel; Anfrage, Freigabe, Audit-Log und Benachrichtigungen laufen beim Ziel
+  - Export schreibt das Kürzel des Ziels statt der ID; Weiterleitungen funktionieren mit ID oder Kürzel
+- **Ansicht „Einfach“ und „Erweitert“** in der Verwaltung (unten links, je Browser): „Einfach“ blendet Feld-IDs, Prüfmuster, Gruppen-Einschränkungen, Wert-Übersetzungen, Zammad-Felder, Weiterleitung, HTML-Tickettext und selten gebrauchte Einstellungen des Ticketsystems aus; Gruppe und Priorität je Auswahl gibt es dort als Auswahlliste. Gesetzte Werte bleiben immer sichtbar, der Server prüft in beiden Ansichten gleich
+- **Produkt-Webseite** unter [hundexe.github.io/Zammad-Service-Portal](https://hundexe.github.io/Zammad-Service-Portal/) mit integriertem Video, Ablauf, mehreren Teams, Ansichten, Gestaltung, Sicherheit und Installation (Quelle `docs/website/`). Die Online-Demo liegt jetzt unter `/demo/`; alte Demo- und Video-Links leiten weiter
+- Demo: Formular „Allgemeine Anfrage“ mit Weiterleitung an IT Nord
+- README überarbeitet
+
 ## 1.10.3 – 29.10.2026
 
 - **Video-Einführung (2:32)** mit Sprecher und Untertiteln: in der README als animierte Vorschau, mit Ton unter [hundexe.github.io/Zammad-Service-Portal/video/](https://hundexe.github.io/Zammad-Service-Portal/video/), Datei unter `docs/video/`

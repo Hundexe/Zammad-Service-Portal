@@ -313,7 +313,7 @@ Updates: über **Verwaltung → Updates** (ab 1.8.0, siehe [UPDATES.md](UPDATES.
 
 Zum Anschauen und Herumklicken gibt es eine Demo mit Beispieldaten. Zammad und die Microsoft-Anmeldung sind simuliert, Daten werden bei jedem Start zurückgesetzt.
 
-- **Online, ohne alles:** [https://hundexe.github.io/Zammad-Service-Portal/](https://hundexe.github.io/Zammad-Service-Portal/) – läuft komplett im Browser (GitHub Pages). Formulare absenden, antworten, Verwaltung öffnen und Einstellungen ändern funktioniert, bleibt aber nur im geöffneten Tab. Neue Formulare anlegen und Downloads gibt es dort nicht.
+- **Online, ohne alles:** [https://hundexe.github.io/Zammad-Service-Portal/demo/](https://hundexe.github.io/Zammad-Service-Portal/demo/) – läuft komplett im Browser (GitHub Pages). Formulare absenden, antworten, Verwaltung öffnen und Einstellungen ändern funktioniert, bleibt aber nur im geöffneten Tab. Neue Formulare anlegen und Downloads gibt es dort nicht.
 
 - **Auf dem eigenen Rechner** (Node.js ≥ 22.18): `git clone https://github.com/Hundexe/Zammad-Service-Portal.git && cd Zammad-Service-Portal && npm run demo`, dann <http://localhost:3000>.
 - **Auf einem Server:** `setup.sh` mit Variante 3. Node.js wird bei Bedarf nur für die Demo geladen. Auf Wunsch ist die Demo im Netz unter `http://<IP>:3000` erreichbar (zusätzlich Port 3103 für den simulierten Microsoft-Login).

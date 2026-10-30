@@ -535,6 +535,23 @@ input:disabled, select:disabled, textarea:disabled { background: var(--canvas); 
 .nav-system { margin: 0 .7rem .35rem; font-weight: 600; }
 .sidebar select { margin: 0 0 .5rem; min-height: 36px; font-size: .9375rem; border-radius: 10px; padding-top: .35rem; padding-bottom: .35rem; background-color: var(--surface); }
 .nav-sub { margin-top: .5rem !important; }
+.mode-toggle { margin-top: auto; padding: .5rem .7rem .25rem; }
+.mode-toggle .nav-title { margin: 0 0 .4rem; }
+.mode-toggle + .sidebar-foot { margin-top: .5rem; }
+.seg { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; padding: 3px; gap: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2, var(--canvas)); }
+.seg-btn { appearance: none; border: 0; background: transparent; color: var(--ink-3); font: inherit; font-size: .8125rem; font-weight: 600; padding: .35rem .6rem; border-radius: 999px; cursor: pointer; }
+.seg-btn:hover { color: var(--ink); }
+.seg-btn.active { background: var(--brand); color: var(--on-brand, #fff); }
+.seg-btn:focus-visible { outline: 2px solid var(--focus, var(--brand)); outline-offset: 2px; }
+.map-rows { display: grid; gap: .5rem; }
+.map-row { display: grid; grid-template-columns: minmax(6rem, 1fr) auto minmax(8rem, 1.6fr); gap: .5rem; align-items: center; }
+.map-row > * { min-width: 0; }
+.map-row-route { grid-template-columns: 1fr 1fr; padding: .6rem .7rem .7rem; border: 1px solid var(--line); border-radius: var(--r-sm); }
+.map-row-route .map-from { grid-column: 1 / -1; }
+.map-row-route .map-arrow { display: none; }
+.map-row-route > select:only-of-type { grid-column: 1 / -1; }
+.map-from { font-weight: 600; overflow-wrap: anywhere; }
+.map-arrow { color: var(--ink-4); }
 .sidebar-foot { margin-top: auto; padding: 1rem .7rem .25rem; display: grid; gap: .35rem; border-top: 1px solid var(--line); }
 .sidebar-foot a { padding: 0; display: inline-flex; gap: .3rem; align-items: center; color: var(--link); background: none !important; }
 .admin-main { padding: 2.25rem 2.75rem 4rem; max-width: 1320px; }

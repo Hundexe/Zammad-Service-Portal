@@ -24,14 +24,16 @@ Lokaler Admin der Demo: `admin` / `Demo-Admin-Passwort-2026!`, TOTP-Schlüssel `
 
 `DEMO_ENV=production` startet die Demo mit allen Produktionsprüfungen (Host-Header, Virenscan-Pflicht). Die Demo nutzt einen simulierten Virenscanner, der den EICAR-Testvirus erkennt.
 
-## Online-Demo (GitHub Pages)
+## Webseite und Online-Demo (GitHub Pages)
 
-Die Demo unter https://hundexe.github.io/Zammad-Service-Portal/ ist eine statische Seite ohne Server:
+Webseite und Demo unter https://hundexe.github.io/Zammad-Service-Portal/ (Demo: `/demo/`) sind statische Seiten ohne Server:
 
 ```bash
-node tools/build-pages.ts      # nach dist/pages: Oberfläche + aufgezeichnete API-Antworten
+node tools/build-pages.ts      # nach dist/pages: Webseite (Wurzel), Demo unter demo/, Video unter video/
 sh tools/publish-pages.sh      # baut und veröffentlicht im Branch gh-pages
 ```
+
+Die **Produkt-Webseite** ist eine statische Seite in `docs/website/` (`index.html` und Bilder in `img/`, ohne Build-Schritt); das Video liegt in `docs/video/`. Die Bilder stammen aus der lokalen Demo (1440 × 900, Faktor 1,5, JPEG). `video/index.html` und alte Demo-Adressen (`/#/…`) leiten auf die Webseite bzw. nach `demo/` weiter.
 
 `build-pages.ts` startet die lokale Demo, klickt mit Playwright alle Seiten von Portal und Verwaltung durch und zeichnet jede API-Antwort auf (`demo-data.json`). In der Pages-Version erkennt die Oberfläche das `<meta name="zsp-demo">`, nutzt Hash-Adressen (`#/s/…`) und fragt statt des Servers den Simulator `src/web/demo/backend.ts`. Ändernde Aktionen wirken nur im geöffneten Tab. Einmalig auf GitHub aktivieren: **Settings → Pages → Deploy from a branch → `gh-pages` / `(root)`**. Für öffentliche Repositories ist das kostenlos.
 

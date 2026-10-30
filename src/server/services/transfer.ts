@@ -93,7 +93,7 @@ export async function buildExport(app: App, password?: string): Promise<Json> {
       slug: f.slug, name: f.name, description: f.description, category: f.category, visibleGroups: parseJson<string[]>(f.visible_groups, []), sort: f.sort, active: f.active === 1,
       versions: app.db.all<{ version: number; definition: string; status: string; note: string; created_at: number; published_at: number | null }>(
         'SELECT version, definition, status, note, created_at, published_at FROM form_versions WHERE form_id = ? ORDER BY version', f.id,
-      ).map((v) => ({ version: v.version, status: v.status, note: v.note, definition: parseJson(v.definition, null), createdAt: v.created_at, publishedAt: v.published_at })),
+      ).map((v) => ({ version: v.version, status: v.status, note: v.note, definition: portableRoutes(app, parseJson(v.definition, null)), createdAt: v.created_at, publishedAt: v.published_at })),
     }));
     const token = key && s.api_token ? seal(key, `token:${s.slug}`, app.box.decrypt('system-token', s.api_token)) : null;
     return {
@@ -468,4 +468,18 @@ export function applyImport(app: App, plan: ImportPlan, actor: Actor): ReturnTyp
   });
   for (const id of removedRequests) removeRequestFiles(app, id);
   return summarizePlan(plan);
+}
+
+/** Weiterleitungen tragen in der Datei das Kürzel des Ziels statt der ID – IDs sind je Installation verschieden. */
+function portableRoutes(app: App, def: FormDefinition | null): FormDefinition | null {
+  if (!def || !Array.isArray(def.fields)) return def;
+  for (const f of def.fields) {
+    const routes = f?.mapping?.target === 'system' ? f.mapping.routes : undefined;
+    if (!routes) continue;
+    for (const r of Object.values(routes)) {
+      const slug = app.db.get<{ slug: string }>('SELECT slug FROM ticket_systems WHERE id = ?', r.system)?.slug;
+      if (slug) r.system = slug;
+    }
+  }
+  return def;
 }
