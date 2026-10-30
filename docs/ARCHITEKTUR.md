@@ -138,6 +138,10 @@ test/              Tests (node:test)
 deploy/            Docker Compose, Caddy, Installationsskript
 ```
 
+## Status und Störungen
+
+Zammad bleibt das führende System für Tickets. Das Portal ergänzt eine Schicht davor: Services, Störungen, Wartungen und Probleme liegen im Portal (je Ticketsystem), Tickets nur in Zammad. Die Verbindung entsteht über **Tags**: Das führende Ticket einer Störung und Tickets, die während einer Störung aus einem zugeordneten Formular entstehen, tragen `inc-0003`; mit einem Problem verknüpfte Tickets `prb-0001`. Der Zustand eines Services ergibt sich bei jedem Abruf aus offenen Störungen, laufenden Wartungen und einem optionalen Zustand von Hand (der schlimmste gewinnt). „Ich bin auch betroffen“ speichert nur die Zuordnung Person ↔ Störung; Updates gehen als Benachrichtigung an diese Personen. Alle Funktionen sind über `settings.features` schaltbar (`src/shared/itsm.ts`, `src/server/services/itsm.ts`, `src/server/routes/itsm.ts`).
+
 ## Datenmodell
 
 | Tabelle | Inhalt |
@@ -154,6 +158,11 @@ deploy/            Docker Compose, Caddy, Installationsskript
 | `approvals` | Freigabe je Anfrage: Adresse der freigebenden Person, Status, Frist; Ansicht für die freigebende Person und Hinweis verschlüsselt |
 | `notifications` | Benachrichtigungen im Portal (an Konto oder E-Mail-Adresse), gelesen-Zeitpunkt; Löschung nach 90 Tagen |
 | `zammad_customers` | Zuordnung Benutzer → Kunden-ID je System |
+| `settings` | u. a. `features`: eingeschaltete Funktionen und Standorte |
+| `services` | IT-Services je System, optional Zustand von Hand |
+| `incidents`, `incident_services`, `incident_updates`, `incident_affected` | Störungen (Nummer, Auswirkung, Stand, Zeitraum, führendes Zammad-Ticket), Updates und wer sich als betroffen gemeldet hat |
+| `maintenances`, `maintenance_services` | geplante Wartungen |
+| `problems`, `problem_tickets` | Probleme mit Ursache und Workaround; verknüpfte Zammad-Tickets (in Zammad zusätzlich als Tag `prb-…`) |
 | `audit_log` | nur anhängbar, Hash-Kette |
 | `update_state`, `update_jobs` | Update-Status und Aufträge an den Updater |
 

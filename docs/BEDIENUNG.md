@@ -98,6 +98,21 @@ Ein Klick öffnet den Verlauf mit allen Antworten der IT. Interne Notizen der IT
 
 ![Ticketverlauf](screenshots/08-ticket-verlauf.png)
 
+### Status und Störungen
+
+Ist die Funktion eingeschaltet, steht oben im Menü **Status**. Die Status-Seite zeigt alles auf einer Seite – für alle Ticketsysteme, die man sieht – und ist unterteilt in **Störungen**, **Wartungen**, **Services** und **Bekannte Probleme** (oben zum Springen).
+
+![Status-Seite](website/img/status.jpg)
+
+- **Große Störungen** erscheinen zusätzlich als Banner oben auf jeder Seite des Portals.
+- **Ich bin auch betroffen:** Ein Klick statt eines eigenen Tickets. Wer sich meldet, bekommt jedes Update und die Behebung unter der Glocke. Die Meldung lässt sich zurücknehmen.
+- **Services** zeigen ihren Zustand: In Betrieb, Eingeschränkt, Teilausfall, Ausfall oder Wartung.
+- **Geplante Wartungen** stehen vorab auf der Status-Seite; während der Wartung gibt es ein Banner.
+- **Bekannte Probleme** mit einer Lösung für die Zwischenzeit („So geht es in der Zwischenzeit“).
+- Gehört ein Formular zu einem Service mit Störung, zeigt das Formular den Hinweis gleich oben – mit „Ich bin auch betroffen“. Wer trotzdem eine Anfrage schickt, kann das tun; die IT sieht in Zammad, dass sie zur Störung gehört.
+
+<img src="website/img/start-stoerung.jpg" width="49%" alt="Banner bei einer großen Störung"> <img src="website/img/formular-hinweis.jpg" width="49%" alt="Hinweis auf die Störung im Formular">
+
 ### Auf dem Handy
 
 Das Portal passt sich an kleine Bildschirme an.
@@ -268,6 +283,37 @@ Jeder Stil funktioniert im hellen und im dunklen Design. Die Vorschau im Auswahl
 
 Die Anmeldeseite hat ein eigenes Erscheinungsbild unter **Anmeldeseite**. Dort steht nur, was auf dieser Seite auch sichtbar ist: Logo und Logogröße auf der Farbfläche, Überschrift, ein optionaler Text darunter, Fußzeile, Links zu Impressum und Datenschutz, Stil und Farben sowie Anzeigename und Favicon für den Browser-Tab. Die Vorschau zeigt die Anmeldeseite im Kleinen. Nach der Anmeldung gilt das Erscheinungsbild des gewählten Ticketsystems. Die Verwaltung selbst bleibt im Standard-Stil, weil sie alle Ticketsysteme gemeinsam betreut.
 
+### Funktionen
+
+Unter **Funktionen** (Recht „Globale Einstellungen ändern“) wird jede Funktion einzeln ein- oder ausgeschaltet. Ausgeschaltete Funktionen verschwinden aus Portal und Verwaltung, der Server lehnt sie ab.
+
+| Funktion | Standard | Ausgeschaltet |
+| --- | --- | --- |
+| Service-Status | aus | keine Status-Seite mit Services |
+| Störungen | aus | keine Störungen, kein Banner, keine Hinweise in Formularen |
+| Geplante Wartungen | aus | keine Wartungen |
+| Bekannte Probleme | aus | keine Probleme in Verwaltung und Portal |
+| Freigabe durch Vorgesetzte | an | das Freigabe-Feld entfällt, neue Anfragen gehen direkt an die IT; schon wartende Freigaben laufen weiter |
+| Weiterleitung aus Formularen | an | jede Anfrage bleibt im Ticketsystem ihres Formulars |
+| Benachrichtigung bei Antworten | an | keine Nachricht unter der Glocke, wenn die IT in Zammad antwortet |
+
+Dazu: **Standorte** (bei Störungen und Wartungen auswählbar), **Anzahl der Betroffenen im Portal zeigen** und **Bei großen Störungen alle benachrichtigen** (alle, die das Ticketsystem sehen und sich in den letzten 90 Tagen angemeldet haben).
+
+![Funktionen](website/img/admin-funktionen.jpg)
+
+### Status und Störungen verwalten
+
+**Status und Störungen** ist eine Seite für alle Ticketsysteme, in denen man das Recht „Services, Störungen und Wartungen verwalten“ bzw. „Probleme verwalten“ hat. Oben lässt sich auf ein Ticketsystem filtern. Zammad bleibt das führende System für Tickets.
+
+- **Störungen:** **Störung melden** mit Titel, erster Meldung, Auswirkung (eingeschränkt, Teilausfall, Ausfall), Beginn, betroffenen Services und Standorten. **Große Störung** zeigt ein Banner auf allen Seiten. Optional ein **führendes Ticket in Zammad** (Nummer): Es bekommt dort den Tag der Störung (`inc-0003`). In der Störung schreiben Sie **Updates** mit neuem Stand (wird untersucht, Ursache gefunden, behoben/wird beobachtet, behoben); alle, die sich als betroffen gemeldet haben, bekommen sie unter der Glocke. Die Liste der Betroffenen (Name, E-Mail, Abteilung) sehen nur Admins.
+- **Wartungen:** **Wartung planen** mit Zeitraum, Services und Standorten. Während des Zeitfensters stehen die Services auf „Wartung“. Absagen oder löschen jederzeit.
+- **Services:** Name, Kurzbeschreibung, Reihenfolge. Der Zustand ergibt sich aus offenen Störungen und laufenden Wartungen; zusätzlich lässt sich ein Zustand von Hand setzen (mit Hinweis), der schlimmere gewinnt.
+- **Probleme:** Nummer (`PRB-0001`), Stand (neu, in Analyse, bekannter Fehler, gelöst, geschlossen), Service, Verantwortlich, Beschreibung, Ursache (bleibt intern) und Workaround. **Als bekannten Fehler im Portal zeigen** macht Titel, Beschreibung und Workaround für alle sichtbar. **Tickets in Zammad** verknüpfen Sie über die Ticketnummer – das Ticket bekommt dort den Tag `prb-0001`, die Liste zeigt den aktuellen Stand aus Zammad. Störungen ordnen Sie in der Störung selbst einem Problem zu.
+
+<img src="website/img/admin-stoerung.jpg" width="49%" alt="Störung mit Updates und Betroffenen"> <img src="website/img/admin-problem.jpg" width="49%" alt="Problem mit Ursache und Workaround">
+
+**Formulare und Services:** Im Formular-Editor unter **Ticket** → **Betroffene Services** (wenn Störungen oder Wartungen eingeschaltet sind). Bei einer Störung dieser Services zeigt das Formular den Hinweis mit „Ich bin auch betroffen“; Tickets, die währenddessen aus dem Formular entstehen, bekommen in Zammad den Tag der Störung. In Exportdateien stehen die Services mit Namen.
+
 ### Rollen und Rechte
 
 Rechte werden über **Rollen** vergeben, die einer **Entra-Gruppe**, einer **Person** oder **allen** zugeordnet werden – entweder für **alle Ticketsysteme** oder für **eines**.
@@ -277,7 +323,8 @@ Rechte werden über **Rollen** vergeben, die einer **Entra-Gruppe**, einer **Per
 | Eingebaute Rolle | Rechte |
 | --- | --- |
 | Super-Admin | alles |
-| Ziel-Admin | ein Ticketsystem komplett verwalten (Verbindung, Objekte, Formulare inkl. Freigabe, Vorlagen, Übersichten, Branding, Audit-Log) |
+| Ziel-Admin | ein Ticketsystem komplett verwalten (Verbindung, Objekte, Formulare inkl. Freigabe, Vorlagen, Übersichten, Branding, Services, Störungen, Wartungen, Probleme, Audit-Log) |
+| Service-Desk | Services, Störungen, Wartungen und Probleme pflegen |
 | Formular-Editor | Formulare und Vorlagen bearbeiten, nicht veröffentlichen |
 | Branding-Editor | Farben, Logos, Texte |
 | Objekt-Freigabe | Zammad-Objekte freigeben |

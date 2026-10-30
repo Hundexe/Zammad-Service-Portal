@@ -1,5 +1,18 @@
 # Änderungen
 
+## 1.12.0 – 30.10.2026
+
+- **Funktionen ein- und ausschalten:** neuer Bereich **Verwaltung → Funktionen**. Neu und zunächst aus: Service-Status, Störungen, Geplante Wartungen, Bekannte Probleme. Bestehend und an: Freigabe durch Vorgesetzte, Weiterleitung aus Formularen, Benachrichtigung bei Antworten. Ausgeschaltetes verschwindet aus Portal und Verwaltung, der Server lehnt es ab
+- **Status-Seite** im Portal: eine Seite für alle Ticketsysteme, unterteilt in Störungen, Wartungen, Services und bekannte Probleme
+- **Störungen:** Auswirkung, Stand, Updates, betroffene Services und Standorte, Beginn und Ende, Banner bei großen Störungen, **„Ich bin auch betroffen“** statt eigener Tickets – mit Benachrichtigung bei jedem Update. Formulare lassen sich Services zuordnen: Hinweis auf die Störung im Formular, Tickets bekommen in Zammad den Tag der Störung (`inc-0003`); führendes Zammad-Ticket optional
+- **Service-Status:** In Betrieb, Eingeschränkt, Teilausfall, Ausfall, Wartung – aus Störungen und Wartungen, zusätzlich von Hand
+- **Geplante Wartungen** mit Zeitraum, Services und Standorten; während der Wartung automatisch „Wartung“
+- **Probleme:** Nummer, Stand, Service, Verantwortlich, Ursache, Workaround, „bekannter Fehler“ im Portal, verknüpfte Störungen und Zammad-Tickets (Tag `prb-0001` in Zammad, Stand live aus Zammad)
+- Verwaltung **Status und Störungen** auf einer Seite für alle Ticketsysteme; neue Rechte „Services, Störungen und Wartungen verwalten“ und „Probleme verwalten“, neue Rolle **Service-Desk**, Ziel-Admin bekommt beide Rechte
+- Export und Import nehmen die Services mit; Formulare verweisen in Dateien über den Service-Namen
+- Migration 011; 12 neue Tests
+- Video (3:18) um Status, Störungen, Ansichten und Weiterleitung ergänzt; Webseite und Anleitungen aktualisiert
+
 ## 1.11.2 – 30.10.2026
 
 - **Neuer Name: Self-Service-Portal für Zammad** – in Oberfläche (Seitentitel, Verwaltung), Ticket-Fußzeile, Installern, Diensten, Webseite und Doku. Die alte Fußzeile „Erstellt über das Service-Portal“ in vorhandenen Tickets wird weiter erkannt. Name des Repositorys, Pfade, Dienst- und Befehlsnamen bleiben unverändert

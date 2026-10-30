@@ -118,6 +118,13 @@
   .route .rule { border-left: 3px solid var(--wine); padding: 2px 0 2px 16px; margin: 20px 0; color: var(--text); }
   @media (max-width: 900px) { .teams, .route, .route-flow { grid-template-columns: 1fr; } }
 
+  .incident { margin-top: 48px; display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: 40px; align-items: start; }
+  .incident-list { margin: 16px 0 0; display: grid; gap: 16px; }
+  .incident-list dt { font-weight: 600; }
+  .incident-list dd { margin: 2px 0 0; color: var(--muted); font-size: 16px; }
+  .incident figure, .incident-row figure { margin: 0; }
+  .incident-row { margin-top: 28px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+  @media (max-width: 900px) { .incident, .incident-row { grid-template-columns: 1fr; } }
   /* Einfach / Erweitert */
   .modes { margin-top: 48px; display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: 40px; align-items: start; }
   .switch { display: inline-grid; grid-auto-flow: column; padding: 4px; gap: 4px; border-radius: 999px; background: #fff; border: 1px solid var(--line); margin-bottom: 22px; }
@@ -200,6 +207,7 @@
       <div class="nav-links">
         <a href="#ablauf">Ablauf</a>
         <a href="#teams">Mehrere Teams</a>
+        <a href="#stoerungen">Störungen</a>
         <a href="#verwaltung">Verwaltung</a>
         <a href="#sicherheit">Sicherheit</a>
         <a href="#installation">Installation</a>
@@ -210,7 +218,7 @@
     <div class="hero" id="top">
       <h1>Anfragen an die IT, <span class="soft">die als fertiges Ticket ankommen.</span></h1>
       <div class="hero-lede">
-        <p>Mitarbeitende melden sich mit ihrem Microsoft-Konto an, wählen ein Formular und sehen jederzeit, was aus ihrer Anfrage geworden ist. Die IT bekommt saubere Tickets in Zammad – mit Gruppe, Priorität, Feldern und, wo nötig, der Freigabe der Führungskraft.</p>
+        <p>Mitarbeitende melden sich mit ihrem Microsoft-Konto an, wählen ein Formular und sehen jederzeit, was aus ihrer Anfrage geworden ist – und ob gerade eine Störung bekannt ist. Die IT bekommt saubere Tickets in Zammad, mit Gruppe, Priorität, Feldern und, wo nötig, der Freigabe der Führungskraft.</p>
         <div class="actions">
           <a class="btn btn-light" href="#video" id="play"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5v11l9.5-5.5z" fill="currentColor"/></svg>Video abspielen</a>
           <a class="btn btn-line" href="demo/">Demo ausprobieren</a>
@@ -219,7 +227,7 @@
     </div>
     <div class="stage" id="video">
       <div class="player">
-        <video controls playsinline preload="metadata" poster="video/poster.jpg" aria-label="Video-Einführung in das Self-Service-Portal, 2 Minuten 32 Sekunden">
+        <video controls playsinline preload="metadata" poster="video/poster.jpg" aria-label="Video-Einführung in das Self-Service-Portal, 3 Minuten 18 Sekunden">
           <source src="video/service-portal-demo.mp4" type="video/mp4">
           <track kind="captions" src="video/service-portal-demo.de.vtt" srclang="de" label="Deutsch" default>
         </video>
@@ -231,7 +239,7 @@
 <main>
   <div class="wrap">
     <div class="video-note">
-      <span>Einführung in 2:32, mit Sprecher und Untertiteln.</span>
+      <span>Einführung in 3:18, mit Sprecher und Untertiteln.</span>
       <a href="video/service-portal-demo.mp4" download>Video herunterladen (MP4)</a>
       <a href="video/service-portal-demo.srt" download>Untertitel (SRT)</a>
     </div>
@@ -319,7 +327,6 @@
 
       <div class="route">
         <div>
-          <span class="new">Neu in 1.11</span>
           <h3>Weiterleiten aus dem Formular</h3>
           <p>Ein Auswahlfeld kann entscheiden, wohin die Anfrage geht. „Standort Nord“ landet bei IT Nord, „Zentrale“ bleibt bei der Zentralen IT – im selben Formular, ohne dass jemand das richtige Team kennen muss.</p>
           <p>Je Auswahl legen Sie Ticketsystem und Gruppe fest. Die Person sieht nach dem Absenden, wohin ihre Anfrage gegangen ist.</p>
@@ -337,6 +344,69 @@
           <figure>
             <button class="shot-btn" type="button"><img class="shot" src="img/weiterleitung-gesendet.jpg" width="2160" height="1350" loading="lazy" alt="Bestätigung: Die Anfrage wird an IT Nord übermittelt"></button>
             <figcaption><b>Nach dem Absenden</b> „wird an IT Nord übermittelt“</figcaption>
+          </figure>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------ Status und Störungen -->
+  <section id="stoerungen">
+    <div class="wrap">
+      <div class="head">
+        <span class="new">Neu in 1.12</span>
+        <h2>Bei Störungen: ein Klick statt hundert Tickets</h2>
+        <p>Die IT veröffentlicht Störungen und geplante Wartungen. Alle sehen sie sofort – oben im Portal, auf der Status-Seite und im passenden Formular. Wer betroffen ist, meldet sich mit einem Klick und bekommt jedes Update.</p>
+      </div>
+      <div class="incident">
+        <div class="incident-text">
+          <h3>Was die Mitarbeitenden sehen</h3>
+          <dl class="incident-list">
+            <div><dt>Banner bei großen Störungen</dt><dd>Auf jeder Seite des Portals, mit Details und „Ich bin auch betroffen“.</dd></div>
+            <div><dt>„Ich bin auch betroffen“</dt><dd>Statt eines weiteren Tickets. Updates und die Behebung kommen unter der Glocke.</dd></div>
+            <div><dt>Service-Status</dt><dd>In Betrieb, eingeschränkt, Teilausfall, Ausfall oder Wartung – ergibt sich aus Störungen und Wartungen.</dd></div>
+            <div><dt>Geplante Wartungen</dt><dd>Vorab angekündigt, während des Zeitfensters automatisch als Wartung markiert.</dd></div>
+            <div><dt>Bekannte Probleme</dt><dd>Mit Lösung für die Zwischenzeit, damit niemand auf ein Ticket warten muss.</dd></div>
+          </dl>
+        </div>
+        <figure class="incident-main">
+          <button class="shot-btn" type="button"><img class="shot" src="img/status.jpg" width="2160" height="1350" loading="lazy" alt="Status-Seite mit zwei aktuellen Störungen und dem Knopf „Ich bin auch betroffen“"></button>
+          <figcaption><b>Eine Seite für alles</b>, unterteilt in Störungen, Wartungen, Services und bekannte Probleme – über alle Ticketsysteme</figcaption>
+        </figure>
+      </div>
+      <div class="incident-row">
+        <figure>
+          <button class="shot-btn" type="button"><img class="shot" src="img/start-stoerung.jpg" width="2160" height="1350" loading="lazy" alt="Startseite mit rotem Banner zur Störung"></button>
+          <figcaption><b>Banner</b> bei großen Störungen</figcaption>
+        </figure>
+        <figure>
+          <button class="shot-btn" type="button"><img class="shot" src="img/formular-hinweis.jpg" width="2160" height="1350" loading="lazy" alt="Formular mit Hinweis auf die bekannte Störung"></button>
+          <figcaption><b>Im Formular</b> der Hinweis auf die passende Störung</figcaption>
+        </figure>
+        <figure>
+          <button class="shot-btn" type="button"><img class="shot" src="img/status-services.jpg" width="2160" height="1350" loading="lazy" alt="Services mit ihrem Zustand und geplante Wartungen"></button>
+          <figcaption><b>Services</b> mit ihrem Zustand</figcaption>
+        </figure>
+      </div>
+      <div class="route">
+        <div>
+          <h3>Was die IT damit macht</h3>
+          <p>Störungen sind in Sekunden gemeldet, Updates gehen automatisch an alle Betroffenen. Die IT sieht, wer betroffen ist, und kann Störungen einem Problem zuordnen – mit Ursache, Workaround und verknüpften Tickets.</p>
+          <p class="rule">Zammad bleibt das führende System. Tickets zu einer Störung oder einem Problem bekommen dort einen Tag wie inc‑0003 oder prb‑0001, neue Tickets während einer Störung automatisch.</p>
+          <p>Jede dieser Funktionen lässt sich in der Verwaltung einzeln ein- und ausschalten.</p>
+        </div>
+        <div class="route-flow">
+          <figure>
+            <button class="shot-btn" type="button"><img class="shot" src="img/admin-stoerung.jpg" width="2160" height="1350" loading="lazy" alt="Störung in der Verwaltung mit Update-Formular und Liste der Betroffenen"></button>
+            <figcaption><b>Störung</b> mit Updates und Betroffenen</figcaption>
+          </figure>
+          <figure>
+            <button class="shot-btn" type="button"><img class="shot" src="img/admin-problem.jpg" width="2160" height="1350" loading="lazy" alt="Problem mit Ursache, Workaround und verknüpfter Störung"></button>
+            <figcaption><b>Problem</b> mit Ursache und Workaround</figcaption>
+          </figure>
+          <figure>
+            <button class="shot-btn" type="button"><img class="shot" src="img/admin-funktionen.jpg" width="2160" height="1350" loading="lazy" alt="Funktionen mit Schaltern zum Ein- und Ausschalten"></button>
+            <figcaption><b>Funktionen</b> einzeln schaltbar</figcaption>
           </figure>
         </div>
       </div>
@@ -371,6 +441,7 @@
               <li>Felder nur für bestimmte Entra-Gruppen</li>
               <li>Werte frei übersetzen, in Zammad-Felder schreiben</li>
               <li>Weiterleiten an andere Ticketsysteme</li>
+              <li>Services eines Formulars für Störungshinweise</li>
               <li>Tickettext als eigene HTML-Vorlage</li>
             </ul>
           </div>
