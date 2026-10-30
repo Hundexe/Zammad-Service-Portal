@@ -242,7 +242,8 @@ export function decide(app: App, user: AuthUser, actor: Actor, id: string, decis
       const payload = JSON.parse(app.box.decrypt('request', r.payload)) as TicketPayload;
       const note = `<p><strong>Freigegeben</strong> von ${escapeHtml(user.displayName)} (${escapeHtml(user.email ?? '')}) am ${escapeHtml(fmt(t))}</p>`
         + (comment ? `<p><em>Kommentar:</em> ${textToHtml(comment)}</p>` : '');
-      const footer = payload.bodyHtml.lastIndexOf('<p><small>Erstellt über das Service-Portal');
+      // Anfragen von vor 1.11.1 tragen noch die alte Fußzeile („… das Service-Portal“)
+      const footer = Math.max(payload.bodyHtml.lastIndexOf('<p><small>Erstellt über das Self-Service-Portal'), payload.bodyHtml.lastIndexOf('<p><small>Erstellt über das Service-Portal'));
       payload.bodyHtml = footer >= 0 ? payload.bodyHtml.slice(0, footer) + note + payload.bodyHtml.slice(footer) : payload.bodyHtml + note;
       if (!payload.tags.includes(APPROVED_TAG)) payload.tags.push(APPROVED_TAG);
       app.db.run(

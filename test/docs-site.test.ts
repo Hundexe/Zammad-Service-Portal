@@ -42,7 +42,8 @@ test('Links zwischen Anleitungen, auf GitHub und Bilder', () => {
   const rw = rewriteFor(null);
   assert.equal(rw('BETRIEB.md#sicherung', 'link'), 'betrieb.html#sicherung');
   assert.equal(rw('ENTRA.md', 'link'), 'microsoft-anmeldung.html');
-  assert.equal(rw('PENTEST.md', 'link'), 'https://github.com/Hundexe/Zammad-Service-Portal/blob/main/docs/PENTEST.md');
+  assert.equal(rw('PENTEST.md', 'link'), 'pentest.html');
+  assert.equal(rw('ENTWICKLUNG.md', 'link'), 'https://github.com/Hundexe/Zammad-Service-Portal/blob/main/docs/ENTWICKLUNG.md');
   assert.equal(rw('../deploy/release_signers', 'link'), 'https://github.com/Hundexe/Zammad-Service-Portal/blob/main/deploy/release_signers');
   assert.equal(rw('website/img/start.jpg', 'image'), '../img/start.jpg');
   assert.equal(rw('#abschnitt', 'link'), '#abschnitt');
@@ -70,4 +71,17 @@ test('Alle Seiten entstehen, alle internen Links und Anker stimmen', () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('Prüfberichte: Funde und Stand werden aus den Tabellen gezählt', async () => {
+  const { findingsOf } = await import('../tools/build-docs.ts');
+  const st = findingsOf(readFileSync('docs/SICHERHEITSTEST-2026-10-28.md', 'utf8'));
+  assert.equal(st.length, 35);
+  assert.equal(st.filter((f) => f.severity === 'Kritisch').length, 1);
+  assert.deepEqual(st.filter((f) => f.state !== 'behoben').map((f) => f.id), ['ST-28', 'ST-31', 'ST-33']);
+  const pt = findingsOf(readFileSync('docs/PENTEST.md', 'utf8'));
+  assert.equal(pt.length, 16);
+  assert.ok(pt.every((f) => f.state === 'behoben'));
+  // Kein offener Fund mit hohem oder kritischem Risiko
+  assert.ok(![...st, ...pt].some((f) => (f.severity === 'Kritisch' || f.severity === 'Hoch') && f.state !== 'behoben'));
 });

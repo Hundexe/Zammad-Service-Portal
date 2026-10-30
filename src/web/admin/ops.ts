@@ -18,7 +18,7 @@ export async function dashboardPage() {
   const delivered = d.requests7d.delivered ?? 0;
   const waiting = (d.requests7d.queued ?? 0) + (d.requests7d.sending ?? 0);
   return h('div', null,
-    pageHead('Verwaltung', `Service-Portal, Version ${d.version}`),
+    pageHead('Verwaltung', `Self-Service-Portal, Version ${d.version}`),
     d.warnings.length ? h('section', { class: 'panel' }, h('h2', null, 'Zu erledigen'), h('ul', { class: 'todo' }, ...d.warnings.map((w) => h('li', null, w)))) : null,
     h('div', { class: 'stats' },
       h('div', { class: 'stat' }, h('span', { class: 'stat-n' }, String(delivered)), h('span', null, 'Anfragen übermittelt (7 Tage)')),

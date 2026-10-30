@@ -1,5 +1,12 @@
 # Änderungen
 
+## 1.11.2 – 30.10.2026
+
+- **Neuer Name: Self-Service-Portal für Zammad** – in Oberfläche (Seitentitel, Verwaltung), Ticket-Fußzeile, Installern, Diensten, Webseite und Doku. Die alte Fußzeile „Erstellt über das Service-Portal“ in vorhandenen Tickets wird weiter erkannt. Name des Repositorys, Pfade, Dienst- und Befehlsnamen bleiben unverändert
+- **Sicherheitsprüfungen auf der Webseite** unter [/doku/pruefungen.html](https://hundexe.github.io/Zammad-Service-Portal/doku/pruefungen.html): alle Prüfungen nach Datum (Sicherheitstest, Review, Lasttest, Penetrationstest) mit Funden nach Schwere, Stand der Behebung und den vollständigen Berichten; Schwere und Stand in den Berichten farbig, Fund-IDs verlinken auf die Details. Die Zahlen werden beim Bauen aus den Tabellen der Berichte gezählt
+- Sicherheitstest 28.10.2026: Spalte „Stand“ der Fundtabelle zeigt jetzt den aktuellen Stand je Fund
+- Startseite: Liste der Prüfungen im Abschnitt Sicherheit
+
 ## 1.11.1 – 30.10.2026
 
 - **Anleitungen direkt auf der Webseite** unter [/doku/](https://hundexe.github.io/Zammad-Service-Portal/doku/): Installation, Microsoft-Anmeldung, Bedienung, Betrieb, Updates, Sicherheit, Go-Live-Checkliste und Architektur – mit Inhaltsverzeichnis, Ankern, Bildern und Links zwischen den Anleitungen. Sie entstehen beim Bauen der Seite aus `docs/*.md` (`tools/build-docs.ts`, eigener kleiner Markdown-Umsetzer ohne fremde Pakete), sind also immer auf dem Stand des Repositorys

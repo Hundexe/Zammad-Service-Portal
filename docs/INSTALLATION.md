@@ -126,12 +126,12 @@ Die ausführliche Anleitung mit allen Klicks, Rechten, zwei Tenants, Zertifikat 
 
 Pro Zammad-Instanz (für den Test erst das Test-Zammad):
 
-1. **Rolle anlegen** (Einstellungen → Rollen → Neu), z. B. `Service-Portal API`, mit den Rechten:
+1. **Rolle anlegen** (Einstellungen → Rollen → Neu), z. B. `Self-Service-Portal API`, mit den Rechten:
    - `admin.user` – Kunden suchen/anlegen und Tickets **im Namen des Kunden** (`X-On-Behalf-Of`) anlegen und lesen
    - `admin.object` – Ticket-Attribute aus dem Objekt-Manager lesen (für die Freigabe im Portal)
    - `ticket.agent` mit Zugriff **Anlegen + Lesen + Ändern** auf alle Gruppen, in die das Portal Tickets legt
 2. **Benutzer anlegen**, z. B. `service-portal@firma.intern`, nur mit dieser Rolle. Für ihn ein langes, zufälliges Passwort setzen und nirgends verwenden.
-3. Als dieser Benutzer anmelden: **Profil → Token-Zugriff → Neuer persönlicher Token**, Name `Service-Portal`, Rechte `admin.user`, `admin.object`, `ticket.agent`. Den Token notieren – er wird später in der Admin-Oberfläche eingetragen und dort verschlüsselt gespeichert.
+3. Als dieser Benutzer anmelden: **Profil → Token-Zugriff → Neuer persönlicher Token**, Name `Self-Service-Portal`, Rechte `admin.user`, `admin.object`, `ticket.agent`. Den Token notieren – er wird später in der Admin-Oberfläche eingetragen und dort verschlüsselt gespeichert.
    **Welche Rechte braucht welche Betriebsart?** (Einstellung „Tickets anlegen“ am Ticketsystem)
 
    | | Im Namen des Kunden (`on_behalf_of`, Standard) | Als Portal-Benutzer mit Kundenfeld (`customer_field`) |

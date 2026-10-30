@@ -1,4 +1,4 @@
-# Service-Portal – Docker-Compose-Stack
+# Self-Service-Portal – Docker-Compose-Stack
 #
 # Aufbau (siehe docs/ARCHITEKTUR.md):
 #   caddy   – einziger erreichbarer Dienst (HTTPS_PORT, Standard 443), TLS, Sicherheits-Header

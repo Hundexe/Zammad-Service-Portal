@@ -72,7 +72,7 @@ function addSystem(app: App, o: { slug: string; name: string; url: string; brand
   }
   const tpls: [string, string, string][] = [
     ['title', 'Formular und Name', '{{formular.name}}: {{benutzer.name}}'],
-    ['body', 'Standard mit allen Feldern', '<p>Neue Anfrage über das Service-Portal von {{benutzer.name}} ({{benutzer.abteilung}}).</p>\n{{alle_felder}}'],
+    ['body', 'Standard mit allen Feldern', '<p>Neue Anfrage über das Self-Service-Portal von {{benutzer.name}} ({{benutzer.abteilung}}).</p>\n{{alle_felder}}'],
     ['success', 'Standard-Bestätigung', 'Danke! Sie bekommen gleich eine Eingangsbestätigung mit Ticketnummer per E-Mail.'],
   ];
   for (const [kind, name, content] of tpls) app.db.run('INSERT INTO templates (id, system_id, kind, name, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)', uuid(), id, kind, name, content, t, t);
@@ -89,7 +89,7 @@ function addForm(app: App, systemId: string, slug: string, name: string, categor
 
 const settings = (title: string, group = 'IT-Support', tags: string[] = []) => ({
   titleTemplate: title,
-  bodyTemplate: '<p>Neue Anfrage über das Service-Portal von {{benutzer.name}} ({{benutzer.abteilung}}).</p>\n{{alle_felder}}',
+  bodyTemplate: '<p>Neue Anfrage über das Self-Service-Portal von {{benutzer.name}} ({{benutzer.abteilung}}).</p>\n{{alle_felder}}',
   group, tags, successText: 'Danke! Sie bekommen gleich eine Eingangsbestätigung mit Ticketnummer per E-Mail.',
 });
 

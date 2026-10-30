@@ -181,9 +181,10 @@ export function formatTextArticle(text: string): FormattedArticle {
   return finish(blocks, sig ? tidy(sig.join('\n').replace(/&/g, '&amp;')) : '', tidy(quoted.join('\n').replace(/&/g, '&amp;')));
 }
 
-const FOOTER = /^—?\s*Erstellt über das Service-Portal\b/;
+// Auch die alte Fußzeile („… das Service-Portal“) aus Tickets vor 1.11.1
+const FOOTER = /^—?\s*Erstellt über das (?:Self-)?Service-Portal\b/;
 
-/** Text in Blöcke; die Fußzeile des Portals („Erstellt über das Service-Portal · Anfrage …“) wird klein gesetzt */
+/** Text in Blöcke; die Fußzeile des Portals („Erstellt über das Self-Service-Portal · Anfrage …“) wird klein gesetzt */
 function pushText(blocks: Block[], text: string): void {
   const lines = text.split('\n');
   const idx = lines.findIndex((l) => l.length < 300 && FOOTER.test(l));

@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Service-Portal für Zammad</title>
+<title>Self-Service-Portal für Zammad</title>
 <meta name="description" content="Self-Service-Portal für IT-Abteilungen mit Zammad: Anmeldung mit Microsoft, Formulare, Freigabe durch Vorgesetzte, Tickets im Blick, mehrere Ticketsysteme. Open Source.">
-<meta property="og:title" content="Service-Portal für Zammad">
+<meta property="og:title" content="Self-Service-Portal für Zammad">
 <meta property="og:description" content="Anfragen an die IT, die als fertiges Ticket ankommen. Mit Video und Online-Demo.">
 <meta property="og:image" content="video/poster.jpg">
 <link rel="icon" href="demo/favicon.svg" type="image/svg+xml">
@@ -154,6 +154,16 @@
   .ops-shots .shot { box-shadow: 0 0 0 1px rgba(255, 255, 255, .08), 0 24px 50px -24px rgba(0, 0, 0, .6); }
   .ops figcaption { color: #a9bbd2; }
   .ops figure { margin: 0; }
+  .audits { margin-top: 72px; }
+  .audits h3 { color: #fff; }
+  .audit-list { list-style: none; margin: 18px 0 0; padding: 0; border-top: 1px solid #2a4566; }
+  .audit-list a { display: grid; grid-template-columns: 120px minmax(0, 1fr) minmax(0, 1.2fr); gap: 4px 24px; padding: 16px 4px; border-bottom: 1px solid #2a4566; text-decoration: none; color: #dfe8f4; }
+  .audit-list a:hover b { color: #8fb2da; }
+  .audit-list time { color: #8fa6c2; font-size: 15px; }
+  .audit-list b { font: 600 17px/1.4 var(--display); color: #fff; }
+  .audit-list span { color: #a9bbd2; font-size: 15.5px; }
+  .audits .all { display: inline-block; margin-top: 20px; color: #fff; font-weight: 600; }
+  @media (max-width: 760px) { .audit-list a { grid-template-columns: 1fr; } }
   @media (max-width: 900px) { .facts, .ops-shots { grid-template-columns: 1fr 1fr; } }
   @media (max-width: 600px) { .facts, .ops-shots { grid-template-columns: 1fr; } }
 
@@ -186,7 +196,7 @@
 <header class="top">
   <div class="wrap">
     <nav class="nav" aria-label="Hauptnavigation">
-      <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true"></span>Service-Portal für Zammad</a>
+      <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true"></span>Self-Service-Portal für Zammad</a>
       <div class="nav-links">
         <a href="#ablauf">Ablauf</a>
         <a href="#teams">Mehrere Teams</a>
@@ -209,7 +219,7 @@
     </div>
     <div class="stage" id="video">
       <div class="player">
-        <video controls playsinline preload="metadata" poster="video/poster.jpg" aria-label="Video-Einführung in das Service-Portal, 2 Minuten 32 Sekunden">
+        <video controls playsinline preload="metadata" poster="video/poster.jpg" aria-label="Video-Einführung in das Self-Service-Portal, 2 Minuten 32 Sekunden">
           <source src="video/service-portal-demo.mp4" type="video/mp4">
           <track kind="captions" src="video/service-portal-demo.de.vtt" srclang="de" label="Deutsch" default>
         </video>
@@ -406,7 +416,7 @@
     <div class="wrap">
       <div class="head">
         <h2>Gebaut für den Betrieb im Unternehmen</h2>
-        <p>Klein gehalten, ohne fremde Laufzeitpakete, mit über 300 automatischen Tests und zwei dokumentierten Sicherheitstests.</p>
+        <p>Klein gehalten, ohne fremde Laufzeitpakete, mit über 300 automatischen Tests und vier dokumentierten Prüfungen.</p>
       </div>
       <dl class="facts">
         <div><dt>Microsoft Entra ID</dt><dd>Anmeldung per SSO mit Ihrer Mehrfaktor-Richtlinie. Rechte über Entra-Gruppen oder App-Rollen, global oder je Ticketsystem.</dd></div>
@@ -429,6 +439,16 @@
           <button class="shot-btn" type="button"><img class="shot" src="img/audit.jpg" width="2160" height="1350" loading="lazy" alt="Audit-Log"></button>
           <figcaption>Audit-Log mit Integritätsprüfung</figcaption>
         </figure>
+      </div>
+      <div class="audits">
+        <h3>Geprüft und offen dokumentiert</h3>
+        <ol class="audit-list">
+          <li><a href="doku/sicherheitstest-2026-10-28.html"><time datetime="2026-10-28">28.10.2026</time><b>Sicherheitstest der neuen Funktionen</b><span>35 Funde, 32 behoben, kein offener mit hohem Risiko</span></a></li>
+          <li><a href="doku/review-2026-10.html"><time datetime="2026-10-27">27.10.2026</time><b>Externes Review</b><span>12 Punkte bearbeitet, zweites Review nachgeschärft</span></a></li>
+          <li><a href="doku/lasttest.html"><time datetime="2026-10-27">27.10.2026</time><b>Lasttest</b><span>keine Fehler, alle Antworten unter 0,6 Sekunden</span></a></li>
+          <li><a href="doku/pentest.html"><time datetime="2026-10-21">21.10.2026</time><b>Penetrationstest</b><span>16 Funde, alle behoben</span></a></li>
+        </ol>
+        <p><a class="all" href="doku/pruefungen.html">Alle Sicherheitsprüfungen mit Funden und Stand</a></p>
       </div>
     </div>
   </section>
@@ -466,7 +486,7 @@
 
 <footer>
   <div class="wrap">
-    <span>Service-Portal für Zammad, MIT-Lizenz. Kein offizielles Produkt der Zammad Foundation oder von Microsoft.</span>
+    <span>Self-Service-Portal für Zammad, MIT-Lizenz. Kein offizielles Produkt der Zammad Foundation oder von Microsoft.</span>
     <nav aria-label="Weitere Links">
       <a href="demo/">Online-Demo</a>
       <a href="doku/">Dokumentation</a>

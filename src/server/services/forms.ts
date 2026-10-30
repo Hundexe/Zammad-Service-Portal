@@ -113,7 +113,7 @@ export function emptyDefinition(): FormDefinition {
     ],
     settings: {
       titleTemplate: '{{formular.name}}: {{benutzer.name}}',
-      bodyTemplate: '<p>Neue Anfrage über das Service-Portal.</p>\n{{alle_felder}}',
+      bodyTemplate: '<p>Neue Anfrage über das Self-Service-Portal.</p>\n{{alle_felder}}',
       tags: [],
       successText: 'Danke! Ihre Anfrage ist eingegangen. Sie erhalten eine Bestätigung von unserem Ticketsystem.',
     },

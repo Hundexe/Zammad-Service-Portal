@@ -89,7 +89,7 @@ export const LOGIN_TITLE_DEFAULT = 'Anfragen stellen. Tickets im Blick behalten.
 export const DEFAULT_BRANDING: Branding = {
   theme: 'standard',
   colorMode: 'custom',
-  displayName: 'IT-Service-Portal',
+  displayName: 'IT-Self-Service-Portal',
   primaryColor: '#1f5fae',
   accentColor: '#0f8a6a',
   headerColor: '#13294b',

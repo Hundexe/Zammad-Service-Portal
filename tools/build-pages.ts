@@ -111,7 +111,7 @@ cpSync(join(root, 'dist/web'), demoOut, { recursive: true });
 const index = readFileSync(join(demoOut, 'index.html'), 'utf8')
   .replace('<meta name="robots" content="noindex, nofollow">', '<meta name="robots" content="noindex, nofollow">\n  <meta name="zsp-demo" content="1">')
   .replace(/(href|src)="\/(?!\/)/g, '$1="./')
-  .replace('<title>Service-Portal</title>', '<title>Service-Portal – Demo</title>');
+  .replace('<title>Self-Service-Portal</title>', '<title>Self-Service-Portal – Demo</title>');
 writeFileSync(join(demoOut, 'index.html'), index);
 writeFileSync(join(demoOut, 'styles.css'), readFileSync(join(demoOut, 'styles.css'), 'utf8').replace(/url\("\/fonts\//g, 'url("fonts/'));
 writeFileSync(join(demoOut, 'demo-data.json'), JSON.stringify({ recordedAt: Date.now(), responses, assets }));

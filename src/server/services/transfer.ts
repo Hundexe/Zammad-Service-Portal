@@ -146,7 +146,7 @@ const isTime = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v 
 export async function planImport(app: App, file: unknown, password?: string): Promise<ImportPlan> {
   const errors: string[] = [];
   const warnings: string[] = [];
-  if (!isObj(file) || file.format !== EXPORT_FORMAT) throw new HttpError(422, 'Das ist keine Export-Datei des Service-Portals', 'validation');
+  if (!isObj(file) || file.format !== EXPORT_FORMAT) throw new HttpError(422, 'Das ist keine Export-Datei des Self-Service-Portals', 'validation');
   if (file.formatVersion !== EXPORT_FORMAT_VERSION) throw new HttpError(422, `Export-Format ${String(file.formatVersion)} wird nicht unterstützt (erwartet ${EXPORT_FORMAT_VERSION})`, 'validation');
   if (!Array.isArray(file.systems) || file.systems.length > 100) throw new HttpError(422, 'Liste der Ticketsysteme fehlt oder ist zu lang', 'validation');
 

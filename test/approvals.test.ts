@@ -128,7 +128,7 @@ test('Anfrage mit Freigabe wartet im Portal; erst nach der Freigabe entsteht das
   const article = p.zammad.state.articles.find((art) => art.ticket_id === ticket.id)!;
   assert.match(article.body, /Freigegeben<\/strong> von Alex Berger \(alex\.berger@example\.org\)/);
   assert.match(article.body, /Kostenstelle &lt;4711&gt;/, 'Hinweis wird escaped');
-  assert.ok(article.body.indexOf('Freigegeben') < article.body.indexOf('Erstellt über das Service-Portal'));
+  assert.ok(article.body.indexOf('Freigegeben') < article.body.indexOf('Erstellt über das Self-Service-Portal'));
   assert.equal(article.attachments[0].filename, 'angebot.pdf');
   assert.equal(approvalOf(r.json.id).summary, null, 'Inhalt für die freigebende Person ist nach der Entscheidung gelöscht');
 

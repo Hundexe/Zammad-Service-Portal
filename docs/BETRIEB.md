@@ -298,7 +298,7 @@ Die Datei per GPO unter *Computerkonfiguration → Richtlinien → Windows-Einst
 Sicherer als ein Client-Secret ist ein Zertifikat:
 
 ```bash
-openssl req -x509 -newkey rsa:3072 -nodes -days 730 -subj "/CN=Service-Portal" -keyout secrets/entra_cert.key -out entra_cert.crt
+openssl req -x509 -newkey rsa:3072 -nodes -days 730 -subj "/CN=Self-Service-Portal" -keyout secrets/entra_cert.key -out entra_cert.crt
 openssl x509 -in entra_cert.crt -outform DER | openssl dgst -sha256 -binary | openssl base64 | tr '+/' '-_' | tr -d '='   # Thumbprint (x5t#S256)
 ```
 

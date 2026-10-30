@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installation des Service-Portals mit Docker Compose (Variante ohne Docker: deploy/native/install.sh).
+# Installation des Self-Service-Portals mit Docker Compose (Variante ohne Docker: deploy/native/install.sh).
 #
 # Aufruf (im Verzeichnis deploy/):
 #   ./install.sh              fragt Hostname/IP, Ports, Virenscanner, Updates, Microsoft-Anmeldung

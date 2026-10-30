@@ -15,7 +15,7 @@ export interface ScannerCheck { status: 'ok' | 'missing' | 'down' | 'not_detecti
 export async function testScanner(app: App): Promise<ScannerCheck> {
   if (!app.clamav) return { status: 'missing', message: 'Kein Virenscanner konfiguriert (CLAMAV_HOST)' };
   try {
-    const clean = await app.clamav.scan(Buffer.from('Service-Portal Scanner-Test\n'));
+    const clean = await app.clamav.scan(Buffer.from('Self-Service-Portal Scanner-Test\n'));
     if (!clean.clean) return { status: 'not_detecting', message: `Saubere Testdatei wurde abgelehnt (${clean.signature})` };
     const bad = await app.clamav.scan(eicar());
     if (bad.clean) return { status: 'not_detecting', message: 'EICAR-Testdatei wurde NICHT erkannt – Signaturen fehlen oder Scanner falsch eingerichtet' };

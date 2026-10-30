@@ -1,4 +1,4 @@
-// Update-Dienst des Service-Portals.
+// Update-Dienst des Self-Service-Portals.
 //
 // Ablauf eines Updates (angefordert in der Admin-Oberfläche):
 //   1. Version prüfen (Git-Tag bzw. Image vorhanden, Signatur gültig)

@@ -94,7 +94,7 @@ export function buildTicket(
   const table = rows.length ? `<table border="1" cellpadding="4" cellspacing="0">${rows.join('')}</table>` : '';
   const title = renderTemplate(def.settings.titleTemplate, vars, 'text') || form.name;
   const body = renderTemplate(def.settings.bodyTemplate, vars, 'html', { alle_felder: table })
-    + `<p><small>Erstellt über das Service-Portal · Anfrage ${escapeHtml(requestId)}</small></p>`;
+    + `<p><small>Erstellt über das Self-Service-Portal · Anfrage ${escapeHtml(requestId)}</small></p>`;
   if (!group) throw new HttpError(500, 'Für dieses Formular ist keine Zammad-Gruppe festgelegt', 'config_error');
   const allowed = allowedGroups(sys);
   if (allowed.length && !allowed.includes(group)) {

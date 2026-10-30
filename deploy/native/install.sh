@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installation des Service-Portals direkt auf Debian/Ubuntu – ohne Docker.
+# Installation des Self-Service-Portals direkt auf Debian/Ubuntu – ohne Docker.
 #
 # Aufruf (als root, im Repository):
 #   deploy/native/install.sh              fragt Hostname/IP, Ports, Virenscanner, Microsoft-Anmeldung
@@ -218,7 +218,7 @@ chmod 400 "$CONF_DIR"/secrets/*
 # Kommandozeile für die Verwaltung (Benutzer anlegen, Passwort zurücksetzen, Backup …)
 cat > /usr/local/bin/service-portal-cli <<EOF
 #!/bin/sh
-# Verwaltungsbefehle des Service-Portals, z. B.: service-portal-cli user:create --username max --email max@firma.de
+# Verwaltungsbefehle des Self-Service-Portals, z. B.: service-portal-cli user:create --username max --email max@firma.de
 set -a; . $ENV_FILE; set +a
 cd $REPO_DIR
 exec runuser -u $SVC_USER -- $NODE --disable-warning=ExperimentalWarning src/server/cli.ts "\$@"
@@ -277,8 +277,8 @@ SystemCallErrorNumber=EPERM
 WantedBy=multi-user.target
 EOF
 }
-unit "$UNIT" "Service-Portal für Zammad (Web)" serve
-unit "$UNIT-worker" "Service-Portal für Zammad (Zustellung an Zammad)" worker
+unit "$UNIT" "Self-Service-Portal für Zammad (Web)" serve
+unit "$UNIT-worker" "Self-Service-Portal für Zammad (Zustellung an Zammad)" worker
 systemctl daemon-reload
 systemctl enable --quiet "$UNIT" "$UNIT-worker"
 systemctl restart "$UNIT"
@@ -303,7 +303,7 @@ if [ ! -s "$CONF_DIR/allowed_signers" ] && [ -f "$REPO_DIR/deploy/release_signer
 fi
 cat > "/etc/systemd/system/$UNIT-updater.service" <<EOF
 [Unit]
-Description=Service-Portal für Zammad (Updates aus der Verwaltung)
+Description=Self-Service-Portal für Zammad (Updates aus der Verwaltung)
 After=network-online.target $UNIT.service
 Wants=network-online.target
 
@@ -377,7 +377,7 @@ fi
 site=/etc/caddy/zammad-service-portal.caddy
 cp "$REPO_DIR/deploy/caddy/security-headers.caddy" /etc/caddy/zammad-service-portal-headers.caddy
 cat > "$site" <<EOF
-# Service-Portal für Zammad – erzeugt von deploy/native/install.sh (wird bei jedem Lauf neu geschrieben)
+# Self-Service-Portal für Zammad – erzeugt von deploy/native/install.sh (wird bei jedem Lauf neu geschrieben)
 http://${PORTAL_HOST}:${HTTP_PORT:-80} {
 	redir https://${PORTAL_HOST}:${HTTPS_PORT:-443}{uri} 308
 }
@@ -415,7 +415,7 @@ if [ ! -s "$caddyfile" ] || grep -q 'The Caddyfile is an easy way' "$caddyfile" 
 import $site
 EOF
 elif ! grep -q "import $site" "$caddyfile"; then
-  printf '\n# Service-Portal für Zammad\nimport %s\n' "$site" >> "$caddyfile"
+  printf '\n# Self-Service-Portal für Zammad\nimport %s\n' "$site" >> "$caddyfile"
   note "Vorhandene Caddy-Konfiguration erkannt – Portal per 'import' ergänzt ($caddyfile)."
 fi
 caddy validate --config "$caddyfile" --adapter caddyfile >/dev/null 2>&1 || { caddy validate --config "$caddyfile" --adapter caddyfile; fail "Caddy-Konfiguration ungültig."; }
@@ -467,7 +467,7 @@ version=$(printf '%s' "$ready" | sed -n 's/.*"version":"\([0-9A-Za-z.+-]*\)".*/\
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 {
-  printf '\n  %sService-Portal für Zammad%s %s\n' "$BOLD" "$RESET" "${version:+v$version}"
+  printf '\n  %sSelf-Service-Portal für Zammad%s %s\n' "$BOLD" "$RESET" "${version:+v$version}"
   printf '  %s   (IP-Adresse \\4)\n\n' "$(clean "${url:-}")"
   service_line "Portal" "$UNIT"
   service_line "Zustellung" "$UNIT-worker"
@@ -510,7 +510,7 @@ EOF
   chmod 755 "/usr/local/lib/$UNIT/console-status.sh"
   cat > "/etc/systemd/system/$UNIT-issue.service" <<EOF
 [Unit]
-Description=Service-Portal für Zammad: Status auf der Anmeldekonsole
+Description=Self-Service-Portal für Zammad: Status auf der Anmeldekonsole
 After=$UNIT.service
 
 [Service]
@@ -520,7 +520,7 @@ Nice=10
 EOF
   cat > "/etc/systemd/system/$UNIT-issue.timer" <<EOF
 [Unit]
-Description=Service-Portal für Zammad: Konsolenstatus jede Minute
+Description=Self-Service-Portal für Zammad: Konsolenstatus jede Minute
 
 [Timer]
 OnBootSec=20s

@@ -99,9 +99,9 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
       ['Agent', '<p>Interne Notiz: Lieferant XY, Bestellung 4711</p>', true],
     ]);
     // Wie eine Anfrage aus dem Portal und eine Antwort aus Zammad mit Signatur und zitierter Anfrage
-    const vpn = '<p>Neue Anfrage über das Service-Portal.</p><p>Angefragt von ' + c.firstname + ' ' + c.lastname + '.</p>'
+    const vpn = '<p>Neue Anfrage über das Self-Service-Portal.</p><p>Angefragt von ' + c.firstname + ' ' + c.lastname + '.</p>'
       + '<table border="1" cellpadding="4" cellspacing="0"><tr><th>Ab wann?</th><td>nächste Woche</td></tr><tr><th>Wofür?</th><td>Homeoffice an zwei Tagen pro Woche</td></tr><tr><th>Gerät</th><td>Notebook NB-0815</td></tr></table>'
-      + '<p><small>Erstellt über das Service-Portal · Anfrage 7d0c4f2e-demo</small></p>';
+      + '<p><small>Erstellt über das Self-Service-Portal · Anfrage 7d0c4f2e-demo</small></p>';
     addTicket(u, 'VPN-Zugang für Homeoffice', 3, 4, 6, [
       ['Customer', vpn, false],
       ['Agent', '<div>Bitte bestätigen Sie die Freigabe durch Ihre Führungskraft.</div><div><br></div><div data-signature="true" data-signature-id="1">Viele Grüße<br>Sabine Support<br>IT-Service · Tel. 100</div><br><blockquote type="cite">' + vpn + '</blockquote>', false],

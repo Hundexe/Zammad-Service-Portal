@@ -156,7 +156,9 @@ export function renderMarkdown(src: string, opts: MdOptions = {}): MdResult {
         const rows: string[][] = [];
         while (i < lines.length && lines[i].trimStart().startsWith('|')) { rows.push(splitRow(lines[i])); i++; }
         const td = (c: string, k: number, tagName: string) => `<${tagName}${align[k] ? ` style="text-align:${align[k]}"` : ''}>${inline(c)}</${tagName}>`;
-        out.push(`<div class="table"><table><thead><tr>${head.map((c, k) => td(c, k, 'th')).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${head.map((_, k) => td(r[k] ?? '', k, 'td')).join('')}</tr>`).join('')}</tbody></table></div>`);
+        // Tabellen ohne Überschriften (| | |) als reine Liste von Angaben
+        const thead = head.every((c) => c === '') ? '' : `<thead><tr>${head.map((c, k) => td(c, k, 'th')).join('')}</tr></thead>`;
+        out.push(`<div class="table"><table>${thead}<tbody>${rows.map((r) => `<tr>${head.map((_, k) => td(r[k] ?? '', k, 'td')).join('')}</tr>`).join('')}</tbody></table></div>`);
         continue;
       }
       // Zitat

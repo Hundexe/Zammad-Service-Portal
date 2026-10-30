@@ -234,7 +234,7 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
     if (row.totp_enabled) throw new HttpError(409, 'Zwei-Faktor-Anmeldung ist bereits eingerichtet', 'already_enabled');
     const secret = generateTotpSecret();
     app.db.run('UPDATE users SET totp_secret = ? WHERE id = ?', app.box.encrypt('totp', secret), row.id);
-    const issuer = globalBranding(app).displayName || 'Service-Portal';
+    const issuer = globalBranding(app).displayName || 'Self-Service-Portal';
     const uri = otpauthUri(secret, row.username ?? row.id, issuer);
     return { secret: secret.replace(/(.{4})/g, '$1 ').trim(), uri, qr: qrMatrix(uri).map((r) => r.map((b) => (b ? 1 : 0)).join('')) };
   });

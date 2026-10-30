@@ -1,4 +1,4 @@
-# Caddy – Reverse Proxy vor dem Service-Portal
+# Caddy – Reverse Proxy vor dem Self-Service-Portal
 {
 	admin off
 	# Ports aus deploy/.env (HTTPS_PORT, HTTP_PORT). HTTP leitet nur auf HTTPS weiter.

@@ -1,6 +1,6 @@
 # Anmeldung mit Microsoft (Entra ID) einrichten
 
-Diese Anleitung führt Schritt für Schritt durch alles, was in Microsoft Entra ID (früher Azure AD) nötig ist, damit sich die Mitarbeitenden mit ihrem Microsoft-Konto am Service-Portal anmelden (Single Sign-on). Danach wird das Portal eingerichtet und die Anmeldung getestet.
+Diese Anleitung führt Schritt für Schritt durch alles, was in Microsoft Entra ID (früher Azure AD) nötig ist, damit sich die Mitarbeitenden mit ihrem Microsoft-Konto am Self-Service-Portal anmelden (Single Sign-on). Danach wird das Portal eingerichtet und die Anmeldung getestet.
 
 Platzhalter in dieser Anleitung – bitte durch eigene Werte ersetzen:
 
@@ -98,7 +98,7 @@ Gut zu wissen:
 1. **https://entra.microsoft.com** öffnen und mit einem Admin-Konto des Tenants anmelden, in dem die App liegen soll (bei zwei Tenants: der „Haupt“-Tenant).
 2. Links **Anwendungen → App-Registrierungen** → oben **Neue Registrierung**.
 3. Ausfüllen:
-   - **Name:** `Service-Portal` (sehen die Mitarbeitenden bei der Anmeldung und in „Meine Apps“)
+   - **Name:** `Self-Service-Portal` (sehen die Mitarbeitenden bei der Anmeldung und in „Meine Apps“)
    - **Unterstützte Kontotypen:** wie in Schritt 3 gewählt
    - **Umleitungs-URI:** Plattform **Web**, Adresse `https://serviceportal.firma.intern/api/auth/entra/callback`
      - genau so: mit `https://`, ohne abschließenden Schrägstrich, Pfad `/api/auth/entra/callback`
@@ -132,7 +132,7 @@ Der Portal-Server weist sich bei Microsoft aus. Es gibt zwei Wege – **einer** 
 ### Variante A: Client-Secret (einfach)
 
 1. Links **Zertifikate & Geheimnisse** → Reiter **Geheime Clientschlüssel** → **Neuer geheimer Clientschlüssel**.
-2. Beschreibung `Service-Portal`, Ablauf **12 Monate** (höchstens 24).
+2. Beschreibung `Self-Service-Portal`, Ablauf **12 Monate** (höchstens 24).
 3. **Hinzufügen** – dann sofort die Spalte **Wert** kopieren (nicht die „Geheimnis-ID“). Der Wert wird **nur jetzt** angezeigt.
 4. Ablaufdatum in den Kalender eintragen, mit Erinnerung vier Wochen vorher (siehe [Schritt 16](#16-laufender-betrieb)).
 
@@ -145,7 +145,7 @@ Kein Geheimnis, das abgeschrieben werden kann: Der private Schlüssel bleibt auf
 Auf dem Portal-Server (Docker: im Ordner `deploy`, ohne Docker: in `/etc/zammad-service-portal`):
 
 ```bash
-openssl req -x509 -newkey rsa:3072 -nodes -days 730 -subj "/CN=Service-Portal" \
+openssl req -x509 -newkey rsa:3072 -nodes -days 730 -subj "/CN=Self-Service-Portal" \
   -keyout secrets/entra_cert.key -out entra_cert.crt
 # Fingerabdruck für ENTRA_CERT_THUMBPRINT (SHA-256, Base64url):
 openssl x509 -in entra_cert.crt -outform DER | openssl dgst -sha256 -binary | openssl base64 | tr '+/' '-_' | tr -d '='
@@ -230,7 +230,7 @@ Statt (oder zusätzlich zu) Gruppen lassen sich **App-Rollen** nutzen. Sie gelte
 
    | Anzeigename | Zulässige Mitgliedstypen | Wert | Beschreibung |
    | --- | --- | --- | --- |
-   | Portal-Administration | Benutzer/Gruppen | `Portal.Admin` | Verwaltet das Service-Portal |
+   | Portal-Administration | Benutzer/Gruppen | `Portal.Admin` | Verwaltet das Self-Service-Portal |
    | Portal-Formulare | Benutzer/Gruppen | `Portal.Formulare` | Bearbeitet Formulare |
 
 3. **Diese App-Rolle aktivieren?** angehakt → **Anwenden**.
@@ -244,7 +244,7 @@ Im Portal heißen sie dann `approle:Portal.Admin`, `approle:Portal.Formulare` un
 
 Zu jeder App-Registrierung gehört eine **Unternehmensanwendung** mit demselben Namen. Dort legt ihr fest, **wer** sich überhaupt anmelden darf.
 
-1. Links **Anwendungen → Unternehmensanwendungen** → **Service-Portal** öffnen.
+1. Links **Anwendungen → Unternehmensanwendungen** → **Self-Service-Portal** öffnen.
 2. **Eigenschaften:**
    - **Aktiviert für Benutzeranmeldung?** **Ja**
    - **Zuweisung erforderlich?** **Ja** – sonst kann sich jedes Konto des Tenants anmelden.
@@ -269,9 +269,9 @@ Verschachtelte Gruppen: Zuweisungen gelten nur für **direkte** Mitglieder der z
 Das Portal verlässt sich bei Microsoft-Konten auf die Mehrfaktor-Anmeldung von Microsoft und fragt selbst keinen zweiten Faktor ab. Deshalb sollte für die App eine Richtlinie gelten.
 
 1. **Schutz → Bedingter Zugriff → Richtlinien → Neue Richtlinie**.
-2. Name: `Service-Portal – MFA`.
+2. Name: `Self-Service-Portal – MFA`.
 3. **Benutzer:** einschließen „Alle Benutzer“ (oder die Gruppen aus Schritt 10); ausschließen: Notfall-/Break-Glass-Konten.
-4. **Zielressourcen → Ressourcen (früher Cloud-Apps) → Ressourcen auswählen → Service-Portal**.
+4. **Zielressourcen → Ressourcen (früher Cloud-Apps) → Ressourcen auswählen → Self-Service-Portal**.
 5. **Gewähren → Zugriff gewähren → Mehrstufige Authentifizierung erforderlich** (optional zusätzlich „Gerät muss als konform markiert sein“).
 6. Erst **Nur Bericht**, nach einem Test **Ein**.
 
@@ -289,7 +289,7 @@ Nur nötig, wenn ihr in Schritt 3 **mehrinstanzenfähig** gewählt habt.
    https://login.microsoftonline.com/<TENANT-ID-2>/adminconsent?client_id=<CLIENT-ID>
    ```
 
-   meldet sich mit seinem Admin-Konto an und stimmt zu. Danach gibt es im zweiten Tenant eine Unternehmensanwendung „Service-Portal“.
+   meldet sich mit seinem Admin-Konto an und stimmt zu. Danach gibt es im zweiten Tenant eine Unternehmensanwendung „Self-Service-Portal“.
    Die Weiterleitung danach landet auf der Umleitungs-URI des Portals und zeigt dort eventuell einen Fehler. Das ist normal: Die Zustimmung ist trotzdem erteilt.
 2. Im zweiten Tenant für diese Unternehmensanwendung die Schritte **10** (Zuweisung erforderlich, Gruppen zuweisen) und **11** (bedingter Zugriff) wiederholen.
 3. Gruppenanspruch und `auth_time` (Schritt 8) werden in der **App-Registrierung** im ersten Tenant eingestellt und gelten für beide.
@@ -402,7 +402,7 @@ Rechte aus Gruppen greifen bei der **nächsten Anmeldung** (das Token wird bei j
 4. Mit einem **nicht zugewiesenen** Konto testen: Microsoft muss die Anmeldung ablehnen (AADSTS50105).
 5. Mit einem Konto aus der Admin-Gruppe: **Verwaltung** muss erscheinen. Eine kritische Aktion (z. B. eine Rolle zuordnen) auslösen → das Portal fordert eine erneute Microsoft-Anmeldung an und führt die Aktion danach aus. Klappt das nicht, fehlt meist `auth_time` (Schritt 8.2).
 6. **Abmelden** → man landet über Microsoft wieder auf der Startseite des Portals (sonst fehlt die zweite Umleitungs-URI aus Schritt 5).
-7. In Entra unter **Überwachung → Anmeldeprotokolle**, Filter Anwendung „Service-Portal“: die Anmeldungen müssen mit Status „Erfolg“ und, je nach Richtlinie, „Mehrstufige Authentifizierung“ erscheinen.
+7. In Entra unter **Überwachung → Anmeldeprotokolle**, Filter Anwendung „Self-Service-Portal“: die Anmeldungen müssen mit Status „Erfolg“ und, je nach Richtlinie, „Mehrstufige Authentifizierung“ erscheinen.
 
 Im Portal-Log stehen Anmeldungen und Ablehnungen mit Grund:
 

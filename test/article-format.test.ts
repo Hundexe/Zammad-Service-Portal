@@ -3,22 +3,22 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { formatHtmlArticle, formatTextArticle, blocksToText } from '../src/server/services/article-format.ts';
 
-const ORIGINAL = '<p>Neue Störungsmeldung über das Service-Portal.</p><p>Angefragt von Max Muster (IT) am 29.10.2026.</p>'
+const ORIGINAL = '<p>Neue Störungsmeldung über das Self-Service-Portal.</p><p>Angefragt von Max Muster (IT) am 29.10.2026.</p>'
   + '<table border="1" cellpadding="4" cellspacing="0"><tr><th>Was ist betroffen?</th><td>Notebook</td></tr>'
   + '<tr><th>Wie stark sind Sie eingeschränkt?</th><td>Blockiert &ndash; ich kann nicht arbeiten</td></tr>'
   + '<tr><th>Was ist passiert?</th><td>Mein Notebook ist abgestürzt\nund leider geht es jetzt nicht mehr an</td></tr></table>'
-  + '<p><small>Erstellt über das Service-Portal · Anfrage aefd7593-890e-41c8-9346-436a841a574f</small></p>';
+  + '<p><small>Erstellt über das Self-Service-Portal · Anfrage aefd7593-890e-41c8-9346-436a841a574f</small></p>';
 
 test('Anfrage aus dem Portal: Tabelle wird Feldliste, Fußzeile klein', () => {
   const f = formatHtmlArticle(ORIGINAL);
   assert.deepEqual(f.blocks.map((b) => b.t), ['text', 'fields', 'meta']);
-  assert.equal((f.blocks[0] as any).text, 'Neue Störungsmeldung über das Service-Portal.\nAngefragt von Max Muster (IT) am 29.10.2026.');
+  assert.equal((f.blocks[0] as any).text, 'Neue Störungsmeldung über das Self-Service-Portal.\nAngefragt von Max Muster (IT) am 29.10.2026.');
   assert.deepEqual((f.blocks[1] as any).rows, [
     ['Was ist betroffen?', 'Notebook'],
     ['Wie stark sind Sie eingeschränkt?', 'Blockiert – ich kann nicht arbeiten'],
     ['Was ist passiert?', 'Mein Notebook ist abgestürzt und leider geht es jetzt nicht mehr an'],
   ]);
-  assert.match((f.blocks[2] as any).text, /^Erstellt über das Service-Portal · Anfrage aefd/);
+  assert.match((f.blocks[2] as any).text, /^Erstellt über das Self-Service-Portal · Anfrage aefd/);
   assert.equal(f.quoted, null);
 });
 
@@ -70,4 +70,9 @@ test('Linear auch bei bösartigen Eingaben', () => {
     formatHtmlArticle(s);
     assert.ok(performance.now() - t < 1500, `${s.slice(0, 20)}… dauerte zu lange`);
   }
+});
+
+test('Alte Fußzeile („Service-Portal“) aus Tickets vor 1.11.1 wird weiter erkannt', () => {
+  const f = formatHtmlArticle('<p>Text</p><p><small>Erstellt über das Service-Portal · Anfrage 1234</small></p>');
+  assert.ok(f.blocks.some((b: any) => b.t === 'meta'), JSON.stringify(f.blocks));
 });

@@ -1,4 +1,4 @@
-# Zammad Service-Portal
+# Zammad Self-Service-Portal
 
 Self-Service-Portal für IT-Abteilungen mit einem oder mehreren Zammad-Systemen: Mitarbeitende melden sich mit ihrem Microsoft-Konto an, füllen ein passendes Formular aus und sehen jederzeit, was aus ihrer Anfrage geworden ist. Die IT bekommt saubere Tickets – mit Gruppe, Priorität, Feldern und, wo nötig, der Freigabe der Führungskraft.
 
@@ -8,7 +8,7 @@ Self-Service-Portal für IT-Abteilungen mit einem oder mehreren Zammad-Systemen:
 
 Die Einführung im Video (2:32, mit Sprecher und Untertiteln) zeigt Anmeldung, Formulare mit Prüfung und Bedingungen, Freigabe durch die Führungskraft, Ticketverlauf und Benachrichtigungen, helles und dunkles Design, Baukasten, Stile, Verwaltung und Sicherheit. [Mit Ton auf der Webseite ansehen](https://hundexe.github.io/Zammad-Service-Portal/#video) oder [herunterladen](docs/video/service-portal-demo.mp4) ([Untertitel](docs/video/service-portal-demo.srt)).
 
-**Aktuelle Version: 1.11.1** – neu: Weiterleiten aus dem Formular an andere Ticketsysteme, Ansicht „Einfach“ und „Erweitert“ in der Verwaltung, Produkt-Webseite mit allen Anleitungen. Alle [Änderungen](CHANGELOG.md), externes Review: [was geändert wurde](docs/REVIEW-2026-10.md).
+**Aktuelle Version: 1.11.2** – neu: Weiterleiten aus dem Formular an andere Ticketsysteme, Ansicht „Einfach“ und „Erweitert“ in der Verwaltung, Produkt-Webseite mit allen Anleitungen und [Sicherheitsprüfungen](https://hundexe.github.io/Zammad-Service-Portal/doku/pruefungen.html). Alle [Änderungen](CHANGELOG.md), externes Review: [was geändert wurde](docs/REVIEW-2026-10.md).
 
 <img src="docs/website/img/start.jpg" width="49%" alt="Startseite der Zentralen IT"> <img src="docs/website/img/ticket.jpg" width="49%" alt="Ticketverlauf als Chat">
 <img src="docs/website/img/freigabe.jpg" width="49%" alt="Freigabe durch die Führungskraft"> <img src="docs/website/img/editor-weiterleitung.jpg" width="49%" alt="Formular-Editor mit Weiterleitung an IT Nord">
@@ -113,7 +113,7 @@ TypeScript auf Node.js 24 ohne externe Laufzeitpakete (HTTP, Krypto, SQLite und 
 ## Tests
 
 ```bash
-npm test                        # 318 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
+npm test                        # 320 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
 npm run typecheck
 node tools/loadtest.ts          # Lasttest: 50 Logins, 50 Ticketansichten, 20 Anfragen mit Anhang
 bash tools/secret-scan.sh       # vor jeder Veröffentlichung: keine Geheimnisse im Repository

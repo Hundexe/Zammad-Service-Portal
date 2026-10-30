@@ -24,7 +24,7 @@ const sessionTimer = setInterval(() => purgeExpiredSessions(app), 10 * 60_000);
 sessionTimer.unref();
 
 server.listen(cfg.port, cfg.host, () => {
-  log.info('Service-Portal gestartet', {
+  log.info('Self-Service-Portal gestartet', {
     port: cfg.port, version: cfg.version, entra: cfg.entra.enabled, localLogin: cfg.localLogin, clamav: Boolean(app.clamav),
     totpAdmins: cfg.localAdminRequireTotp, totpAlle: cfg.localUserRequireTotp, sperreNach: cfg.lockout.maxAttempts, sperreMinuten: cfg.lockout.minutes,
   });

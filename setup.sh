@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Service-Portal für Zammad – Installation mit einem Befehl.
+# Self-Service-Portal für Zammad – Installation mit einem Befehl.
 #
 #   curl -fsSL https://raw.githubusercontent.com/Hundexe/Zammad-Service-Portal/main/setup.sh | sudo bash
 #
@@ -59,7 +59,7 @@ os_like() { [ -r /etc/os-release ] && (. /etc/os-release && echo "${ID:-} ${ID_L
 cat <<'EOF'
 
   ┌──────────────────────────────────────────────┐
-  │   Service-Portal für Zammad – Installation   │
+  │   Self-Service-Portal für Zammad – Installation   │
   └──────────────────────────────────────────────┘
 EOF
 

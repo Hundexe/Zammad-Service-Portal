@@ -1,4 +1,4 @@
-# Service-Portal – App und Worker (ein Image, Befehl entscheidet: serve | worker | user:create …)
+# Self-Service-Portal – App und Worker (ein Image, Befehl entscheidet: serve | worker | user:create …)
 #
 # Laufzeit-Image: distroless (kein Shell, kein Paketmanager, Benutzer "nonroot").
 # Das Portal hat keine npm-Laufzeitabhängigkeiten – es wird nur Node.js selbst benötigt.
