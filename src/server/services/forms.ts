@@ -44,10 +44,12 @@ export function formVisibleTo(form: FormRow, user: AuthUser): boolean {
  * - Zammad-Felder werden mit den freigegebenen Optionen in normale Felder umgewandelt.
  * - Zammad-Attribute, die nicht (mehr) freigegeben sind, verschwinden.
  */
-export function resolveDefinition(def: FormDefinition, sys: SystemRow, meta: SystemMetadata, user: AuthUser | null): FormDefinition {
+export function resolveDefinition(def: FormDefinition, sys: SystemRow, meta: SystemMetadata, user: AuthUser | null, opts: { approvals?: boolean } = {}): FormDefinition {
   const released = releasedWithOptions(sys, meta);
   const fields: FormField[] = [];
   for (const f of def.fields) {
+    // Funktion „Freigabe durch Vorgesetzte“ ausgeschaltet: Anfragen gehen ohne Freigabe direkt an die IT
+    if (opts.approvals === false && f.type === 'approver') continue;
     if (user && f.groups && f.groups.length && !groupsMatch(f.groups, user)) continue;
     if (f.type !== 'zammad') { fields.push(f); continue; }
     const attr = released.find((a) => a.name === f.attribute);

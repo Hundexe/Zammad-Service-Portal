@@ -1,7 +1,7 @@
 // Gemeinsames für die Verwaltung: Systemliste, Navigation.
 import { h, icon } from '../lib/dom.ts';
 import { get } from '../lib/api.ts';
-import { can, canAnywhere, curPath, link, navigate, state } from '../lib/app.ts';
+import { can, canAnywhere, curPath, link, navigate, state, statusEnabled } from '../lib/app.ts';
 import { modeToggle } from './mode.ts';
 
 export interface AdminSystem {
@@ -64,6 +64,8 @@ export function sidebar(path: string): HTMLElement {
       item(`/admin/systeme/${sid}/branding`, 'Stil, Farben, Logo', can('branding.edit', sid) || can('form.approve', sid)),
     ) : null,
     canAnywhere('system.manage') ? h('ul', { class: 'nav-sub' }, item('/admin/systeme', 'Alle Ticketsysteme')) : null,
+    statusEnabled() && (canAnywhere('status.manage') || canAnywhere('problem.manage')) ? h('p', { class: 'nav-title' }, 'Betrieb') : null,
+    statusEnabled() && (canAnywhere('status.manage') || canAnywhere('problem.manage')) ? h('ul', null, item('/admin/status', 'Status und Störungen')) : null,
     h('p', { class: 'nav-title' }, 'Portal'),
     h('ul', null,
       item('/admin/rollen', 'Rollen und Rechte', can('role.manage')),
@@ -73,6 +75,7 @@ export function sidebar(path: string): HTMLElement {
       item('/admin/audit', 'Audit-Log', canAnywhere('audit.read')),
       item('/admin/updates', 'Updates', can('update.read') || can('update.install')),
       item('/admin/einstellungen', 'Anmeldeseite', can('settings.manage')),
+      item('/admin/funktionen', 'Funktionen', can('settings.manage')),
     ),
     modeToggle(() => navigate(curPath(), true)),
     h('div', { class: 'sidebar-foot' }, link('/', icon('back', 14), 'Zum Portal'), h('span', { class: 'muted small' }, state.me?.user.displayName ?? '')),

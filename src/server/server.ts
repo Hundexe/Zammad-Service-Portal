@@ -16,6 +16,7 @@ import type { EntraClient } from './auth/oidc.ts';
 import { registerAuthRoutes, totpRequired } from './routes/auth.ts';
 import { registerPortalRoutes } from './routes/portal.ts';
 import { registerAdminRoutes } from './routes/admin.ts';
+import { registerItsmRoutes } from './routes/itsm.ts';
 import { safeEqual } from './crypto.ts';
 
 export interface ServerDeps { entra: EntraClient | null }
@@ -37,6 +38,7 @@ export function buildRouter(app: App, deps: ServerDeps): Router {
   registerAuthRoutes(router, app, deps);
   registerPortalRoutes(router, app);
   registerAdminRoutes(router, app);
+  registerItsmRoutes(router, app);
   return router;
 }
 

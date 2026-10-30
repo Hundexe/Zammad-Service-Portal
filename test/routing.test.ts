@@ -156,3 +156,17 @@ test('Export: Ziel der Weiterleitung steht als Kürzel in der Datei', async () =
   const def = s.forms.find((f: any) => f.slug === 'anfrage').versions[0].definition;
   assert.equal(def.fields[1].mapping.routes.haustechnik.system, 'haustechnik');
 });
+
+test('Funktion „Weiterleitung“ aus: Anfrage bleibt im Ticketsystem des Formulars', async () => {
+  p.app.db.run("INSERT INTO settings (key, value) VALUES ('features', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", JSON.stringify({ routing: false }));
+  try {
+    const c = new Client(p.url);
+    await c.loginEntra(p, ANNA.oid);
+    const r = await c.post(`/api/portal/forms/${formId}/submit`, { values: { betreff: 'Heizung', bereich: 'haustechnik' } });
+    assert.equal(r.status, 201, r.text);
+    assert.equal(r.json.system, null);
+    assert.equal(p.app.db.get<{ system_id: string }>('SELECT system_id FROM requests WHERE id = ?', r.json.id)!.system_id, zentral);
+  } finally {
+    p.app.db.run("DELETE FROM settings WHERE key = 'features'");
+  }
+});

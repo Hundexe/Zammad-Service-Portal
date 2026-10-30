@@ -7,6 +7,7 @@ import { renderForm, type Person } from '../lib/formrender.ts';
 import { refreshCounts } from '../lib/notify.ts';
 import type { FormDefinition } from '../../shared/form.ts';
 import { passwordForm, totpSetupBlock } from './login.ts';
+import { formNotices } from './status.ts';
 
 interface FormListItem { id: string; slug: string; name: string; description: string; category: string }
 interface Ticket { id: number; number: string; title: string; state: string; closed: boolean; priority: string | null; group: string | null; createdAt: string; updatedAt: string }
@@ -108,7 +109,7 @@ export async function homePage(p: Record<string, string>) {
 
 export async function formPage(p: Record<string, string>) {
   const sys = await systemOrDefault(p.systemId);
-  const data = await get<{ form: { id: string; name: string; description: string; version: number }; system: { id: string; name: string; status: string }; definition: FormDefinition }>(`/api/portal/forms/${p.formId}`);
+  const data = await get<{ form: { id: string; name: string; description: string; version: number }; system: { id: string; name: string; status: string }; definition: FormDefinition; notices?: Parameters<typeof formNotices>[0] }>(`/api/portal/forms/${p.formId}`);
   const form = renderForm(data.definition, { searchPeople: (q) => get<{ people: Person[] }>(`/api/portal/people?q=${encodeURIComponent(q)}`).then((r) => r.people) });
   const msg = h('div', { attrs: { 'aria-live': 'polite' } });
   const host = h('div', { class: 'container narrow' });
@@ -168,6 +169,7 @@ export async function formPage(p: Record<string, string>) {
     h('h1', null, data.form.name),
     data.form.description ? h('p', { class: 'sub' }, data.form.description) : null,
     data.system.status === 'maintenance' ? notice('warn', 'Das Ticketsystem ist gerade in Wartung. Ihre Anfrage wird später automatisch übermittelt.') : null,
+    formNotices(data.notices),
     el);
   return host;
 }

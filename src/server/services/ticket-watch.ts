@@ -4,6 +4,7 @@
 // und nur für Tickets von Personen, die das Portal kennt, die Nachrichten. Benachrichtigt wird für
 // öffentliche Antworten von Bearbeitern – nie für interne Notizen und nie rückwirkend vor dem Start.
 import type { App } from '../app.ts';
+import { getFeatures } from './features.ts';
 import { log } from '../log.ts';
 import { notify } from './notifications.ts';
 import { connectorFor } from './systems.ts';
@@ -61,6 +62,8 @@ export async function watchSystem(app: App, sys: SystemRow, now = Date.now()): P
 /** Alle aktiven Ticketsysteme; Fehler eines Systems stören die anderen nicht. */
 export async function watchTickets(app: App): Promise<number> {
   let sent = 0;
+  // Funktion „Benachrichtigung bei Antworten“ ausgeschaltet
+  if (!getFeatures(app).replyNotifications) return 0;
   for (const sys of app.db.all<SystemRow>("SELECT * FROM ticket_systems WHERE status = 'active'")) {
     try {
       sent += await watchSystem(app, sys);

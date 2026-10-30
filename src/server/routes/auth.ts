@@ -16,6 +16,7 @@ import { isAdmin, permissionsForClient } from '../services/rbac.ts';
 import { globalBranding } from '../services/systems.ts';
 import type { OidcTransaction } from '../auth/oidc.ts';
 import { log } from '../log.ts';
+import { getFeatures } from '../services/features.ts';
 
 // Kontosperre (einstellbar in deploy/.env, Standard): nach 5 Fehlversuchen (Passwort, 2FA-Code oder
 // Bestätigung zusammen gezählt) wird das Konto gesperrt. Jede weitere Sperre dauert doppelt so lang:
@@ -110,6 +111,8 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
       permissions: permissionsForClient(u),
       stepupValidUntil: s.authTime + app.cfg.stepupMinutes * 60_000,
       sessionExpiresAt: s.expiresAt,
+      // Welche Funktionen eingeschaltet sind (Menüs und Seiten richten sich danach; der Server prüft selbst)
+      features: (({ locations: _l, ...f }) => f)(getFeatures(app)),
     };
   });
 

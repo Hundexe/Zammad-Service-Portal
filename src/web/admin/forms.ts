@@ -5,7 +5,7 @@ import {
   badge, button, checkbox, confirmDialog, dialog, errorText, fieldWrap, input, listInput, notice, pageHead, select,
   statusBadge, table, tabs, textarea, toast,
 } from '../lib/ui.ts';
-import { can, link, navigate, state, curPath } from '../lib/app.ts';
+import { can, feature, link, navigate, state, curPath } from '../lib/app.ts';
 import { renderForm } from '../lib/formrender.ts';
 import { admin, adminSystem, loadAdminSystems } from './common.ts';
 import { isAdvanced, onModeChange, showAdvanced } from './mode.ts';
@@ -190,6 +190,9 @@ export async function formEditorPage(p: Record<string, string>) {
     get<{ metadata: { groups: { name: string }[]; priorities: { name: string }[] }; releasedResolved: Released[] }>(`/api/admin/systems/${s.id}/metadata`).catch(() => null),
     get<{ templates: { id: string; kind: string; name: string; content: string }[] }>(`/api/admin/systems/${s.id}/templates`).catch(() => ({ templates: [] })),
   ]);
+  // Services des Ticketsystems (für „Betroffene Services“ – nur wenn Störungen oder Wartungen eingeschaltet sind)
+  const services = feature('incidents') || feature('maintenance')
+    ? (await get<{ services: { id: string; name: string }[] }>(`/api/admin/systems/${s.id}/services`).catch(() => ({ services: [] }))).services : [];
   const released = metaRes?.releasedResolved ?? [];
   const def: FormDefinition = JSON.parse(JSON.stringify(data.definition));
   def.settings.tags ??= [];
@@ -505,6 +508,15 @@ export async function formEditorPage(p: Record<string, string>) {
         fieldWrap(groups.length ? select(st.group ?? '', groups, (x) => { st.group = x || undefined; markDirty(); }, { empty: `Standard (${s.defaultGroup ?? '–'})` }) : input(st.group ?? '', (x) => { st.group = x || undefined; markDirty(); }), { label: 'Zammad-Gruppe' }),
         fieldWrap(prios.length ? select(st.priority ?? '', prios, (x) => { st.priority = x || undefined; markDirty(); }, { empty: 'Standard' }) : input(st.priority ?? '', (x) => { st.priority = x || undefined; markDirty(); }), { label: 'Priorität' })),
       fieldWrap(listInput(st.tags ?? [], (x) => { st.tags = x; markDirty(); }), { label: 'Zusätzliche Tags', help: `Der Tag „${s.portalTag}“ wird immer gesetzt.` }),
+      services.length || st.services?.length ? h('div', null,
+        h('p', { class: 'label' }, 'Betroffene Services'),
+        h('p', { class: 'small muted' }, 'Bei einer Störung oder Wartung dieser Services zeigt das Formular einen Hinweis mit „Ich bin auch betroffen“. Tickets während einer Störung bekommen in Zammad deren Tag (inc-0001).'),
+        h('div', { class: 'value-grid' }, ...services.map((sv) => checkbox((st.services ?? []).includes(sv.id), sv.name, (x) => {
+          const set = new Set(st.services ?? []);
+          x ? set.add(sv.id) : set.delete(sv.id);
+          st.services = set.size ? [...set] : undefined;
+          markDirty();
+        })))) : null,
       fieldWrap(input(st.titleTemplate, (x) => { st.titleTemplate = x; markDirty(); }), { label: 'Ticket-Titel', help: `Platzhalter: ${fieldsHelp}, {{benutzer.name}}, {{benutzer.abteilung}}, {{formular.name}}, {{datum}}` }),
       tpl('title', (c) => { st.titleTemplate = c; }),
       isAdvanced() ? fieldWrap(textarea(st.bodyTemplate, (x) => { st.bodyTemplate = x; markDirty(); }, { rows: 8, class: 'code' }), { label: 'Tickettext (HTML)', help: '{{alle_felder}} fügt eine Tabelle mit allen ausgefüllten Feldern ein. Eingaben der Benutzer werden immer sicher maskiert.' })

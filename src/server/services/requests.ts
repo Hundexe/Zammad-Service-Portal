@@ -13,6 +13,8 @@ import type { AuthUser } from './rbac.ts';
 import { checkFiles, loadFile, removeRequestFiles, storeFile, type CheckedFile, type IncomingFile } from './files.ts';
 import { allowedGroups, connectorFor, findSystem, getSystem, type SystemRow } from './systems.ts';
 import { can } from './rbac.ts';
+import { getFeatures } from './features.ts';
+import { incidentTagsFor } from './itsm.ts';
 import { releasedAttributes } from './metadata.ts';
 import type { FormRow, FormVersionRow } from './forms.ts';
 import { ConnectorError, type CustomerRef } from '../connectors/types.ts';
@@ -134,7 +136,7 @@ export async function submitRequest(
   const result = validateSubmission(def, values);
   if (!result.ok) throw new HttpError(422, 'Bitte die markierten Felder prüfen', 'validation', result.errors);
   // Weiterleitung: Auswahl im Formular bestimmt das Ticketsystem (siehe routeOf)
-  const route = routeOf(def, result.values);
+  const route = getFeatures(app).routing ? routeOf(def, result.values) : null;
   const target = targetSystem(app, user, sys, route);
   // Freigabe durch Vorgesetzte nötig? Dann bleibt die Anfrage bis zur Entscheidung im Portal.
   const approval = approverFor(app, user, def, result.values);
@@ -162,6 +164,9 @@ export async function submitRequest(
     if (mine.length) result.values[f.id] = mine.map((c) => ({ name: c.file.filename, size: c.file.data.length }));
   }
   const payload = buildTicket(target, form, def, result.values, user, id, route);
+  // Offene Störungen der Services dieses Formulars: Tag am Ticket (inc-0003), damit die IT sie in Zammad gesammelt findet.
+  // Nur im Ticketsystem des Formulars – Services gehören zu ihm.
+  if (target.id === sys.id) for (const tag of incidentTagsFor(app, sys.id, def.settings.services)) if (!payload.tags.includes(tag)) payload.tags.push(tag);
   const t = Date.now();
   let approvalId: string | null = null;
   app.db.tx(() => {

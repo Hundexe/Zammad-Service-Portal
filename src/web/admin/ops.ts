@@ -93,6 +93,11 @@ const ACTIONS: Record<string, string> = {
   'approval.requested': 'Freigabe erbeten', 'approval.approved': 'Anfrage freigegeben', 'approval.rejected': 'Anfrage abgelehnt', 'approval.withdrawn': 'Anfrage zurückgezogen',
   'approval.reassigned': 'Freigebende Person geändert', 'approval.expired': 'Freigabe abgelaufen', 'request.cancelled': 'Anfrage abgebrochen', 'transfer.exported': 'Export erstellt', 'transfer.imported': 'Import ausgeführt', 'ticket.reply': 'Antwort gesendet',
   'update.requested': 'Update angefordert', 'update.check_requested': 'Update-Prüfung angefordert', 'audit.exported': 'Audit-Log exportiert',
+  'settings.features': 'Funktionen geändert',
+  'service.created': 'Service angelegt', 'service.updated': 'Service geändert', 'service.deleted': 'Service gelöscht',
+  'incident.created': 'Störung gemeldet', 'incident.updated': 'Störung geändert', 'incident.update': 'Störung: Update', 'incident.resolved': 'Störung behoben', 'incident.deleted': 'Störung gelöscht',
+  'maintenance.created': 'Wartung geplant', 'maintenance.updated': 'Wartung geändert', 'maintenance.cancelled': 'Wartung abgesagt', 'maintenance.deleted': 'Wartung gelöscht',
+  'problem.created': 'Problem angelegt', 'problem.updated': 'Problem geändert', 'problem.ticket_linked': 'Ticket mit Problem verknüpft', 'problem.ticket_unlinked': 'Ticket-Verknüpfung gelöst', 'problem.deleted': 'Problem gelöscht',
 };
 
 export async function auditPage(_p: Record<string, string>, q: URLSearchParams) {

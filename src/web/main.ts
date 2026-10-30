@@ -1,12 +1,14 @@
 // Einstiegspunkt des Frontends.
 import { h, mount, type Child } from './lib/dom.ts';
 import { get } from './lib/api.ts';
-import { applyBranding, currentSystem, link, loadMe, loadSystems, navBrand, navLinks, themeToggle, render, route, selectSystem, setLayouts, setPrepare, state, userMenu, navigate } from './lib/app.ts';
+import { applyBranding, currentSystem, link, loadMe, loadSystems, navBrand, navLinks, themeToggle, render, route, selectSystem, setLayouts, setPrepare, state, statusEnabled, userMenu, navigate } from './lib/app.ts';
 import { notice } from './lib/ui.ts';
 import { DEMO, setDemoBackend } from './lib/env.ts';
 import { loginPage } from './pages/login.ts';
 import { accountPage, formPage, homePage, requestsPage, ticketDetailPage, ticketsPage } from './pages/portal.ts';
 import { approvalDetailPage, approvalsPage } from './pages/approvals.ts';
+import { incidentPage, statusBanner, statusPage } from './pages/status.ts';
+import { featuresPage, itsmAdminPage, incidentAdminPage, problemAdminPage } from './admin/itsm.ts';
 import { approvalsNavLink, bell, refreshCounts, startPolling } from './lib/notify.ts';
 import { sidebar, loadAdminSystems, admin } from './admin/common.ts';
 import { objectsPage, systemEditPage, systemsListPage } from './admin/systems.ts';
@@ -29,7 +31,8 @@ function portalLayout(content: Child, path: string): Child {
   const onTickets = path.includes('/tickets');
   const onApprovals = path.startsWith('/freigaben');
   const extra = navLinks(b);
-  const onOther = path === '/anfragen' || path === '/konto' || onApprovals;
+  const onStatus = path === '/status' || path.startsWith('/stoerungen/');
+  const onOther = path === '/anfragen' || path === '/konto' || onApprovals || onStatus;
   void refreshCounts();
   return [
     skipLink(),
@@ -40,11 +43,13 @@ function portalLayout(content: Child, path: string): Child {
           h('a', { class: !onTickets && !onOther ? 'active' : undefined, attrs: { href: base, 'data-link': '' } }, 'Anfrage stellen'),
           sys ? h('a', { class: onTickets ? 'active' : undefined, attrs: { href: `${base}/tickets`, 'data-link': '' } }, 'Meine Tickets') : null,
           approvalsNavLink(onApprovals),
+          statusEnabled() ? h('a', { class: onStatus ? 'active' : undefined, attrs: { href: '/status', 'data-link': '' } }, 'Status') : null,
           ...extra.inline),
         extra.menu,
         bell(),
         themeToggle(),
         userMenu())),
+    statusEnabled() ? statusBanner(path) : null,
     h('main', { id: 'main', class: 'portal-main' }, content),
     h('footer', { class: 'foot' }, h('div', { class: 'band-inner' },
       h('span', null, b.footerText || b.displayName),
@@ -109,6 +114,8 @@ route('/anfragen', 'portal', requestsPage);
 route('/freigaben', 'portal', approvalsPage);
 route('/freigaben/:approvalId', 'portal', approvalDetailPage);
 route('/konto', 'portal', accountPage);
+route('/status', 'portal', statusPage);
+route('/stoerungen/:incidentId', 'portal', incidentPage);
 
 adminRoute('/admin', dashboardPage);
 adminRoute('/admin/systeme', systemsListPage);
@@ -126,6 +133,10 @@ adminRoute('/admin/export', transferPage);
 adminRoute('/admin/audit', auditPage);
 adminRoute('/admin/updates', updatesPage);
 adminRoute('/admin/einstellungen', loginSettingsPage);
+adminRoute('/admin/funktionen', featuresPage);
+adminRoute('/admin/status', itsmAdminPage);
+adminRoute('/admin/status/stoerung/:systemId/:incidentId', incidentAdminPage);
+adminRoute('/admin/status/problem/:systemId/:problemId', problemAdminPage);
 
 /**
  * Links, Schaltflächen und Bilder der Oberfläche lassen sich nicht wegziehen (sonst entsteht beim Klicken

@@ -105,6 +105,13 @@ export function relTime(v: string | number | null | undefined): string {
 
 /** Kleine Inline-Icons (Pfade selbst gezeichnet, 20×20). */
 const ICONS: Record<string, string> = {
+  pulse: 'M2.5 10h3.5l2-5 4 10 2-5h3.5',
+  alert: 'M10 3.2l7.3 12.8H2.7zM10 8.2v3.6M10 13.8v.4',
+  tool: 'M12.6 3.4a3.6 3.6 0 0 0-3.4 4.7l-5.6 5.6a1.4 1.4 0 0 0 2 2l5.6-5.6a3.6 3.6 0 0 0 4.7-3.4l-2.1 2-2-.5-.5-2z',
+  calendar: 'M3.5 5.5h13v11h-13zM3.5 9h13M7 3.5v3M13 3.5v3',
+  flag: 'M5 17.5V3M5 3.8h9.5l-2 3.6 2 3.6H5',
+  toggle: 'M2.5 10a4 4 0 0 1 4-4h7a4 4 0 0 1 0 8h-7a4 4 0 0 1-4-4zM13.5 8a2 2 0 1 0 0 4 2 2 0 1 0 0-4',
+  users: 'M7.5 9.5a3 3 0 1 0 0-6 3 3 0 1 0 0 6zM2 16.5c.5-3 2.8-4.5 5.5-4.5s5 1.5 5.5 4.5M13.5 4a2.7 2.7 0 0 1 0 5.2M15 12.3c1.5.6 2.6 2 3 4.2',
   plus: 'M10 4v12M4 10h12',
   check: 'M4 10.5l4 4 8-9',
   x: 'M5 5l10 10M15 5L5 15',

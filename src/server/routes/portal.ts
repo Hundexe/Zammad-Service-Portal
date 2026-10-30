@@ -17,6 +17,8 @@ import { audit } from '../services/audit.ts';
 import { approvalDetail, approvalFile, approvalsOfRequests, decide, listForApprover, openCountForApprover, reassign, withdraw } from '../services/approvals.ts';
 import { listNotifications, markRead, markReadByLink, unreadCount } from '../services/notifications.ts';
 import { log } from '../log.ts';
+import { getFeatures } from '../services/features.ts';
+import { formNotices } from '../services/itsm.ts';
 import { formatHtmlArticle, formatTextArticle, blocksToText } from '../services/article-format.ts';
 
 export const OVERVIEW_COLUMNS = ['number', 'title', 'state', 'priority', 'group', 'created_at', 'updated_at'] as const;
@@ -118,7 +120,7 @@ export function registerPortalRoutes(router: Router, app: App): void {
     const version = publishedVersion(app, form.id);
     if (!version) throw new HttpError(404, 'Formular nicht gefunden', 'not_found');
     const meta = await getMetadata(app, sys).catch(() => ({ groups: [], states: [], priorities: [], fields: [] }));
-    const def = resolveDefinition(parseJson<FormDefinition>(version.definition, { fields: [], settings: {} as any }), sys, meta, ctx.user!);
+    const def = resolveDefinition(parseJson<FormDefinition>(version.definition, { fields: [], settings: {} as any }), sys, meta, ctx.user!, { approvals: getFeatures(app).approvals });
     const u = ctx.user!;
     // Standardwerte aus dem Profil
     const fields = def.fields.map((raw) => {
@@ -131,6 +133,8 @@ export function registerPortalRoutes(router: Router, app: App): void {
     return {
       form: { id: form.id, name: form.name, description: form.description, version: version.version },
       system: { id: sys.id, name: sys.name, status: sys.status },
+      // Bekannte Störungen und Wartungen der Services dieses Formulars („Ich bin auch betroffen“ statt Ticket)
+      notices: formNotices(app, ctx.user!, sys.id, def.settings.services),
       definition: { fields, settings: { successText: def.settings.successText ?? '' } },
     };
   });
@@ -148,7 +152,7 @@ export function registerPortalRoutes(router: Router, app: App): void {
     const values = b.values && typeof b.values === 'object' && !Array.isArray(b.values) ? b.values as Record<string, unknown> : {};
     const files = b.files && typeof b.files === 'object' && !Array.isArray(b.files) ? b.files as Record<string, IncomingFile[]> : {};
     const meta = await getMetadata(app, sys).catch(() => ({ groups: [], states: [], priorities: [], fields: [] }));
-    const def = resolveDefinition(parseJson<FormDefinition>(version.definition, { fields: [], settings: {} as any }), sys, meta, ctx.user!);
+    const def = resolveDefinition(parseJson<FormDefinition>(version.definition, { fields: [], settings: {} as any }), sys, meta, ctx.user!, { approvals: getFeatures(app).approvals });
     const r = await submitRequest(app, ctx.user!, sys, form, version, def, { values, files });
     ticketCache.delete(`${sys.id}:${ctx.user!.id}`);
     ticketCache.delete(`${r.system.id}:${ctx.user!.id}`);

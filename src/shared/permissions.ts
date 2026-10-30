@@ -13,6 +13,8 @@ export const PERMISSIONS: PermissionInfo[] = [
   { key: 'overview.edit', label: 'Übersichten bearbeiten', admin: true },
   { key: 'branding.edit', label: 'Farben, Logos und Texte bearbeiten', admin: true },
   { key: 'attribute.release', label: 'Zammad-Objekte (Ticket-Attribute) für das Portal freigeben', admin: true },
+  { key: 'status.manage', label: 'Services, Störungen und Wartungen verwalten', admin: true },
+  { key: 'problem.manage', label: 'Probleme verwalten (Ursache, Workaround, verknüpfte Tickets)', admin: true },
   { key: 'audit.read', label: 'Audit-Log lesen', admin: true },
   { key: 'role.manage', label: 'Rollen und Zuordnungen verwalten', global: true, admin: true },
   { key: 'user.manage', label: 'Lokale Benutzer verwalten', global: true, admin: true },

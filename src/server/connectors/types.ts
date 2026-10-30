@@ -98,4 +98,11 @@ export interface Connector {
   addReply(customer: CustomerRef, ticketId: number, bodyHtml: string, attachments: Attachment[]): Promise<void>;
   /** Ticket, das zu einer Portal-Anfrage schon angelegt wurde (Schutz vor Duplikaten nach Abbruch). */
   findTicketForRequest(customer: CustomerRef, requestId: string, title: string, since: number): Promise<{ id: number; number: string } | null>;
+  /** Ticket über die Ticketnummer (als API-Benutzer, für Probleme und Störungen in der Verwaltung) */
+  findTicketByNumber(number: string): Promise<TicketSummary | null>;
+  /** Ticket über die ID (als API-Benutzer) – null, wenn es nicht (mehr) existiert */
+  ticketInfo(ticketId: number): Promise<TicketSummary | null>;
+  /** Tag am Ticket setzen bzw. entfernen – so bleibt die Zuordnung in Zammad sichtbar */
+  addTag(ticketId: number, tag: string): Promise<void>;
+  removeTag(ticketId: number, tag: string): Promise<void>;
 }

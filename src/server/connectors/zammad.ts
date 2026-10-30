@@ -382,6 +382,30 @@ export class ZammadConnector implements Connector {
       .filter((t) => Number.isSafeInteger(t.id) && Number.isSafeInteger(t.customerId) && t.updatedAt >= since);
   }
 
+  async findTicketByNumber(number: string): Promise<TicketSummary | null> {
+    if (!/^\d{1,20}$/.test(number)) return null;
+    const q = new URLSearchParams({
+      'condition[ticket.number][operator]': 'is',
+      'condition[ticket.number][value]': number,
+      limit: '5', expand: 'true',
+    });
+    const t = ZammadConnector.ticketList(await this.call('GET', `/api/v1/tickets/search?${q}`)).find((x) => String(x.number) === number);
+    return t ? this.summary(t) : null;
+  }
+
+  async ticketInfo(ticketId: number): Promise<TicketSummary | null> {
+    const t = await this.call('GET', `/api/v1/tickets/${ticketId}?expand=true`);
+    return t && t.id !== undefined ? this.summary(t) : null;
+  }
+
+  async addTag(ticketId: number, tag: string): Promise<void> {
+    await this.call('POST', '/api/v1/tags/add', { body: { object: 'Ticket', o_id: ticketId, item: tag } });
+  }
+
+  async removeTag(ticketId: number, tag: string): Promise<void> {
+    await this.call('DELETE', '/api/v1/tags/remove', { body: { object: 'Ticket', o_id: ticketId, item: tag } });
+  }
+
   async agentReplies(ticketId: number): Promise<{ id: number; createdAt: string; contentType: string; body: string }[]> {
     const arts = ((await this.call('GET', `/api/v1/ticket_articles/by_ticket/${ticketId}`)) ?? []) as Json[];
     return (Array.isArray(arts) ? arts : [])

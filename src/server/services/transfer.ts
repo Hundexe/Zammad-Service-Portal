@@ -107,6 +107,8 @@ export async function buildExport(app: App, password?: string): Promise<Json> {
       overviews: app.db.all<{ name: string; state_filter: string; columns: string; sort_by: string; sort_dir: string; sort: number }>(
         'SELECT name, state_filter, columns, sort_by, sort_dir, sort FROM overviews WHERE system_id = ? ORDER BY sort, name', s.id,
       ).map((o) => ({ name: o.name, stateFilter: o.state_filter, columns: parseJson<string[]>(o.columns, []), sortBy: o.sort_by, sortDir: o.sort_dir, sort: o.sort })),
+      // Services (Status-Seite); Formulare verweisen in der Datei über den Namen darauf
+      services: app.db.all<{ name: string; description: string; sort: number }>('SELECT name, description, sort FROM services WHERE system_id = ? ORDER BY sort, name', s.id),
     };
   });
   return {
@@ -132,6 +134,7 @@ interface PlannedSystem {
   forms: { slug: string; name: string; description: string; category: string; visibleGroups: string; sort: number; active: number; versions: { version: number; status: string; note: string; definition: string; createdAt: number; publishedAt: number | null }[] }[];
   templates: { kind: string; name: string; content: string }[];
   overviews: { name: string; stateFilter: string; columns: string; sortBy: string; sortDir: string; sort: number }[];
+  services: { name: string; description: string; sort: number }[];
 }
 export interface ImportPlan {
   systems: PlannedSystem[];
@@ -342,8 +345,17 @@ export async function planImport(app: App, file: unknown, password?: string): Pr
       overviews.push({ name: o.name.trim(), stateFilter: String(o.stateFilter), columns: JSON.stringify(cols), sortBy: String(o.sortBy ?? 'updated_at'), sortDir: String(o.sortDir ?? 'desc'), sort: typeof o.sort === 'number' && Number.isInteger(o.sort) ? o.sort : 0 });
     }
 
+    const services: PlannedSystem['services'] = [];
+    if (s.services !== undefined) {
+      if (!Array.isArray(s.services) || s.services.length > 200) errors.push(`${w}: Services ungültig`);
+      else for (const x of s.services) {
+        if (!isObj(x) || typeof x.name !== 'string' || !x.name.trim() || x.name.length > 120 || (x.description !== undefined && (typeof x.description !== 'string' || x.description.length > 1000))) { errors.push(`${w}: Service ungültig`); continue; }
+        if (services.some((y) => y.name.toLowerCase() === x.name.trim().toLowerCase())) continue;
+        services.push({ name: x.name.trim(), description: typeof x.description === 'string' ? x.description : '', sort: typeof x.sort === 'number' && Number.isInteger(x.sort) ? x.sort : 0 });
+      }
+    }
     systems.push({
-      slug: sl, name, existingId: existing?.id ?? null, token, tokenFromFile: Boolean(token), dropToken, previousUrl: existing?.base_url ?? null,
+      slug: sl, name, existingId: existing?.id ?? null, token, tokenFromFile: Boolean(token), dropToken, previousUrl: existing?.base_url ?? null, services,
       row: {
         name, base_url: baseUrl, default_group: defaultGroup, creation_mode: mode, status, visible_groups: JSON.stringify(list(s.visibleGroups, 'visibleGroups')),
         require_approval: flag('requireApproval', false), show_org_tickets: flag('showOrgTickets', false), allow_replies: flag('allowReplies', true),
@@ -371,7 +383,7 @@ export function summarizePlan(plan: ImportPlan) {
     systems: plan.systems.map((s) => ({
       slug: s.slug, name: s.name, action: s.existingId ? 'replace' : 'create', token: s.tokenFromFile,
       baseUrl: s.row.base_url, previousUrl: s.previousUrl, urlChanged: s.previousUrl !== null && s.previousUrl !== s.row.base_url, tokenDropped: s.dropToken,
-      forms: s.forms.length, templates: s.templates.length, overviews: s.overviews.length, brandingVersions: s.branding.length, releasedAttributes: JSON.parse(s.released).length,
+      forms: s.forms.length, templates: s.templates.length, overviews: s.overviews.length, services: s.services.length, brandingVersions: s.branding.length, releasedAttributes: JSON.parse(s.released).length,
     })),
     remove: plan.remove.map((r) => ({ slug: r.slug, name: r.name, requests: r.requests })),
     assets: plan.assets.length,
@@ -435,6 +447,27 @@ export function applyImport(app: App, plan: ImportPlan, actor: Actor): ReturnTyp
         app.db.run('INSERT INTO branding_versions (id, system_id, version, data, status, created_by, created_at, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
           uuid(), id, b.version, JSON.stringify(data), b.status, actor.id ?? null, b.createdAt, b.publishedAt);
       }
+      // Services: gleicher Name bleibt (Störungen behalten ihre Zuordnung), neue kommen dazu, fehlende werden gelöscht
+      const svcIds = new Map<string, string>();
+      for (const ex of app.db.all<{ id: string; name: string }>('SELECT id, name FROM services WHERE system_id = ?', id)) {
+        const f = s.services.find((x) => x.name.toLowerCase() === ex.name.toLowerCase());
+        if (!f) { app.db.run('DELETE FROM services WHERE id = ?', ex.id); continue; }
+        app.db.run('UPDATE services SET description = ?, sort = ?, updated_at = ? WHERE id = ?', f.description, f.sort, t, ex.id);
+        svcIds.set(f.name.toLowerCase(), ex.id);
+      }
+      for (const f of s.services) {
+        if (svcIds.has(f.name.toLowerCase())) continue;
+        const sid = uuid();
+        app.db.run('INSERT INTO services (id, system_id, name, description, sort, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)', sid, id, f.name, f.description, f.sort, t, t);
+        svcIds.set(f.name.toLowerCase(), sid);
+      }
+      const withServices = (json: string) => {
+        const d = JSON.parse(json) as FormDefinition;
+        if (!Array.isArray(d.settings?.services)) return json;
+        const ids = d.settings.services.map((x) => svcIds.get(String(x).toLowerCase())).filter((x): x is string => Boolean(x));
+        d.settings.services = ids.length ? [...new Set(ids)] : undefined;
+        return JSON.stringify(d);
+      };
       // Formulare: gleiches Kürzel behält seine ID, Versionen werden ersetzt; Formulare, die fehlen, werden gelöscht
       const keep = new Set(s.forms.map((f) => f.slug));
       for (const old of app.db.all<{ id: string; slug: string }>('SELECT id, slug FROM forms WHERE system_id = ?', id)) {
@@ -453,7 +486,7 @@ export function applyImport(app: App, plan: ImportPlan, actor: Actor): ReturnTyp
         }
         for (const v2 of f.versions) {
           app.db.run('INSERT INTO form_versions (id, form_id, version, definition, status, note, created_by, created_at, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            uuid(), fid, v2.version, v2.definition, v2.status, v2.note, actor.id ?? null, v2.createdAt, v2.publishedAt);
+            uuid(), fid, v2.version, withServices(v2.definition), v2.status, v2.note, actor.id ?? null, v2.createdAt, v2.publishedAt);
         }
       }
       for (const tp of s.templates) {
@@ -471,8 +504,11 @@ export function applyImport(app: App, plan: ImportPlan, actor: Actor): ReturnTyp
 }
 
 /** Weiterleitungen tragen in der Datei das Kürzel des Ziels statt der ID – IDs sind je Installation verschieden. */
-function portableRoutes(app: App, def: FormDefinition | null): FormDefinition | null {
+export function portableRoutes(app: App, def: FormDefinition | null): FormDefinition | null {
   if (!def || !Array.isArray(def.fields)) return def;
+  if (Array.isArray(def.settings?.services)) {
+    def.settings.services = def.settings.services.map((id) => app.db.get<{ name: string }>('SELECT name FROM services WHERE id = ?', id)?.name ?? id);
+  }
   for (const f of def.fields) {
     const routes = f?.mapping?.target === 'system' ? f.mapping.routes : undefined;
     if (!routes) continue;

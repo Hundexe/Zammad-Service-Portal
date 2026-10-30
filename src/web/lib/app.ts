@@ -4,6 +4,7 @@ import { ApiError, get, onStepupRequired, onUnauthorized, post, setCsrf } from '
 import { button, dialog, errorText, fieldWrap, input, loading, notice, toast } from './ui.ts';
 import { effectiveColors, LOGO_LIMITS, luminance, NAV_LINK_RE, themeOf, type Branding } from '../../shared/branding.ts';
 import { DEMO, demoBackend } from './env.ts';
+import { DEFAULT_FEATURES, type FeatureKey, type Features } from '../../shared/itsm.ts';
 
 // ---------------------------------------------------------------- Adresse
 // Normal: echte Pfade (/s/…). In der statischen Demo: alles hinter dem # (#/s/…).
@@ -31,7 +32,15 @@ export interface Me {
   isAdmin: boolean;
   permissions: { global: string[]; bySystem: Record<string, string[]> };
   stepupValidUntil: number;
+  /** Eingeschaltete Funktionen (Verwaltung → Funktionen) */
+  features?: Partial<Omit<Features, 'locations'>>;
 }
+
+/** Funktion eingeschaltet? (Unbekannt = wie Standard) */
+export function feature(key: FeatureKey): boolean {
+  return state.me?.features?.[key] ?? DEFAULT_FEATURES[key];
+}
+export const statusEnabled = () => feature('status') || feature('incidents') || feature('maintenance') || feature('problems');
 
 export interface PortalSystem { id: string; slug: string; name: string; status: string; allowReplies: boolean; branding: Branding }
 

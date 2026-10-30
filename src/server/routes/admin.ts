@@ -21,8 +21,9 @@ import { checkLogo, decodeBase64Strict, removeRequestFiles } from '../services/f
 import { createLocalUser, emailInUse, getUser, publicUser, resetLocalPassword, toAuthUser, type UserRow } from '../services/users.ts';
 import { destroyUserSessions } from '../auth/sessions.ts';
 import { retryRequest } from '../services/requests.ts';
+import { resolveFormServices } from '../services/itsm.ts';
 import { cancelRequest } from '../services/approvals.ts';
-import { applyImport, buildExport, planImport, sameOrigin, summarizePlan } from '../services/transfer.ts';
+import { applyImport, buildExport, planImport, portableRoutes, sameOrigin, summarizePlan } from '../services/transfer.ts';
 import { ConnectorError } from '../connectors/types.ts';
 import { OVERVIEW_COLUMNS } from './portal.ts';
 import { placeholders, templateHtmlProblems } from '../../shared/template.ts';
@@ -490,6 +491,8 @@ export function registerAdminRoutes(router: Router, app: App): void {
         if (f.mapping?.target === 'zammad_field' && f.mapping.name && !released.has(f.mapping.name)) problems.push(`Feld „${f.label}“: Zammad-Feld „${f.mapping.name}“ ist nicht freigegeben (Ticketsystem → Zammad-Felder)`);
       }
       problems.push(...groupProblems(s, d), ...routeProblems(s, d, user, perm));
+      // Services des Formulars: nur solche dieses Ticketsystems (Namen aus Dateien werden zu IDs, Unbekanntes fällt weg)
+      d.settings.services = resolveFormServices(app, s.id, d.settings.services);
       for (const tpl of [d.settings.titleTemplate, d.settings.bodyTemplate]) {
         for (const p of placeholders(tpl)) {
           const root = p.split('.')[0];
@@ -545,7 +548,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
     const s = sysOr404(ctx.params.systemId);
     const forms = can(ctx.user, 'form.edit', s.id) ? app.db.all<FormRow>('SELECT * FROM forms WHERE system_id = ? ORDER BY sort, name', s.id).flatMap((f) => {
       const v = publishedVersion(app, f.id) ?? latestVersion(app, f.id);
-      return v ? [{ slug: f.slug, name: f.name, category: f.category, sort: f.sort, description: f.description, active: f.active === 1, visibleGroups: parseJson<string[]>(f.visible_groups, []), definition: parseJson(v.definition, null) }] : [];
+      return v ? [{ slug: f.slug, name: f.name, category: f.category, sort: f.sort, description: f.description, active: f.active === 1, visibleGroups: parseJson<string[]>(f.visible_groups, []), definition: portableRoutes(app, parseJson(v.definition, null)) }] : [];
     }) : [];
     const templates = can(ctx.user, 'template.edit', s.id) ? app.db.all<{ kind: string; name: string; content: string }>('SELECT kind, name, content FROM templates WHERE system_id = ? ORDER BY kind, name', s.id) : [];
     return { system: { slug: s.slug, name: s.name }, exportedAt: new Date().toISOString(), forms, templates };

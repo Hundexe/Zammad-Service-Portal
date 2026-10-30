@@ -83,7 +83,8 @@ export function permissionsForClient(user: AuthUser): { global: string[]; bySyst
 
 export const BUILTIN_ROLES: { name: string; description: string; permissions: string[] }[] = [
   { name: 'Super-Admin', description: 'Alle Rechte für alle Ticketsysteme', permissions: ['*'] },
-  { name: 'Ziel-Admin', description: 'Verwaltet ein Ticketsystem vollständig', permissions: ['system.manage', 'form.edit', 'form.publish', 'form.approve', 'template.edit', 'overview.edit', 'branding.edit', 'attribute.release', 'audit.read'] },
+  { name: 'Ziel-Admin', description: 'Verwaltet ein Ticketsystem vollständig', permissions: ['system.manage', 'form.edit', 'form.publish', 'form.approve', 'template.edit', 'overview.edit', 'branding.edit', 'attribute.release', 'status.manage', 'problem.manage', 'audit.read'] },
+  { name: 'Service-Desk', description: 'Pflegt Services, Störungen, Wartungen und Probleme', permissions: ['status.manage', 'problem.manage'] },
   { name: 'Formular-Editor', description: 'Entwirft Formulare und Vorlagen, veröffentlicht nicht selbst', permissions: ['form.edit', 'template.edit'] },
   { name: 'Branding-Editor', description: 'Farben, Logos und Texte', permissions: ['branding.edit'] },
   { name: 'Objekt-Freigabe', description: 'Gibt Zammad-Objekte (Ticket-Attribute) und ihre Werte für das Portal frei', permissions: ['attribute.release'] },

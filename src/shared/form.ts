@@ -104,6 +104,8 @@ export interface FormSettings {
   priority?: string;
   tags?: string[];
   successText?: string;
+  /** Services, die das Formular betrifft (IDs): zeigt Störungen und Wartungen dazu und markiert Tickets mit dem Tag der Störung */
+  services?: string[];
 }
 
 export interface FormDefinition {
@@ -373,6 +375,7 @@ export function validateDefinition(def: unknown): string[] {
     if (typeof s.bodyTemplate !== 'string' || s.bodyTemplate.length > 20000) problems.push('Text-Vorlage fehlt oder zu lang');
     else for (const x of templateHtmlProblems(s.bodyTemplate)) problems.push(`Text-Vorlage: ${x}`);
     if (s.tags !== undefined && (!Array.isArray(s.tags) || s.tags.some((t) => typeof t !== 'string' || t.length > 60))) problems.push('Tags ungültig');
+    if (s.services !== undefined && (!Array.isArray(s.services) || s.services.length > 50 || s.services.some((t) => typeof t !== 'string' || t.length > 64))) problems.push('Services ungültig');
   }
   return problems;
 }

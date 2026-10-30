@@ -151,7 +151,7 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
       }
       const isCustomer = current.roles.includes('Customer') && !current.roles.includes('Agent');
       const canSee = (t: Ticket) => !isCustomer || t.customer_id === current.id || (t.organization_id !== null && t.organization_id === current.organization_id);
-      const json = req.method === 'POST' || req.method === 'PUT' ? await body(req) : undefined;
+      const json = req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE' ? await body(req) : undefined;
       entry.body = json;
 
       if (req.method === 'GET' && p === '/api/v1/users/me') return send(res, 200, { id: current.id, login: current.login, email: current.email });
@@ -214,6 +214,13 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
         if (url.searchParams.get('sort_by') === 'updated_at') list = [...list].sort((a, b) => (url.searchParams.get('order_by') === 'desc' ? -1 : 1) * a.updated_at.localeCompare(b.updated_at));
         const limit = Number(url.searchParams.get('limit') ?? 50);
         return send(res, 200, list.slice(0, Math.min(limit, 200)).map(expandTicket));
+      }
+      if ((req.method === 'POST' && p === '/api/v1/tags/add') || (req.method === 'DELETE' && p === '/api/v1/tags/remove')) {
+        if (isCustomer) return send(res, 403, { error: 'Not authorized' });
+        const t = tickets.find((x) => x.id === Number(json.o_id));
+        if (!t || json.object !== 'Ticket' || typeof json.item !== 'string') return send(res, 422, { error: 'invalid' });
+        if (p.endsWith('/add')) { if (!t.tags.includes(json.item)) t.tags.push(json.item); } else t.tags = t.tags.filter((x) => x !== json.item);
+        return send(res, 200, true);
       }
       let mu = /^\/api\/v1\/users\/(\d+)$/.exec(p);
       if (req.method === 'GET' && mu) {
