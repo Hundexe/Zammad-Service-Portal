@@ -8,6 +8,7 @@
 // Browser (src/web/demo/backend.ts) die Aufrufe aus diesen Aufzeichnungen. Es gibt keinen Server.
 // Voraussetzung: Playwright mit Chromium (siehe docs/ENTWICKLUNG.md).
 import { createRequire } from 'node:module';
+import { buildDocs } from './build-docs.ts';
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -118,5 +119,7 @@ writeFileSync(join(out, '.nojekyll'), '');
 // Video-Einführung unter /video/ (Seite, Video, Untertitel, Vorschaubild)
 cpSync(join(root, 'docs/video'), join(out, 'video'), { recursive: true });
 cpSync(join(root, 'docs/website'), out, { recursive: true });
+// Anleitungen aus docs/*.md als Seiten unter doku/
+buildDocs(join(out, 'doku'));
 console.log(`Webseite und Demo gebaut: ${out}`);
 process.exit(0);

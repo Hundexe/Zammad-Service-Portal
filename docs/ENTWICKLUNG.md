@@ -33,7 +33,7 @@ node tools/build-pages.ts      # nach dist/pages: Webseite (Wurzel), Demo unter 
 sh tools/publish-pages.sh      # baut und veröffentlicht im Branch gh-pages
 ```
 
-Die **Produkt-Webseite** ist eine statische Seite in `docs/website/` (`index.html` und Bilder in `img/`, ohne Build-Schritt); das Video liegt in `docs/video/`. Die Bilder stammen aus der lokalen Demo (1440 × 900, Faktor 1,5, JPEG). `video/index.html` und alte Demo-Adressen (`/#/…`) leiten auf die Webseite bzw. nach `demo/` weiter.
+Die **Produkt-Webseite** ist eine statische Seite in `docs/website/` (`index.html` und Bilder in `img/`, ohne Build-Schritt); das Video liegt in `docs/video/`. Die Bilder stammen aus der lokalen Demo (1440 × 900, Faktor 1,5, JPEG). Die **Anleitungen** unter `doku/` baut `tools/build-docs.ts` aus `docs/*.md` (Liste `DOCS` dort; einzeln: `node tools/build-docs.ts dist/doku`). Links zwischen den Anleitungen werden zu Seiten-Links, andere Dateien zeigen auf GitHub, Bilder aus `docs/screenshots/` werden mitkopiert. `video/index.html` und alte Demo-Adressen (`/#/…`) leiten auf die Webseite bzw. nach `demo/` weiter.
 
 `build-pages.ts` startet die lokale Demo, klickt mit Playwright alle Seiten von Portal und Verwaltung durch und zeichnet jede API-Antwort auf (`demo-data.json`). In der Pages-Version erkennt die Oberfläche das `<meta name="zsp-demo">`, nutzt Hash-Adressen (`#/s/…`) und fragt statt des Servers den Simulator `src/web/demo/backend.ts`. Ändernde Aktionen wirken nur im geöffneten Tab. Einmalig auf GitHub aktivieren: **Settings → Pages → Deploy from a branch → `gh-pages` / `(root)`**. Für öffentliche Repositories ist das kostenlos.
 

@@ -2,13 +2,13 @@
 
 Self-Service-Portal für IT-Abteilungen mit einem oder mehreren Zammad-Systemen: Mitarbeitende melden sich mit ihrem Microsoft-Konto an, füllen ein passendes Formular aus und sehen jederzeit, was aus ihrer Anfrage geworden ist. Die IT bekommt saubere Tickets – mit Gruppe, Priorität, Feldern und, wo nötig, der Freigabe der Führungskraft.
 
-**[Webseite mit Video](https://hundexe.github.io/Zammad-Service-Portal/)** · **[Online-Demo zum Durchklicken](https://hundexe.github.io/Zammad-Service-Portal/demo/)** · [Installation](#installation-mit-einem-befehl) · [Dokumentation](#dokumentation)
+**[Webseite mit Video](https://hundexe.github.io/Zammad-Service-Portal/)** · **[Online-Demo zum Durchklicken](https://hundexe.github.io/Zammad-Service-Portal/demo/)** · [Installation](#installation-mit-einem-befehl) · [Dokumentation](https://hundexe.github.io/Zammad-Service-Portal/doku/)
 
 [![Video-Einführung (2:32): Anmeldung, Formulare, Freigabe, Tickets, hell und dunkel, Verwaltung](docs/video/vorschau.gif)](https://hundexe.github.io/Zammad-Service-Portal/#video)
 
 Die Einführung im Video (2:32, mit Sprecher und Untertiteln) zeigt Anmeldung, Formulare mit Prüfung und Bedingungen, Freigabe durch die Führungskraft, Ticketverlauf und Benachrichtigungen, helles und dunkles Design, Baukasten, Stile, Verwaltung und Sicherheit. [Mit Ton auf der Webseite ansehen](https://hundexe.github.io/Zammad-Service-Portal/#video) oder [herunterladen](docs/video/service-portal-demo.mp4) ([Untertitel](docs/video/service-portal-demo.srt)).
 
-**Aktuelle Version: 1.11.0** – neu: Weiterleiten aus dem Formular an andere Ticketsysteme, Ansicht „Einfach“ und „Erweitert“ in der Verwaltung, Produkt-Webseite. Alle [Änderungen](CHANGELOG.md), externes Review: [was geändert wurde](docs/REVIEW-2026-10.md).
+**Aktuelle Version: 1.11.1** – neu: Weiterleiten aus dem Formular an andere Ticketsysteme, Ansicht „Einfach“ und „Erweitert“ in der Verwaltung, Produkt-Webseite mit allen Anleitungen. Alle [Änderungen](CHANGELOG.md), externes Review: [was geändert wurde](docs/REVIEW-2026-10.md).
 
 <img src="docs/website/img/start.jpg" width="49%" alt="Startseite der Zentralen IT"> <img src="docs/website/img/ticket.jpg" width="49%" alt="Ticketverlauf als Chat">
 <img src="docs/website/img/freigabe.jpg" width="49%" alt="Freigabe durch die Führungskraft"> <img src="docs/website/img/editor-weiterleitung.jpg" width="49%" alt="Formular-Editor mit Weiterleitung an IT Nord">
@@ -88,6 +88,8 @@ Mehr dazu, inklusive Alarmregeln, Log-Weiterleitung und Egress-Firewall: [docs/B
 
 ## Dokumentation
 
+Alle Anleitungen gibt es auch lesefreundlich auf der Webseite: **[hundexe.github.io/Zammad-Service-Portal/doku/](https://hundexe.github.io/Zammad-Service-Portal/doku/)**.
+
 | Dokument | Inhalt |
 | --- | --- |
 | [Installation](docs/INSTALLATION.md) | Ein Befehl oder Schritt für Schritt, mit Docker oder direkt auf Debian |
@@ -111,7 +113,7 @@ TypeScript auf Node.js 24 ohne externe Laufzeitpakete (HTTP, Krypto, SQLite und 
 ## Tests
 
 ```bash
-npm test                        # 313 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
+npm test                        # 318 Tests: Funktionen, Sicherheit, Review-Punkte, Updater
 npm run typecheck
 node tools/loadtest.ts          # Lasttest: 50 Logins, 50 Ticketansichten, 20 Anfragen mit Anhang
 bash tools/secret-scan.sh       # vor jeder Veröffentlichung: keine Geheimnisse im Repository

@@ -1,5 +1,10 @@
 # Änderungen
 
+## 1.11.1 – 30.10.2026
+
+- **Anleitungen direkt auf der Webseite** unter [/doku/](https://hundexe.github.io/Zammad-Service-Portal/doku/): Installation, Microsoft-Anmeldung, Bedienung, Betrieb, Updates, Sicherheit, Go-Live-Checkliste und Architektur – mit Inhaltsverzeichnis, Ankern, Bildern und Links zwischen den Anleitungen. Sie entstehen beim Bauen der Seite aus `docs/*.md` (`tools/build-docs.ts`, eigener kleiner Markdown-Umsetzer ohne fremde Pakete), sind also immer auf dem Stand des Repositorys
+- Defekten Link im Inhaltsverzeichnis der Installationsanleitung korrigiert
+
 ## 1.11.0 – 30.10.2026
 
 - **Weiterleiten aus dem Formular:** Ein Auswahlfeld kann bestimmen, an welches Ticketsystem (und welche Gruppe) eine Anfrage geht – z. B. „Standort Nord“ an IT Nord. Neues Ziel „Leitet an ein Ticketsystem weiter“ unter „Übernahme ins Ticket“, je Option Ticketsystem und Gruppe

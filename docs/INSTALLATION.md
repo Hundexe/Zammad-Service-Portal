@@ -34,7 +34,7 @@ Die folgenden Abschnitte beschreiben die Docker-Installation Schritt für Schrit
 3. [Code holen](#3-code-holen)
 4. [Microsoft Entra ID: App registrieren](#4-microsoft-entra-id-app-registrieren)
 5. [Zammad: API-Benutzer und Token](#5-zammad-api-benutzer-und-token)
-6. [Konfiguration und Zertifikat](#6-konfiguration-und-zertifikat)
+6. [Konfiguration](#6-konfiguration)
 7. [Installieren und ersten Admin anlegen](#7-installieren-und-ersten-admin-anlegen)
 8. [Erste Anmeldung](#8-erste-anmeldung)
 9. [Zammad verbinden und Formulare anlegen](#9-zammad-verbinden-und-formulare-anlegen)

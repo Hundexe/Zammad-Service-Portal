@@ -1,6 +1,6 @@
 {
   "name": "zammad-service-portal",
-  "version": "1.11.0",
+  "version": "1.11.1",
   "private": true,
   "license": "MIT",
   "description": "Self-Service-Portal für Zammad: Anfragen über Formulare, Tickets per Zammad-API, Anmeldung über Microsoft Entra ID.",
