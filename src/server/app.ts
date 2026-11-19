@@ -7,6 +7,7 @@ import { Db } from './db/db.ts';
 import { SecretBox } from './crypto.ts';
 import { ensureBuiltinRoles } from './services/rbac.ts';
 import { sealLegacyTitles } from './services/request-title.ts';
+import { qualifyForeignAppRoles } from './services/users.ts';
 import { ClamAv } from './services/clamav.ts';
 
 export interface App {
@@ -26,6 +27,8 @@ export function createApp(cfg: Config): App {
   ensureBuiltinRoles(db);
   const box = new SecretBox(cfg.secretKey);
   sealLegacyTitles(db, box);
+  // App-Rollen aus Partner-Tenants nur noch mit Tenant im Namen (siehe appRoleName)
+  if ((cfg.entra?.allowedTenants?.length ?? 0) > 1) qualifyForeignAppRoles(db, cfg.entra.tenantId);
   return {
     cfg,
     db,

@@ -179,3 +179,15 @@ test('Branding: eigenes Logo für die Navigationsleiste im dunklen Design wird g
   const r = await s.put(`/api/admin/systems/${sysA}/branding/draft`, { branding: { ...(cur.draft ?? cur.published), logoNavDarkId: id } });
   assert.equal(r.status, 422, 'unbekanntes Logo abgelehnt');
 });
+
+test('Import: nicht lesbare alte Adresse gilt als geändert – das alte Token wird nicht weiterverwendet', async () => {
+  const s = await local('super');
+  const exp = await s.post('/api/admin/transfer/export', {});
+  const file = exp.json.file;
+  // gespeicherte Adresse unbrauchbar (z. B. alter Datenbestand) → sameOrigin liefert undefined
+  p.app.db.run("UPDATE ticket_systems SET base_url = 'kein-url' WHERE slug = 'sys-a'");
+  const prev = await s.post('/api/admin/transfer/preview', { file });
+  assert.equal(prev.status, 200, prev.text);
+  assert.equal(prev.json.plan.systems.find((x: any) => x.slug === 'sys-a').tokenDropped, true);
+  p.app.db.run("UPDATE ticket_systems SET base_url = ? WHERE slug = 'sys-a'", p.zammad.url);
+});

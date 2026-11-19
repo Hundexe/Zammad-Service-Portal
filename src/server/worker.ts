@@ -5,9 +5,12 @@ import { purgeExpiredSessions } from './auth/sessions.ts';
 import { approvalHousekeeping } from './services/approvals.ts';
 import { purgeNotifications } from './services/notifications.ts';
 import { watchTickets } from './services/ticket-watch.ts';
+import { checkForUpdates } from './services/update-notify.ts';
+import { checkEntraAccounts } from './services/account-check.ts';
+import type { EntraClient } from './auth/oidc.ts';
 import { log, setLogLevel } from './log.ts';
 
-export function startWorker(app: App, intervalMs = 2000): () => void {
+export function startWorker(app: App, intervalMs = 2000, deps: { entra?: Pick<EntraClient, 'accountEnabled'> } = {}): () => void {
   let stopped = false;
   let running = false;
   const tick = async () => {
@@ -51,6 +54,34 @@ export function startWorker(app: App, intervalMs = 2000): () => void {
   };
   const t3 = app.cfg.ticketWatchSeconds > 0 ? setInterval(() => void watch(), app.cfg.ticketWatchSeconds * 1000) : null;
   if (t3) void watch();
+  // Optional: nur benachrichtigen – alle 6 Stunden oder wenn in der Verwaltung „Jetzt nach Updates suchen“ geklickt wurde
+  let lastUpdateCheck = 0;
+  const updates = () => {
+    if (!app.cfg.updateNotify?.enabled || stopped) return;
+    const requested = Number(app.db.get<{ value: string }>("SELECT value FROM settings WHERE key = 'update.check_requested'")?.value ?? 0);
+    if (Date.now() - lastUpdateCheck < 6 * 3600_000 && requested <= lastUpdateCheck) return;
+    lastUpdateCheck = Date.now();
+    void checkForUpdates(app);
+  };
+  const t4 = app.cfg.updateNotify?.enabled ? setInterval(updates, 60_000) : null;
+  if (t4) setTimeout(updates, 30_000);
+  // Optional: Konten mit offener Sitzung in Entra prüfen (deaktiviert → Sitzungen beenden)
+  let checking = false;
+  const accounts = async () => {
+    if (checking || stopped || !deps.entra) return;
+    checking = true;
+    try {
+      const r = await checkEntraAccounts(app, deps.entra);
+      if (r.ended) log.info('Kontoprüfung Entra', r);
+    } catch (err) {
+      log.warn('Kontoprüfung Entra fehlgeschlagen', { error: (err as Error).message });
+    } finally {
+      checking = false;
+    }
+  };
+  const minutes = app.cfg.entra.accountCheckMinutes ?? 0;
+  const t5 = deps.entra && minutes > 0 ? setInterval(() => void accounts(), minutes * 60_000) : null;
+  if (t5) void accounts();
   const t1 = setInterval(() => void tick(), intervalMs);
   // Stündlich: Fristen der Freigaben, Aufbewahrung, Sitzungen
   const t2 = setInterval(housekeeping, 3600_000);
@@ -61,6 +92,8 @@ export function startWorker(app: App, intervalMs = 2000): () => void {
     clearInterval(t1);
     clearInterval(t2);
     if (t3) clearInterval(t3);
+    if (t4) clearInterval(t4);
+    if (t5) clearInterval(t5);
   };
 }
 
@@ -71,7 +104,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const cfg = loadConfig();
   setLogLevel(cfg.logLevel);
   const app = createApp(cfg);
-  const stop = startWorker(app);
+  const { EntraClient } = await import('./auth/oidc.ts');
+  const entra = cfg.entra.enabled && (cfg.entra.accountCheckMinutes ?? 0) > 0 ? new EntraClient(cfg) : undefined;
+  const stop = startWorker(app, 2000, { entra });
   log.info('Worker gestartet', { version: cfg.version });
   const shutdown = () => { stop(); setTimeout(() => { app.db.close(); process.exit(0); }, 500); };
   process.on('SIGTERM', shutdown);

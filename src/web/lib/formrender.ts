@@ -72,7 +72,8 @@ export function renderForm(def: FormDefinition, opts: { preview?: boolean; searc
       case 'file': {
         const list = h('ul', { class: 'file-list' });
         const max = f.maxFiles ?? 3;
-        const accept = (f.accept?.length ? f.accept : (['pdf', 'image', 'office', 'text'] as FileKind[])).map((k) => ACCEPT[k]).join(',');
+        const accept = (f.accept?.length ? f.accept : (['pdf', 'image', 'office', 'text'] as FileKind[])).map((k) => ACCEPT[k]).join(',')
+          .split(',').filter((x) => !(f.noLegacyOffice && ['.doc', '.xls', '.msg'].includes(x))).join(',');
         const inputEl = h('input', { id, attrs: { type: 'file', multiple: max > 1, accept, class: 'visually-hidden' } });
         const drawList = () => {
           list.replaceChildren(...(files[f.id] ?? []).map((file, i) => h('li', null,

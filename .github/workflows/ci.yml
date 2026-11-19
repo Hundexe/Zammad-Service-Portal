@@ -1,9 +1,17 @@
 # Prüfungen: Typen, Tests (inkl. Sicherheitstests), Docker-Build, Image- und Konfigurations-Scan.
-# Läuft NUR auf Knopfdruck (Actions → CI → Run workflow), damit kein Actions-Guthaben verbraucht wird.
+# Läuft bei jedem Push auf main, bei Pull Requests und auf Knopfdruck (für öffentliche Repos kostenlos).
+# Alle Actions sind auf Commit-SHAs festgelegt (Version im Kommentar); Dependabot schlägt Updates vor.
 name: CI
 
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -13,8 +21,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
       - run: npm install --no-package-lock --no-audit --no-fund
@@ -27,7 +37,9 @@ jobs:
     timeout-minutes: 30
     needs: test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Dockerfiles prüfen (hadolint)
         run: |
           docker run --rm -i hadolint/hadolint:v2.12.0 < Dockerfile
@@ -48,14 +60,14 @@ jobs:
           docker logs portal | tail -20
           [ "$(docker inspect -f '{{.State.Health.Status}}' portal)" = healthy ]
       - name: Schwachstellen-Scan (Trivy)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: zammad-service-portal:ci
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '1'
       - name: Konfigurations-Scan (Trivy)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: config
           scan-ref: .

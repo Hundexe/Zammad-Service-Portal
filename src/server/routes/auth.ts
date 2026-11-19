@@ -367,21 +367,25 @@ export function registerAuthRoutes(router: Router, app: App, deps: ServerDeps): 
         const sess = app.db.get<{ user_id: string }>('SELECT user_id FROM sessions WHERE id_hash = ?', tx.sessionHash ?? '');
         if (!sess) return fail('stepup_ohne_sitzung');
         const row = getUser(app.db, sess.user_id)!;
-        if (row.entra_oid !== claims.oid) return fail('stepup_anderer_benutzer');
+        if (row.entra_oid !== claims.oid || (row.tenant_id && row.tenant_id.toLowerCase() !== claims.tid.toLowerCase())) return fail('stepup_anderer_benutzer');
         // Gruppen, Rollen und Profil bei jeder Bestätigung frisch aus Entra übernehmen – wer eine Admin-Gruppe
         // verloren hat, bekommt die Rechte nicht durch eine Bestätigung zurück.
-        const fresh = upsertEntraUser(app.db, claims, profile, vet);
+        const fresh = upsertEntraUser(app.db, claims, profile, vet, app.cfg.entra.tenantId);
         if (fresh.disabled) {
           app.db.run('DELETE FROM sessions WHERE user_id = ?', fresh.id);
           return fail('deaktiviert');
         }
-        app.db.run('UPDATE sessions SET auth_time = ?, mfa = 1 WHERE id_hash = ?', Date.now(), tx.sessionHash!);
-        audit(app.db, actor(ctx, row), { action: 'stepup.success', targetType: 'user', targetId: row.id, details: { method: 'entra' } });
+        // Als „MFA“ gilt die Sitzung nur, wenn der Authentifizierungskontext im Token belegt ist (siehe oidc.ts) –
+        // ohne ihn entscheidet allein der bedingte Zugriff in Entra, und das Portal behauptet nichts.
+        const mfa = Boolean(app.cfg.entra.stepupAuthContext);
+        app.db.run('UPDATE sessions SET auth_time = ?, mfa = ? WHERE id_hash = ?', Date.now(), mfa ? 1 : 0, tx.sessionHash!);
+        audit(app.db, actor(ctx, row), { action: 'stepup.success', targetType: 'user', targetId: row.id, details: { method: 'entra', authContext: app.cfg.entra.stepupAuthContext ?? null } });
         return redirect(ctx, tx.returnTo);
       }
-      const row = upsertEntraUser(app.db, claims, profile, vet);
+      const row = upsertEntraUser(app.db, claims, profile, vet, app.cfg.entra.tenantId);
       if (row.disabled) return fail('deaktiviert');
-      createSession(app, ctx, row.id, { state: 'active', mfa: true, authTime: Date.now() });
+      // mfa: false – ob Microsoft einen zweiten Faktor verlangt hat, steht nicht im Token (bedingter Zugriff in Entra).
+      createSession(app, ctx, row.id, { state: 'active', mfa: false, authTime: Date.now() });
       audit(app.db, actor(ctx, row), { action: 'login.success', targetType: 'user', targetId: row.id, details: { method: 'entra', tenant: claims.tid } });
       redirect(ctx, tx.returnTo);
     } catch (err) {

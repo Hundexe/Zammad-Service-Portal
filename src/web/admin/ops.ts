@@ -139,8 +139,26 @@ export async function auditPage(_p: Record<string, string>, q: URLSearchParams) 
   return host;
 }
 
+/** „Nur benachrichtigen“: neue Versionen ohne Installationsknopf, mit der Anleitung für das manuelle Update */
+function notifyPanel(versions: string[], native: boolean, checkedAt: number | null): HTMLElement {
+  const v = versions[0] ?? 'X.Y.Z';
+  const cmd = native
+    ? `cd /opt/zammad-service-portal\ngit fetch --tags\ngit -c gpg.ssh.allowedSignersFile=/etc/zammad-service-portal/allowed_signers verify-tag v${v}\nsudo service-portal-cli backup\ngit checkout v${v}\nsudo deploy/native/install.sh`
+    : `cd /opt/zammad-service-portal\ngit fetch --tags\ngit -c gpg.ssh.allowedSignersFile=deploy/allowed_signers verify-tag v${v}\ncd deploy\ndocker compose exec app /nodejs/bin/node src/server/cli.ts backup --out /data/backups/vor-update.sqlite\ngit checkout v${v}\nsed -i 's/^APP_VERSION=.*/APP_VERSION=${v}/' .env\ndocker compose build && docker compose up -d`;
+  return h('section', { class: 'panel' },
+    h('h2', null, 'Nur Benachrichtigung'),
+    h('p', { class: 'muted small' }, 'Der Update-Dienst ist nicht eingerichtet. Das Portal prüft selbst (ohne besondere Rechte), ob es eine neue Version gibt – installiert wird von Hand auf dem Server. ', checkedAt ? `Zuletzt geprüft: ${relTime(checkedAt)}` : 'Die erste Prüfung folgt in Kürze.'),
+    versions.length
+      ? h('div', { class: 'stack' },
+        notice('info', `Neue Version verfügbar: ${versions.join(', ')}`),
+        h('p', null, 'So aktualisieren (vorher am besten einen Snapshot der VM anlegen):'),
+        h('pre', { class: 'policy-json' }, cmd),
+        h('p', { class: 'muted small' }, 'Ausführlich: docs/UPDATES.md › „Manuell aktualisieren“. Die Signaturprüfung (verify-tag) muss „Good signature“ melden.'))
+      : h('p', null, checkedAt ? 'Das Portal ist aktuell.' : 'Noch keine Prüfung.'));
+}
+
 export async function updatesPage() {
-  const d = await get<{ runningVersion: string; installMode?: 'docker' | 'native'; currentVersion: string; latestVersion: string | null; available: string[]; changelog: string; checkedAt: number | null; lastError: string | null; updaterOnline: boolean; jobs: { id: string; requestedBy: string; targetVersion: string; status: string; log: string; createdAt: number; finishedAt: number | null }[] }>('/api/admin/updates');
+  const d = await get<{ runningVersion: string; installMode?: 'docker' | 'native'; currentVersion: string; latestVersion: string | null; available: string[]; changelog: string; checkedAt: number | null; lastError: string | null; updaterOnline: boolean; notifyOnly?: boolean; notifyVersions?: string[]; jobs: { id: string; requestedBy: string; targetVersion: string; status: string; log: string; createdAt: number; finishedAt: number | null }[] }>('/api/admin/updates');
   const newer = d.available.filter((v) => v !== d.runningVersion);
   const native = d.installMode === 'native';
   // Ohne Prüfung oder ohne veröffentlichte Versionen nicht „aktuell“ behaupten
@@ -150,11 +168,13 @@ export async function updatesPage() {
         : 'Das Portal ist aktuell.';
   return h('div', null,
     pageHead('Updates', `Installiert: Version ${d.runningVersion}`, can('update.install') ? [button('Jetzt nach Updates suchen', async () => { await post('/api/admin/updates/check'); toast('Der Updater prüft in Kürze'); })] : []),
-    !d.updaterOnline ? notice('warn', native
+    d.notifyOnly ? notifyPanel(d.notifyVersions ?? [], native, d.checkedAt) : null,
+    !d.updaterOnline && !d.notifyOnly ? notice('warn', native
       ? 'Der Update-Dienst meldet sich nicht. Auf dem Server prüfen: „systemctl status zammad-service-portal-updater“. Fehlt der Dienst (Installation vor 1.8.0), einmal den Installationsbefehl erneut ausführen – danach gehen Updates hier über die Verwaltung.'
       : 'Der Update-Dienst meldet sich nicht. Läuft der Container „updater“ (COMPOSE_PROFILES mit „updater“)? Siehe docs/UPDATES.md.') : null,
     d.lastError ? notice('error', `Letzte Prüfung: ${d.lastError}`) : null,
-    h('section', { class: 'panel' },
+    // Ohne Update-Dienst gibt es nichts per Klick zu installieren – die Liste stammt dann nur aus früheren Prüfungen
+    d.notifyOnly ? null : h('section', { class: 'panel' },
       h('h2', null, 'Verfügbare Versionen'),
       h('p', { class: 'muted small' }, d.checkedAt ? `Zuletzt geprüft ${relTime(d.checkedAt)}` : 'Noch nicht geprüft'),
       newer.length ? table(newer.map((v) => ({ v })), [

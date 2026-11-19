@@ -24,6 +24,12 @@ export const DOCS: { file: string; page: string; name: string; hint: string }[] 
 /** Prüfberichte, neueste zuerst (sortiert nach Datum). Funde und Stand werden aus den Tabellen der Berichte gezählt. */
 export const AUDITS: { file: string; page: string; name: string; kind: string; date: string; dateText: string; version: string; scope: string; summary?: string }[] = [
   {
+    file: 'REVIEW-2026-11.md', page: 'review-2026-11', name: 'Zweites externes Review', kind: 'Review',
+    date: '2026-11-19', dateText: '19.11.2026', version: 'Version 1.13.0, umgesetzt in 1.14.0',
+    scope: 'Anmeldung, Rechte, Zammad-Anbindung, Uploads, SSRF, Freigaben, Import und Export, Updater, Container und CI – dazu eine Meldung zu App-Rollen bei mehreren Tenants.',
+    summary: 'Keine klassische Lücke gefunden. Behoben: Rechteausweitung über App-Rollen aus einem Partner-Tenant. Dazu Härtungen ohne Einschränkung des Portals: Actions auf Commit-SHAs, Hinweise bei fehlenden Einstellungen, „nur benachrichtigen“ statt Update-Dienst, optional MFA-Nachweis im Token und Kontoprüfung in Entra.',
+  },
+  {
     file: 'SICHERHEITSTEST-2026-10-28.md', page: 'sicherheitstest-2026-10-28', name: 'Sicherheitstest der neuen Funktionen', kind: 'Sicherheitstest',
     date: '2026-10-28', dateText: '28.10.2026', version: 'Version 1.8.0, Korrekturen bis 1.10.2',
     scope: 'Gesamter Quellcode und laufende Instanz hinter Caddy mit TLS. Schwerpunkt: Freigabe durch Vorgesetzte, Benachrichtigungen, Personensuche, Export und Import, Update-Dienst ohne Docker.',

@@ -83,6 +83,8 @@ export interface FormField {
   maxFiles?: number;
   maxSizeMb?: number;
   accept?: FileKind[];
+  /** Ältere Office-Formate (.doc, .xls, .msg – können Makros enthalten) ablehnen. Standard: erlaubt. */
+  noLegacyOffice?: boolean;
   /** Name des freigegebenen Zammad-Ticket-Attributs (Feldtyp "zammad") */
   attribute?: string;
   /** Teilmenge der erlaubten Werte des Zammad-Attributs (leer = alle freigegebenen) */
@@ -339,6 +341,7 @@ export function validateDefinition(def: unknown): string[] {
     if (f.maxFiles !== undefined && (!Number.isInteger(f.maxFiles) || f.maxFiles < 1 || f.maxFiles > LIMITS.maxFilesPerField)) problems.push(`${where}: 1–${LIMITS.maxFilesPerField} Dateien`);
     if (f.maxSizeMb !== undefined && (typeof f.maxSizeMb !== 'number' || f.maxSizeMb <= 0 || f.maxSizeMb > LIMITS.maxFileSizeMb)) problems.push(`${where}: Dateigröße bis ${LIMITS.maxFileSizeMb} MB`);
     if (f.accept !== undefined && (!Array.isArray(f.accept) || f.accept.some((k) => !(FILE_KINDS as readonly string[]).includes(k)))) problems.push(`${where}: unbekannter Dateityp`);
+    if (f.noLegacyOffice !== undefined && typeof f.noLegacyOffice !== 'boolean') problems.push(`${where}: Einstellung „ältere Office-Formate“ ungültig`);
     if (f.type === 'zammad' && !/^[a-z][a-z0-9_]{0,60}$/.test(f.attribute ?? '')) problems.push(`${where}: Zammad-Attribut fehlt`);
     if (f.allowedValues !== undefined && (!Array.isArray(f.allowedValues) || f.allowedValues.some((v) => typeof v !== 'string'))) problems.push(`${where}: erlaubte Werte ungültig`);
     if (f.groups !== undefined && (!Array.isArray(f.groups) || f.groups.some((g) => typeof g !== 'string' || g.length > 200))) problems.push(`${where}: Gruppen ungültig`);

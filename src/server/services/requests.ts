@@ -148,7 +148,7 @@ export async function submitRequest(
     if (result.values[f.id] === undefined) continue;
     const list = input.files[f.id] ?? [];
     const sizeLimit = Math.min(f.maxSizeMb ?? 10, LIMITS.maxFileSizeMb, app.cfg.upload.maxFileMb) * 1024 * 1024;
-    const files = await checkFiles(app, list, f.accept, sizeLimit);
+    const files = await checkFiles(app, list, f.accept, sizeLimit, { noLegacyOffice: f.noLegacyOffice === true });
     for (const file of files) {
       total += file.data.length;
       checked.push({ fieldId: f.id, file });

@@ -65,7 +65,12 @@ export function decodeBase64Strict(s: unknown): Buffer {
 }
 
 /** Prüft Dateien eines Feldes: Inhaltstyp, erlaubte Arten, Virenscan. */
-export async function checkFiles(app: App, files: IncomingFile[], accept: FileKind[] | undefined, maxBytes: number): Promise<CheckedFile[]> {
+/** Ältere Office-Formate (OLE: .doc, .xls, .msg) – können Makros bzw. eingebettete Objekte enthalten */
+export function isLegacyOffice(mime: string): boolean {
+  return Object.values(OFFICE_OLE).includes(mime);
+}
+
+export async function checkFiles(app: App, files: IncomingFile[], accept: FileKind[] | undefined, maxBytes: number, opts: { noLegacyOffice?: boolean } = {}): Promise<CheckedFile[]> {
   const out: CheckedFile[] = [];
   for (const f of files) {
     const filename = safeFilename(String(f?.name ?? ''));
@@ -75,6 +80,7 @@ export async function checkFiles(app: App, files: IncomingFile[], accept: FileKi
     const s = sniff(data, filename);
     if (!s) throw new HttpError(422, `Dateityp von „${filename}“ ist nicht erlaubt`, 'bad_file');
     if (accept && accept.length && !accept.includes(s.kind)) throw new HttpError(422, `„${filename}“: dieser Dateityp ist hier nicht erlaubt`, 'bad_file');
+    if (opts.noLegacyOffice && isLegacyOffice(s.mime)) throw new HttpError(422, `„${filename}“: ältere Office-Formate (.doc, .xls, .msg) sind hier nicht erlaubt – bitte als .docx, .xlsx oder PDF speichern`, 'bad_file');
     await scan(app, data, filename);
     out.push({ filename, mime: s.mime, kind: s.kind, data });
   }

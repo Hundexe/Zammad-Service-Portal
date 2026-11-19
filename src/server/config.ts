@@ -76,6 +76,14 @@ export interface Config {
     graphUrl: string;
     /** Wie lange die Signaturschlüssel von Microsoft höchstens ohne erfolgreiche Erneuerung genutzt werden (Stunden) */
     jwksMaxStaleHours?: number;
+    /**
+     * Authentifizierungskontext für Bestätigungen (Step-up), z. B. „c1“ (ENTRA_STEPUP_AUTH_CONTEXT). Gesetzt: Das Portal
+     * fordert ihn bei Microsoft an und prüft den Claim „acrs“ im ID-Token – so ist belegt, dass die Richtlinie des
+     * bedingten Zugriffs (z. B. MFA) gegriffen hat. Leer = aus.
+     */
+    stepupAuthContext?: string;
+    /** Alle N Minuten über Graph prüfen, ob die Konten mit offener Sitzung in Entra noch aktiv sind (0 = aus) */
+    accountCheckMinutes?: number;
   };
   clamav: { host?: string; port: number; required: boolean };
   /** Obergrenzen für Uploads (MB). Formulare können kleiner, aber nie größer einstellen. */
@@ -98,6 +106,11 @@ export interface Config {
   version: string;
   /** docker = Docker Compose, native = deploy/native/install.sh (systemd) */
   installMode: 'docker' | 'native';
+  /**
+   * Nur benachrichtigen: Ohne Update-Dienst prüft der Worker (ohne besondere Rechte) selbst, ob es eine neue Version gibt,
+   * und zeigt sie in der Verwaltung an. Installiert wird manuell. (UPDATE_NOTIFY, Quelle UPDATE_NOTIFY_URL)
+   */
+  updateNotify?: { enabled: boolean; url: string };
 }
 
 export function loadConfig(overrides: Partial<Config> = {}): Config {
@@ -153,6 +166,9 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
       authority: (process.env.ENTRA_AUTHORITY ?? 'https://login.microsoftonline.com').replace(/\/$/, ''),
       graphUrl: (process.env.ENTRA_GRAPH_URL ?? 'https://graph.microsoft.com').replace(/\/$/, ''),
       jwksMaxStaleHours: range('ENTRA_JWKS_MAX_STALE_HOURS', 72, 25, 168, errors),
+      stepupAuthContext: authContext(errors),
+      // 0 = aus (Standard), sonst 5 bis 1440 Minuten
+      accountCheckMinutes: int('ENTRA_ACCOUNT_CHECK_MINUTES', 0) === 0 ? 0 : range('ENTRA_ACCOUNT_CHECK_MINUTES', 0, 5, 1440, errors),
     },
     clamav: {
       host: process.env.CLAMAV_HOST || undefined,
@@ -183,6 +199,10 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     ticketWatchSeconds: process.env.TICKET_WATCH_SECONDS === '0' ? 0 : range('TICKET_WATCH_SECONDS', 60, 15, 3600, errors),
     version: process.env.APP_VERSION ?? readVersion(),
     installMode: process.env.INSTALL_MODE === 'native' || (!process.env.INSTALL_MODE && !existsSync('/.dockerenv') && !!process.env.PORTAL_DIR) ? 'native' : 'docker',
+    updateNotify: {
+      enabled: bool('UPDATE_NOTIFY', false),
+      url: notifyUrl(errors),
+    },
     ...overrides,
   };
   if (errors.length) throw new Error(`Konfiguration ungültig (deploy/.env):\n  - ${errors.join('\n  - ')}`);
@@ -190,6 +210,21 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     throw new Error('Für Entra ID wird ENTRA_CLIENT_SECRET_FILE oder ENTRA_CERT_PRIVATE_KEY_FILE benötigt');
   }
   return cfg;
+}
+
+/** Authentifizierungskontext von Entra: c1 bis c99 */
+function authContext(errors: string[]): string | undefined {
+  const v = (process.env.ENTRA_STEPUP_AUTH_CONTEXT ?? '').trim();
+  if (!v) return undefined;
+  if (!/^c([1-9]|[1-9][0-9])$/.test(v)) errors.push(`ENTRA_STEPUP_AUTH_CONTEXT=${v} ist nicht erlaubt (c1 bis c99)`);
+  return v;
+}
+
+/** Quelle für „nur benachrichtigen“: nur https (die Antwort steuert nur eine Anzeige, nie eine Installation) */
+function notifyUrl(errors: string[]): string {
+  const v = process.env.UPDATE_NOTIFY_URL || 'https://api.github.com/repos/Hundexe/Zammad-Service-Portal/tags?per_page=100';
+  if (!/^https:\/\/[^\s]+$/.test(v)) errors.push('UPDATE_NOTIFY_URL muss mit https:// beginnen');
+  return v;
 }
 
 function cidrList(name: string, errors: string[]): string[] {

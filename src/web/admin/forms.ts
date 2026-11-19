@@ -383,6 +383,7 @@ export async function formEditorPage(p: Record<string, string>) {
           label: 'Freigeben dürfen nur Mitglieder dieser Gruppen',
           help: 'Entra-Gruppen (Objekt-IDs) oder App-Rollen (approle:…), z. B. die Gruppe der Führungskräfte. Leer = jedes Microsoft-Konto. Verhindert Freigaben über ein eigenes Zweitkonto.',
         }) : null,
+        f.approverGroups?.length ? null : notice('warn', 'Ohne Gruppen kann jedes Konto freigeben – auch eine beliebige Kollegin oder ein eigenes Zweitkonto. Empfohlen: in der erweiterten Ansicht unter „Freigeben dürfen nur Mitglieder dieser Gruppen“ die Gruppe der Führungskräfte eintragen.'),
         h('p', { class: 'small muted' }, 'Das Feld ist immer Pflicht, sobald es sichtbar ist. Mit „Nur anzeigen, wenn …“ lässt sich die Freigabe auf bestimmte Fälle beschränken, z. B. nur bei teurer Hardware.'));
     }
     if (f.type !== 'info' && f.type !== 'approver') {
@@ -419,7 +420,11 @@ export async function formEditorPage(p: Record<string, string>) {
         const set = new Set(f.accept?.length ? f.accept : FILE_KINDS);
         x ? set.add(k) : set.delete(k);
         f.accept = set.size === FILE_KINDS.length ? undefined : [...set];
-      })))));
+      }))),
+      !f.accept?.length || f.accept.includes('office')
+        ? checkbox(f.noLegacyOffice === true, 'Ältere Office-Formate (.doc, .xls, .msg) ablehnen', (x) => upd(() => { f.noLegacyOffice = x || undefined; }),
+          'Diese Formate können Makros oder eingebettete Objekte enthalten. Moderne Formate (.docx, .xlsx) und PDF bleiben erlaubt. Für weitergeleitete E-Mails (.msg, z. B. Phishing-Meldungen) eingeschaltet lassen.')
+        : null));
     }
     if (f.type === 'zammad') {
       items.push(attr ? notice('info', `Schreibt in das Zammad-Feld „${attr.name}“ (${attr.type}). Optionen kommen live aus Zammad.`) : notice('warn', `Zammad-Attribut „${f.attribute}“ ist nicht (mehr) freigegeben – das Feld wird im Portal nicht angezeigt.`));

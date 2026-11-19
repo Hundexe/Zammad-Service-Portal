@@ -156,7 +156,20 @@ Der Rückweg ist nötig, weil neuere Versionen die Datenbank migrieren können; 
 
 Wer nicht auf der VM bauen möchte: `UPDATE_SOURCE=registry` und `REGISTRY_IMAGE=ghcr.io/hundexe/zammad-service-portal`. Die Images entstehen dann mit dem Workflow **Release-Images** (nur auf Knopfdruck) und werden schlüssellos mit cosign signiert. Der Updater prüft die Signatur mit `cosign verify` gegen die Identität des Workflows. Für ein privates Repository braucht die VM ein Token mit `read:packages` (`REGISTRY_USER`, `REGISTRY_TOKEN_FILE`).
 
+## Nur benachrichtigen (ohne Update-Dienst)
+
+Wer den Update-Dienst nicht betreiben will, aber wissen möchte, wann es eine neue Version gibt: `UPDATE_NOTIFY=true` in `.env` bzw. `portal.env` (der Installer fragt das ab, wenn man den Update-Dienst ablehnt). Dann prüft der Worker – **ohne** besondere Rechte – alle 6 Stunden (oder sofort mit „Jetzt nach Updates suchen“), welche Versions-Tags es im Repository gibt. Die Verwaltung zeigt unter **Updates** neue Versionen und die Befehle für das [manuelle Update](#manuell-aktualisieren-ohne-updater) an. Installieren lässt sich darüber nichts: Die Liste installierbarer Versionen pflegt allein der Update-Dienst nach Prüfung der Signatur.
+
+| Einstellung | Standard | Bedeutung |
+| --- | --- | --- |
+| `UPDATE_NOTIFY` | `false` | nur benachrichtigen |
+| `UPDATE_NOTIFY_URL` | GitHub-API, Tags dieses Repositorys | eigene Quelle (z. B. ein Fork); nur `https://` |
+
+Läuft der Update-Dienst, prüft er selbst (mit Signatur) – die Benachrichtigung hält sich dann heraus.
+
 ## Sicherheit des Updaters
+
+> **Kurz und ehrlich:** Der Update-Dienst ist **root-gleichwertig** – mit Docker über den Socket-Proxy (siehe unten), ohne Docker läuft er ohnehin als root. Wer ihn betreibt, vertraut damit jedem, der einen gültig signierten Release-Tag erzeugen kann: Ein signierter Tag darf auf dem Server Code als root ausführen. Der Signaturschlüssel gehört deshalb offline bzw. auf einen Hardware-Schlüssel, und `allowed_signers` sollte nur die Schlüssel enthalten, denen ihr dieses Vertrauen gebt. Wer das nicht will: Update-Dienst weglassen und [nur benachrichtigen](#nur-benachrichtigen-ohne-update-dienst) – Updates dann von Hand nach Prüfung.
 
 - Der Updater hat **keinen** offenen Port. Er liest nur Aufträge aus der Datenbank, die ausschließlich Benutzer mit dem Recht `update.install` nach frischer Anmeldung anlegen können, und nur für Versionen, die er selbst gefunden hat.
 - Versionsangaben werden streng geprüft (`x.y.z`); Befehle werden ohne Shell ausgeführt.
@@ -175,4 +188,4 @@ Wer nicht auf der VM bauen möchte: `UPDATE_SOURCE=registry` und `REGISTRY_IMAGE
   1. Am sichersten: Profil `updater` weglassen und manuell aktualisieren (Go-Live-Empfehlung für den Start).
   2. Mit Updater: fertige, signierte Images aus der Registry nutzen (`UPDATE_SOURCE=registry`) und `UPDATER_ALLOW_BUILD=0` setzen – dann fällt das Bauen über die API weg.
   3. Die Docker-VM nur für das Portal nutzen, damit „root auf der VM“ nichts anderes betrifft.
-- Ohne Docker gibt es keinen Socket-Proxy; dort läuft der Update-Dienst als systemd-Dienst (siehe [Installation ohne Docker](#installation-ohne-docker)).
+- Ohne Docker gibt es keinen Socket-Proxy; dort läuft der Update-Dienst als systemd-Dienst **als root** (er muss Pakete bauen und Dienste neu starten; siehe [Installation ohne Docker](#installation-ohne-docker)). Abschalten mit `UPDATER_ENABLED=false` in `portal.env` und `install.sh` erneut ausführen – oder bei der Installation „nein“ wählen.

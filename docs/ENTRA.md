@@ -181,8 +181,8 @@ So hinzufügen:
 
 **Nicht** hinzufügen:
 
-- **keine Anwendungsberechtigungen**;
-- kein `User.Read.All`, `Directory.Read.All`, `GroupMember.Read.All` o. Ä.;
+- **keine Anwendungsberechtigungen** (einzige, optionale Ausnahme: `User.Read.All` für die Kontoprüfung in [Schritt 11.2](#112-optional-in-entra-deaktivierte-konten-sofort-aussperren));
+- kein `Directory.Read.All`, `GroupMember.Read.All` o. Ä.;
 - kein `offline_access` – das Portal braucht kein Refresh-Token.
 
 Die Gruppen kommen über das Token (Schritt 8), nicht über Graph.
@@ -238,6 +238,8 @@ Statt (oder zusätzlich zu) Gruppen lassen sich **App-Rollen** nutzen. Sie gelte
 
 Im Portal heißen sie dann `approle:Portal.Admin`, `approle:Portal.Formulare` und werden in [Schritt 14](#14-rechte-im-portal-an-entra-gruppen-vergeben) wie eine Gruppe eingetragen.
 
+> **Bei zwei Tenants:** App-Rollen sind nur Namen. Jeder Administrator eines erlaubten Tenants kann seinen Leuten in *seiner* Unternehmensanwendung jede Rolle der App zuweisen. Deshalb gilt `approle:Portal.Admin` nur für Konten aus dem Tenant der App (`ENTRA_TENANT_ID`). Rollen aus dem zweiten Tenant heißen im Portal `approle:<Tenant-ID-2>:Portal.Admin` und wirken nur, wenn ihr sie **genau so** zuordnet – so entscheidet ihr im Portal, ob der zweite Tenant über App-Rollen Rechte vergeben darf. Gruppen sind davon nicht betroffen: Ihre Objekt-IDs sind über alle Tenants eindeutig.
+
 ---
 
 ## 10. Unternehmensanwendung: wer darf sich anmelden
@@ -276,6 +278,28 @@ Das Portal verlässt sich bei Microsoft-Konten auf die Mehrfaktor-Anmeldung von 
 6. Erst **Nur Bericht**, nach einem Test **Ein**.
 
 Gibt es bereits eine Richtlinie „MFA für alle Apps“, deckt die das Portal mit ab.
+
+### 11.1 Optional: MFA bei Bestätigungen im Token belegen (Authentifizierungskontext)
+
+Ohne diesen Schritt **vertraut** das Portal darauf, dass die Richtlinie greift – im Token steht nicht, ob ein zweiter Faktor verlangt wurde. Mit einem *Authentifizierungskontext* fordert das Portal bei jeder Bestätigung (Step-up, z. B. vor Änderungen an Rollen, Benutzern, Zugangsdaten und Updates) ausdrücklich an, dass eine bestimmte Richtlinie erfüllt ist, und prüft das im ID-Token (Claim `acrs`). Fehlt der Nachweis, scheitert die Bestätigung. Braucht Entra ID P1.
+
+1. **Schutz → Bedingter Zugriff → Authentifizierungskontext → Neuer Authentifizierungskontext**: Name z. B. „Portal-Verwaltung“, ID `c1`, **Für Apps veröffentlichen** anhaken.
+2. Neue Richtlinie wie oben, aber unter **Zielressourcen** statt der App **Authentifizierungskontext → Portal-Verwaltung** wählen; **Gewähren → Mehrstufige Authentifizierung erforderlich** (oder eine Authentifizierungsstärke wie „Phishing-resistente MFA“).
+3. App-Registrierung → **Tokenkonfiguration → Optionalen Anspruch hinzufügen → ID → `acrs`**.
+4. Im Portal: `ENTRA_STEPUP_AUTH_CONTEXT=c1` setzen und neu starten.
+
+Testen: in der Verwaltung eine kritische Aktion auslösen (z. B. Rollen öffnen und speichern) – Microsoft verlangt den zweiten Faktor, das Audit-Log zeigt bei `stepup.success` den Kontext. Scheitert die Bestätigung mit „Authentifizierungskontext c1 nicht erfüllt“, fehlt meist Schritt 3 oder die Richtlinie ist noch auf „Nur Bericht“.
+
+### 11.2 Optional: in Entra deaktivierte Konten sofort aussperren
+
+Wird ein Konto in Entra deaktiviert oder gelöscht, ist keine neue Anmeldung mehr möglich – eine schon offene Portal-Sitzung läuft aber bis `SESSION_IDLE_MINUTES` bzw. `SESSION_MAX_HOURS` weiter. Mit `ENTRA_ACCOUNT_CHECK_MINUTES=15` fragt der Worker alle 15 Minuten für alle Konten mit offener Sitzung bei Microsoft Graph nach und beendet die Sitzungen deaktivierter oder gelöschter Konten (Eintrag `user.sessions_ended` im Audit-Log).
+
+Dafür braucht die App **eine** Anwendungsberechtigung – die einzige Ausnahme von der Regel in [Schritt 7](#7-api-berechtigungen):
+
+1. **API-Berechtigungen → Berechtigung hinzufügen → Microsoft Graph → Anwendungsberechtigungen → `User.Read.All`** → **Administratorzustimmung erteilen**. Bei zwei Tenants muss auch der zweite Tenant zustimmen (Admin-Consent-Link aus Schritt 12 erneut aufrufen).
+2. `ENTRA_ACCOUNT_CHECK_MINUTES=15` setzen (5 bis 1440, 0 = aus) und Worker neu starten.
+
+Abwägung: `User.Read.All` erlaubt der App, alle Benutzerprofile des Tenants zu lesen. Das Portal fragt nur `accountEnabled` der Konten mit offener Sitzung ab. Ist Graph nicht erreichbar oder fehlt das Recht, passiert nichts (Warnung im Log).
 
 ---
 
@@ -371,6 +395,8 @@ ENTRA_CERT_THUMBPRINT=<SHA-256-Fingerabdruck>
 | `ENTRA_JWKS_MAX_STALE_HOURS` | 72 | so lange arbeitet das Portal mit den zuletzt geladenen Signaturschlüsseln von Microsoft weiter, wenn Microsoft nicht erreichbar ist |
 | `LOCAL_LOGIN_ENABLED` | `true` | lokale Anmeldung (Notfallkonto) anbieten; mit Microsoft-Anmeldung steht sie eingeklappt unter „Mit lokalem Konto anmelden“ |
 | `STEPUP_MINUTES` | 10 | wie lange eine Bestätigung für kritische Aktionen gilt |
+| `ENTRA_STEPUP_AUTH_CONTEXT` | leer | Authentifizierungskontext (z. B. `c1`), den Bestätigungen nachweisen müssen ([11.1](#111-optional-mfa-bei-bestätigungen-im-token-belegen-authentifizierungskontext)) |
+| `ENTRA_ACCOUNT_CHECK_MINUTES` | 0 (aus) | in Entra deaktivierte Konten nach spätestens so vielen Minuten aussperren ([11.2](#112-optional-in-entra-deaktivierte-konten-sofort-aussperren)) |
 
 Sobald `ENTRA_TENANT_ID` und `ENTRA_CLIENT_ID` gesetzt sind, zeigt die Anmeldeseite **Mit Microsoft anmelden**. Fehlt das Secret bzw. Zertifikat, startet das Portal nicht und sagt im Log, was fehlt.
 

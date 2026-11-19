@@ -165,8 +165,11 @@ cd /opt/zammad-service-portal/deploy
 | HTTPS-Port | 443 | Ist er belegt, schlägt das Skript einen freien vor (z. B. 8443) |
 | HTTP-Port | 80 | Leitet nur auf HTTPS weiter |
 | Virenscanner (ClamAV) | ja ab 4 GB RAM | Braucht etwa 1,5 GB RAM |
-| Updates aus der Oberfläche | nein | Startet den Update-Dienst (siehe [Updates](UPDATES.md)) |
 | Microsoft-Anmeldung | nein | Tenant-ID, Client-ID, erlaubte Tenants, Client-Secret aus Schritt 4. Das Skript zeigt die passende Weiterleitungs-URI an |
+| Admin-Bereich nur aus diesen Netzen | leer (überall) | Optional, Enter überspringt. Z. B. `10.10.0.0/16` – setzt `ADMIN_ALLOWED_CIDRS`. Wer nicht aus diesen Netzen kommt, erreicht die Verwaltung nicht |
+| Hostname eures Zammad | leer (jeder Server) | Optional, Enter überspringt. Z. B. `zammad.firma.intern` – setzt `TICKET_URL_ALLOWED_HOSTS`, das Portal spricht dann nur mit diesem Server |
+| Updates aus der Oberfläche | nein (ohne Docker: ja) | Startet den Update-Dienst – root-gleichwertig, siehe [Updates](UPDATES.md#sicherheit-des-updaters) |
+| Stattdessen nur benachrichtigen | ja | Nur wenn der Update-Dienst abgelehnt wurde: Die Verwaltung zeigt neue Versionen an, Update von Hand (`UPDATE_NOTIFY`) |
 | Erster Admin, normaler Testbenutzer | `admin`, `test.user` | Beide bekommen ein generiertes Passwort |
 
 `PUBLIC_URL` und `PORTAL_DIR` setzt das Skript selbst. Beim erneuten Aufruf fragt es, ob die Einstellungen geändert werden sollen; Schlüssel, Daten und Benutzer bleiben erhalten. Für Automatisierung gibt es `./install.sh --ja`: keine Rückfragen, alle Werte aus `deploy/.env`.

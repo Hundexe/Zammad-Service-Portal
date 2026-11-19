@@ -1,5 +1,23 @@
 # Änderungen
 
+## 1.14.0 – 19.11.2026
+
+Härtungen aus dem zweiten externen Review ([REVIEW-2026-11.md](docs/REVIEW-2026-11.md)). Alles ohne Einschränkung des Portals: Neue Schutzfunktionen, die etwas am Ablauf ändern würden, sind Optionen.
+
+- **Sicherheit – App-Rollen bei mehreren Tenants:** App-Rollen aus einem weiteren erlaubten Tenant heißen jetzt `approle:<Tenant-ID>:Name` und wirken nur bei genau so lautender Zuordnung. Bisher konnte der Administrator eines Partner-Tenants seinen Leuten über eine gleichnamige App-Rolle Portal-Rechte geben. `approle:Name` gilt weiter für den Tenant der App – bestehende Zuordnungen bleiben gültig. Ältere Einträge werden beim Start umbenannt.
+- Konten werden über `oid` **und** Tenant erkannt; dieselbe `oid` aus einem anderen Tenant übernimmt kein Konto. Bestätigungen prüfen auch den Tenant.
+- **CI und Lieferkette:** alle GitHub Actions auf Commit-SHAs, Trivy-Action auf eine Version nach dem Vorfall vom März 2026, Dependabot für Actions, Basis-Images und Entwicklungs-Pakete, CI bei Push und Pull Request
+- **Nur benachrichtigen** (`UPDATE_NOTIFY=true`): ohne Update-Dienst zeigt die Verwaltung neue Versionen mit den Befehlen für das manuelle Update; der Installer bietet das an, wenn der Update-Dienst abgelehnt wird
+- Doku: Der Update-Dienst ist root-gleichwertig, ein signierter Release-Tag darf damit Code als root ausführen. `deploy/.env.example` an den Installer angeglichen (ohne `updater`); die Installation ohne Docker fragt den Update-Dienst jetzt ebenfalls ab
+- **Optional – MFA-Nachweis:** `ENTRA_STEPUP_AUTH_CONTEXT` (z. B. `c1`) fordert bei Bestätigungen einen Authentifizierungskontext an und prüft den Claim `acrs`. Microsoft-Sitzungen gelten nur noch mit Nachweis als „MFA“
+- **Optional – Kontoprüfung:** `ENTRA_ACCOUNT_CHECK_MINUTES` beendet die Sitzungen von Konten, die in Entra deaktiviert oder gelöscht wurden
+- **Optional – ältere Office-Formate:** Datei-Felder können .doc, .xls und .msg ablehnen (Standard: erlaubt)
+- Hinweise in der Verwaltung: fehlendes `TICKET_URL_ALLOWED_HOSTS`, fehlendes `ADMIN_ALLOWED_CIDRS`, Freigabe-Feld ohne Gruppen (auch im Formular-Editor); Benutzer-Seite zeigt, was das Portal bei Microsoft-Konten selbst prüft
+- Installer fragt (überspringbar) Admin-Netz und Zammad-Hostnamen ab
+- Import: nicht lesbare alte Zammad-Adresse gilt als geändert – das alte Token wird nicht weiterverwendet (wie beim Speichern)
+- Doku: Hauptschlüssel nie zusammen mit den Sicherungen ablegen
+- 11 neue Tests (352)
+
 ## 1.13.0 – 30.10.2026
 
 - **Portal als App (PWA):** Das Portal lässt sich in Edge und Chrome als App installieren – eigenes Fenster, Symbol im Startmenü und in der Taskleiste, Titelleiste in den Farben des Portals, Kurzbefehle „Anfrage stellen“, „Meine Anfragen“ und „Status“. Im Menü unter dem eigenen Namen steht **„Als App installieren“**, unter **Konto und Sicherheit › Als App nutzen** eine Anleitung für jeden Browser (auch Safari auf iPhone und iPad)

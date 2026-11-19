@@ -210,6 +210,7 @@ Der Editor hat vier Reiter:
 | Prüfmuster | regulärer Ausdruck, z. B. `\d{4}` für Kostenstellen |
 | Nur anzeigen, wenn … | Feld erscheint abhängig von einem anderen Feld |
 | Nur für bestimmte Gruppen | Feld nur für Mitglieder bestimmter Entra-Gruppen |
+| Datei: erlaubte Dateitypen | PDF, Bilder, Office-Dokumente, Text/CSV. **Ältere Office-Formate (.doc, .xls, .msg) ablehnen** schließt Formate aus, die Makros oder eingebettete Objekte enthalten können (Standard: erlaubt – z. B. für weitergeleitete Phishing-Mails als .msg) |
 | Übernahme ins Ticket | nur Tickettext, als Tag, bestimmt Gruppe oder Priorität, in ein Zammad-Feld schreiben, **leitet an ein Ticketsystem weiter** (Ansicht „Erweitert“), oder gar nicht |
 
 **Weiterleiten an ein anderes Ticketsystem:** Bei einem Auswahlfeld (eine Auswahl) unter **Übernahme ins Ticket** → **Leitet an ein Ticketsystem weiter** wählen. Für jede Option lässt sich ein Ziel festlegen: ein anderes Ticketsystem und optional eine Gruppe dort. Beispiel: „Wo arbeiten Sie?“ – „Standort Nord“ geht an IT Nord, „Zentrale“ bleibt bei der Zentralen IT.
@@ -239,7 +240,7 @@ Ablauf: **Entwurf speichern** → **Veröffentlichen** (bzw. **Zur Freigabe send
 
 - Das Feld ist immer Pflicht, sobald es sichtbar ist. Mit **Nur anzeigen, wenn …** wird die Freigabe bedingt, z. B. nur bei „Ja, Lizenz nötig“ oder bei einer bestimmten Hardware.
 - **Nur Personen, die sich schon im Portal angemeldet haben:** schützt vor Tippfehlern und erfundenen Adressen.
-- **Freigeben dürfen nur Mitglieder dieser Gruppen:** z. B. die Entra-Gruppe der Führungskräfte. Dann lässt sich die Freigabe nicht über ein eigenes Zweitkonto oder eine beliebige Kollegin erteilen. Die Mitgliedschaft wird beim Eintragen und beim Entscheiden geprüft.
+- **Freigeben dürfen nur Mitglieder dieser Gruppen:** z. B. die Entra-Gruppe der Führungskräfte. Dann lässt sich die Freigabe nicht über ein eigenes Zweitkonto oder eine beliebige Kollegin erteilen. Die Mitgliedschaft wird beim Eintragen und beim Entscheiden geprüft. Ohne Gruppen zeigen Editor und Übersicht der Verwaltung einen Hinweis.
 - Freigeben können nur **Microsoft-Konten**, keine lokalen Konten.
 - **Übernahme ins Ticket:** „Nur im Tickettext“ (Standard) oder „Nicht übernehmen“. Den Vermerk „Freigegeben von … am …“ und den Tag `freigegeben` setzt das Portal immer.
 - Fristen (Erinnerung nach 3, Ablauf nach 14 Tagen) stellt die IT in `deploy/.env` ein ([Betrieb](BETRIEB.md#einstellungen-ändern-deployenv)).
@@ -352,6 +353,10 @@ Listet lokale Konten und alle Microsoft-Benutzer, die sich schon angemeldet habe
 
 **Neues Passwort** setzt ein neues generiertes Passwort (optional auch die Authenticator-App zurück) und beendet alle Sitzungen des Kontos. Gesperrte Konten (nach 5 Fehlversuchen für 15 Minuten) lassen sich hier entsperren.
 
+**Sicherheit bei Microsoft-Konten** (aufklappbar über der Liste) zeigt, was das Portal selbst prüft: ob Bestätigungen einen Authentifizierungskontext (MFA-Nachweis im Token) verlangen und ob in Entra deaktivierte Konten ihre Sitzung sofort verlieren. Beides ist optional, siehe [Microsoft-Anmeldung 11.1 und 11.2](ENTRA.md#111-optional-mfa-bei-bestätigungen-im-token-belegen-authentifizierungskontext).
+
+**App-Rollen bei zwei Tenants:** `approle:Name` gilt nur für Konten aus dem Tenant der App. App-Rollen aus einem weiteren Tenant ordnet man als `approle:<Tenant-ID>:Name` zu – sonst wirken sie nicht.
+
 ### Bestätigung kritischer Aktionen
 
 Für Rollen, Benutzer, Ticketsystem-Zugangsdaten und Updates verlangt das Portal eine frische Anmeldung, wenn die letzte länger als 10 Minuten zurückliegt: bei lokalen Konten Passwort + Code, bei Microsoft-Konten eine erneute Microsoft-Anmeldung.
@@ -392,5 +397,7 @@ Jede Anmeldung und jede Änderung mit Person, Zeit, IP und Vorher/Nachher. Eintr
 ### Updates
 
 Zeigt die installierte und die verfügbaren Versionen. **Auf x.y.z aktualisieren** startet das Update: Signatur prüfen, Datenbank sichern, neue Version bauen und starten. Startet sie nicht sauber, wird automatisch zurückgerollt. Details: [Updates](UPDATES.md).
+
+Ohne Update-Dienst, aber mit **nur benachrichtigen** (`UPDATE_NOTIFY=true`) zeigt die Seite neue Versionen und die Befehle für das Update von Hand – einen Knopf zum Installieren gibt es dann nicht.
 
 ![Updates](screenshots/20-admin-updates.png)

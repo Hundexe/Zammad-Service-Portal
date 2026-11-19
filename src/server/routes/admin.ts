@@ -5,6 +5,7 @@ import { openTitle } from '../services/request-title.ts';
 import { HttpError, type Router, type RouteOptions } from '../http/core.ts';
 import type { AppCtx } from '../server.ts';
 import { parseJson, uuid } from '../db/db.ts';
+import { getFeatures } from '../services/features.ts';
 import { sha256 } from '../crypto.ts';
 import { audit, diff, verifyAuditChain } from '../services/audit.ts';
 import { can, canAnywhere, systemsWith, type AuthUser, type Permissions } from '../services/rbac.ts';
@@ -171,9 +172,17 @@ export function registerAdminRoutes(router: Router, app: App): void {
     if (!app.clamav) warnings.push('Kein Virenscanner (ClamAV) konfiguriert.');
     if (app.cfg.localLogin && !app.cfg.localAdminRequireTotp && !app.cfg.localUserRequireTotp) warnings.push('Lokale Admin-Konten brauchen keine Zwei-Faktor-Anmeldung (LOCAL_ADMIN_REQUIRE_TOTP=false). Das wird nicht empfohlen.');
     if (!app.cfg.lockout.progressive) warnings.push('Die Kontosperre wird bei wiederholten Angriffen nicht länger (LOGIN_LOCK_PROGRESSIVE=false).');
-    if (!app.cfg.adminAllowedCidrs.length) warnings.push('Der Admin-Bereich ist nicht auf Admin-Netze beschränkt (ADMIN_ALLOWED_CIDRS).');
+    if (!app.cfg.adminAllowedCidrs.length) warnings.push('Der Admin-Bereich und die lokale Anmeldung von Admins sind nicht auf Admin-Netze beschränkt (ADMIN_ALLOWED_CIDRS) – sie sind von überall erreichbar, wo das Portal erreichbar ist.');
+    if (app.cfg.allowPrivateTicketUrls && !app.cfg.ticketUrlAllowedHosts.length) warnings.push('Zammad-Adressen sind nicht auf bestimmte Server beschränkt (TICKET_URL_ALLOWED_HOSTS). Wer Ticketsysteme verwalten darf, kann das Portal mit beliebigen internen Servern sprechen lassen – empfohlen: den Hostnamen eures Zammad eintragen.');
     for (const sys of listSystems(app)) {
       if (sys.status !== 'inactive' && !allowedGroups(sys).length) warnings.push(`Ticketsystem „${sys.name}“: keine erlaubten Zammad-Gruppen festgelegt – Formulare können Tickets in jede Gruppe legen, die der API-Benutzer sieht.`);
+    }
+    // Freigabe-Felder ohne Gruppen: freigeben kann dann jedes Konto (auch ein Zweitkonto oder eine beliebige Kollegin)
+    if (getFeatures(app).approvals) {
+      const open = app.db.all<{ name: string; system_id: string; definition: string }>(
+        `SELECT f.name, f.system_id, v.definition FROM forms f JOIN form_versions v ON v.form_id = f.id AND v.status = 'published' WHERE ${inSys('f.system_id')}`, ...ids,
+      ).filter((r) => parseJson<FormDefinition>(r.definition, { fields: [] } as unknown as FormDefinition).fields.some((x) => x?.type === 'approver' && !x.approverGroups?.length));
+      for (const r of open) warnings.push(`Formular „${r.name}“: Freigabe-Feld ohne Gruppen – freigeben kann jedes Konto. Im Formular-Editor (erweiterte Ansicht) unter „Freigeben dürfen nur Mitglieder dieser Gruppen“ z. B. die Gruppe der Führungskräfte eintragen.`);
     }
     const upd = app.db.get<{ updater_seen_at: number | null; latest_version: string | null; current_version: string | null }>('SELECT updater_seen_at, latest_version, current_version FROM update_state WHERE id = 1');
     return {
@@ -1006,7 +1015,11 @@ export function registerAdminRoutes(router: Router, app: App): void {
     const rows = q
       ? app.db.all<UserRow>("SELECT * FROM users WHERE display_name LIKE ? ESCAPE '\\' OR username LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\' ORDER BY display_name LIMIT 200", like, like, like)
       : app.db.all<UserRow>('SELECT * FROM users ORDER BY kind DESC, display_name LIMIT 200');
-    return { users: rows.map(publicUser) };
+    return {
+      users: rows.map(publicUser),
+      // Für den Hinweis in der Verwaltung: Was das Portal bei Microsoft-Konten selbst prüft
+      entra: { enabled: app.cfg.entra.enabled, authContext: app.cfg.entra.stepupAuthContext ?? null, accountCheckMinutes: app.cfg.entra.accountCheckMinutes ?? 0 },
+    };
   });
 
   router.post('/api/admin/users', admin('user.manage', { stepup: true }), async (ctx: AppCtx) => {
@@ -1206,6 +1219,9 @@ export function registerAdminRoutes(router: Router, app: App): void {
       checkedAt: state.checked_at,
       lastError: state.last_error,
       updaterOnline: Date.now() - seen < 5 * 60_000,
+      // „Nur benachrichtigen“: neue Versionen anzeigen, Installation manuell (ohne Update-Dienst)
+      notifyOnly: Boolean(app.cfg.updateNotify?.enabled) && Date.now() - seen >= 5 * 60_000,
+      notifyVersions: parseJson<string[]>(app.db.get<{ value: string }>("SELECT value FROM settings WHERE key = 'update.notify_versions'")?.value ?? '[]', []),
       jobs,
     };
   });

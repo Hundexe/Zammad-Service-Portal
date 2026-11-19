@@ -107,9 +107,17 @@ fi
 # shellcheck disable=SC1090
 set -a; . "$ENV_FILE"; set +a
 WANT_CLAMAV=0; [ -n "${CLAMAV_HOST:-}" ] && WANT_CLAMAV=1
+# Fragen für die Installation ohne Docker: allgemeine Einstellungen und Update-Weg
+configure_native() {
+  configure_common
+  # Vorgabe wie bisher: Update-Dienst an (bei bestehender Installation: der aktuelle Wert)
+  if ask_updates "$([ "${UPDATER_ENABLED:-true}" = false ] && echo n || echo j)"; then set_env UPDATER_ENABLED true; else set_env UPDATER_ENABLED false; fi
+  # shellcheck disable=SC1090
+  set -a; . "$ENV_FILE"; set +a
+}
 if [ "$NEW_ENV" = 1 ]; then
   if [ "$INTERACTIVE" = 1 ]; then
-    configure_common
+    configure_native
   else
     # Ohne Rückfragen: IP des Servers, freie Ports, Virenscanner je nach RAM
     ip="$(hostname -I | awk '{print $1}')"
@@ -122,7 +130,7 @@ if [ "$NEW_ENV" = 1 ]; then
   fi
 elif [ "$INTERACTIVE" = 1 ]; then
   note "Aktuell: ${PUBLIC_URL:-?}  (Virenscanner: $([ "$WANT_CLAMAV" = 1 ] && echo ja || echo nein))"
-  if ask_yn "Einstellungen (Hostname/IP, Ports, Virenscanner, Microsoft) ändern?" "n"; then configure_common; fi
+  if ask_yn "Einstellungen (Hostname/IP, Ports, Virenscanner, Updates, Microsoft) ändern?" "n"; then configure_native; fi
 fi
 if [ "$WANT_CLAMAV" = 1 ]; then set_env CLAMAV_HOST 127.0.0.1; else set_env CLAMAV_HOST ""; fi
 # Kennzeichen für Portal und Update-Dienst (auch bei älteren Installationen nachtragen)

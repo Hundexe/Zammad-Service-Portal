@@ -102,6 +102,8 @@ Zu sichern sind **drei Dinge**:
 | Konfiguration | `deploy/.env`, `deploy/caddy/`, `deploy/certs/` | |
 | Hauptschlüssel | `deploy/secrets/secret_key` | **getrennt** vom Backup im Passwort-Tresor ablegen |
 
+> **Hauptschlüssel nie zusammen mit den Sicherungen ablegen.** Mit `SECRET_KEY` lassen sich alle verschlüsselten Felder einer Sicherung lesen: Zammad-Tokens, Client-Secret-Kopien, Anfrageinhalte, 2FA-Schlüssel. Liegen beide am selben Ort (gleiche Freigabe, gleicher Backup-Job, gleiches Archiv), schützt die Verschlüsselung nicht mehr. Den Schlüssel einmalig in den Passwort-Tresor, die Sicherungen auf den Backup-Speicher – und den Backup-Job so einrichten, dass er `deploy/secrets/` bzw. `/etc/zammad-service-portal/secrets/` **nicht** mitnimmt.
+
 Täglich per Cron (als Benutzer `portal`):
 
 ```bash
@@ -223,6 +225,7 @@ Das Portal prüft Zammad-Adressen selbst (keine Loopback-, Link-Local- und Metad
 | `login.microsoftonline.com`, `graph.microsoft.com` (443) | Anmeldung, Abteilung |
 | eigene Zammad-Server (443) | Tickets |
 | `github.com` (443/22) | nur mit Updater bzw. für `git fetch` |
+| `api.github.com` (443) | nur mit „nur benachrichtigen“ (`UPDATE_NOTIFY=true`) |
 | `database.clamav.net` (443) | Virensignaturen |
 | Paketquellen (Debian, Docker, nodejs.org) | Updates des Systems |
 | DNS- und NTP-Server | |
@@ -270,7 +273,7 @@ Das Hypervisor-Management (z. B. Proxmox auf 8006), die Docker-API und andere Ve
 | lokale Anmeldung abgeschaltet | sofort für alle lokalen Sitzungen |
 | Rolle im Portal entzogen/zugewiesen | sofort (bei der nächsten Anfrage) |
 | Entra-Gruppe oder App-Rolle geändert | bei der nächsten Anmeldung **oder** Bestätigung (Step-up) über Microsoft, spätestens nach `SESSION_MAX_HOURS` |
-| Benutzer in Entra gesperrt | keine neue Anmeldung/Bestätigung mehr möglich; laufende Sitzung endet spätestens nach `SESSION_IDLE_MINUTES` Inaktivität bzw. `SESSION_MAX_HOURS` |
+| Benutzer in Entra gesperrt | keine neue Anmeldung/Bestätigung mehr möglich; laufende Sitzung endet spätestens nach `SESSION_IDLE_MINUTES` Inaktivität bzw. `SESSION_MAX_HOURS` – mit `ENTRA_ACCOUNT_CHECK_MINUTES` nach spätestens so vielen Minuten ([Entra 11.2](ENTRA.md#112-optional-in-entra-deaktivierte-konten-sofort-aussperren)) |
 
 Kritische Aktionen in der Verwaltung verlangen eine Bestätigung, die höchstens `STEPUP_MINUTES` (Standard 10) alt ist – dabei werden Gruppen frisch aus Entra übernommen. Wer Admin-Rechte schneller entziehen will: `SESSION_MAX_HOURS` verkürzen (z. B. 4) und beim Entzug den Benutzer zusätzlich kurz im Portal deaktivieren.
 

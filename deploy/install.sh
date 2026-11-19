@@ -37,7 +37,8 @@ configure() {
   local profiles=""
   configure_common
   [ "$WANT_CLAMAV" = 1 ] && profiles="clamav"
-  if ask_yn "Updates aus der Verwaltungsoberfläche ermöglichen (Update-Dienst)?" "n"; then
+  local upd_def="n"; [[ ",${COMPOSE_PROFILES:-}," == *",updater,"* ]] && upd_def="j"
+  if ask_updates "$upd_def"; then
     profiles="${profiles:+$profiles,}updater"
   fi
   set_env COMPOSE_PROFILES "$profiles"

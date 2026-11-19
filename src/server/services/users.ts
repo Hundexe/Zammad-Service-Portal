@@ -120,11 +120,29 @@ export function vetEntraEmail(email: string | null, allowed: string[] | null, si
   return allowed.includes(domain) ? { email } : { email: null, reason: 'fremde_domain' };
 }
 
-/** Legt einen Entra-Benutzer beim ersten Login an oder aktualisiert ihn. vet prüft die Mail-Adresse (siehe vetEntraEmail). */
-export function upsertEntraUser(db: Db, c: EntraClaims, profile: { department?: string | null; mail?: string | null } = {}, vet: (email: string | null) => string | null = (e) => e): UserRow {
+/**
+ * Name einer App-Rolle im Portal. App-Rollen sind – anders als Gruppen-IDs – nur Namen: Der Administrator jedes
+ * erlaubten Tenants kann seinen Leuten in seiner Unternehmensanwendung jede Rolle der App zuweisen. Deshalb heißen
+ * nur Rollen aus dem Heimat-Tenant der App (ENTRA_TENANT_ID) schlicht „approle:Name“; Rollen aus weiteren Tenants
+ * tragen den Tenant im Namen („approle:<tenant-id>:Name“) und wirken nur, wenn sie genau so zugeordnet sind.
+ */
+export function appRoleName(role: string, tid: string, homeTenant: string): string {
+  const t = tid.toLowerCase();
+  return !homeTenant || t === homeTenant.toLowerCase() ? `approle:${role}` : `approle:${t}:${role}`;
+}
+
+/**
+ * Legt einen Entra-Benutzer beim ersten Login an oder aktualisiert ihn. vet prüft die Mail-Adresse (siehe vetEntraEmail).
+ * homeTenant: Heimat-Tenant der App (ENTRA_TENANT_ID) – leer = Tenant des Tokens (nur ein Tenant erlaubt).
+ */
+export function upsertEntraUser(db: Db, c: EntraClaims, profile: { department?: string | null; mail?: string | null } = {}, vet: (email: string | null) => string | null = (e) => e, homeTenant = ''): UserRow {
   const email = vet((profile.mail || c.email || c.preferred_username || '').toLowerCase() || null);
-  const groups = [...(c.groups ?? []), ...(c.roles ?? []).map((r) => `approle:${r}`)];
+  const groups = [...(c.groups ?? []), ...(c.roles ?? []).map((r) => appRoleName(r, c.tid, homeTenant))];
+  // Ein Konto ist oid + Tenant: Die oid ist nur innerhalb eines Tenants eindeutig zugesichert. Gehört dieselbe oid
+  // schon einem Konto eines anderen Tenants, wird die Anmeldung abgelehnt (statt das fremde Konto zu übernehmen).
+  // Ältere Einträge ohne Tenant werden beim nächsten Login ergänzt.
   const existing = db.get<UserRow>('SELECT * FROM users WHERE entra_oid = ?', c.oid);
+  if (existing && existing.tenant_id && existing.tenant_id.toLowerCase() !== c.tid.toLowerCase()) throw new Error('oid_anderer_tenant');
   const t = Date.now();
   if (existing) {
     db.run(
@@ -140,6 +158,33 @@ export function upsertEntraUser(db: Db, c: EntraClaims, profile: { department?: 
     id, c.oid, c.tid, email, c.name || email || 'Unbekannt', profile.department ?? null, JSON.stringify(groups), t, t,
   );
   return getUser(db, id)!;
+}
+
+/**
+ * Beim Start: App-Rollen von Konten aus anderen Tenants als dem Heimat-Tenant nachträglich mit Tenant benennen.
+ * Ältere Versionen haben sie ohne Tenant gespeichert – bis zur nächsten Anmeldung hätten sie sonst weiter gewirkt.
+ */
+export function qualifyForeignAppRoles(db: Db, homeTenant: string): number {
+  if (!homeTenant) return 0;
+  let changed = 0;
+  const rows = db.all<{ id: string; tenant_id: string | null; groups_json: string }>(
+    "SELECT id, tenant_id, groups_json FROM users WHERE kind = 'entra' AND tenant_id IS NOT NULL AND tenant_id <> '' AND lower(tenant_id) <> lower(?)", homeTenant,
+  );
+  for (const r of rows) {
+    const groups = parseJson<string[]>(r.groups_json, []);
+    const next = groups.map((g) => {
+      if (!g.toLowerCase().startsWith('approle:')) return g;
+      const rest = g.slice('approle:'.length);
+      // schon mit Tenant benannt? („<guid>:Name“)
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:/i.test(rest)) return g;
+      return appRoleName(rest, r.tenant_id!, homeTenant);
+    });
+    if (next.some((g, i) => g !== groups[i])) {
+      db.run('UPDATE users SET groups_json = ? WHERE id = ?', JSON.stringify(next), r.id);
+      changed++;
+    }
+  }
+  return changed;
 }
 
 export function publicUser(u: UserRow) {

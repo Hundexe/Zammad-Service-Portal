@@ -1,5 +1,5 @@
 // Verwaltung: Rollen, Rechte-Zuordnungen und lokale Benutzer.
-import { h, mount, fmtDate } from '../lib/dom.ts';
+import { h, icon, mount, fmtDate } from '../lib/dom.ts';
 import { get, post, put, del } from '../lib/api.ts';
 import { badge, button, checkbox, confirmDialog, copyButton, dialog, errorText, fieldWrap, input, notice, pageHead, select, table, toast } from '../lib/ui.ts';
 import { navigate, state, curPath, curSearch } from '../lib/app.ts';
@@ -40,7 +40,7 @@ export async function rolesPage() {
     const v = { roleId: r.roles.find((x) => x.name === 'Ziel-Admin')?.id ?? r.roles[0].id, subjectType: 'group', subjectValue: '', systemId: '' };
     const msg = h('div');
     const valueHelp = h('p', { class: 'help' });
-    const setHelp = () => { valueHelp.textContent = v.subjectType === 'group' ? 'Objekt-ID der Entra-Gruppe (z. B. aus dem Entra Admin Center) oder „approle:Name“ für eine App-Rolle.' : v.subjectType === 'user' ? 'Benutzername, E-Mail-Adresse oder ID. Entra-Benutzer erscheinen nach der ersten Anmeldung.' : 'Gilt für alle angemeldeten Benutzer.'; };
+    const setHelp = () => { valueHelp.textContent = v.subjectType === 'group' ? 'Objekt-ID der Entra-Gruppe (z. B. aus dem Entra Admin Center) oder „approle:Name“ für eine App-Rolle. App-Rollen aus einem weiteren Tenant: „approle:<Tenant-ID>:Name“ – sonst wirken sie dort nicht.' : v.subjectType === 'user' ? 'Benutzername, E-Mail-Adresse oder ID. Entra-Benutzer erscheinen nach der ersten Anmeldung.' : 'Gilt für alle angemeldeten Benutzer.'; };
     setHelp();
     const valueInput = input('', (x) => { v.subjectValue = x; });
     await dialog('Rolle zuordnen', h('div', { class: 'stack' }, msg,
@@ -85,8 +85,20 @@ function passwordDialog(title: string, username: string, password: string) {
   (close) => [button('Fertig', () => close(), { kind: 'primary' })]);
 }
 
+/** Was das Portal bei Microsoft-Konten selbst prüft – und was allein Entra entscheidet */
+function entraHint(e: { authContext: string | null; accountCheckMinutes: number }): HTMLElement {
+  const mfa = e.authContext
+    ? `Bestätigungen (z. B. vor Änderungen an Rollen) verlangen den Authentifizierungskontext „${e.authContext}“ – das Portal prüft im Token, dass die Richtlinie (z. B. MFA) gegriffen hat.`
+    : 'Ob Microsoft-Konten mit zweitem Faktor angemeldet sind, entscheidet allein der bedingte Zugriff in Entra – das Portal prüft es nicht selbst. Optional: ENTRA_STEPUP_AUTH_CONTEXT (siehe Anleitung „Microsoft-Anmeldung“).';
+  const acc = e.accountCheckMinutes
+    ? `In Entra deaktivierte Konten verlieren ihre Sitzung spätestens nach ${e.accountCheckMinutes} Minuten.`
+    : 'In Entra deaktivierte Konten behalten eine offene Sitzung bis zu deren Ablauf. Optional: ENTRA_ACCOUNT_CHECK_MINUTES.';
+  return h('details', { class: 'intune' }, h('summary', null, icon('shield', 16), 'Sicherheit bei Microsoft-Konten'),
+    h('div', { class: 'intune-body' }, h('p', { class: 'small' }, mfa), h('p', { class: 'small' }, acc)));
+}
+
 export async function usersPage(_p: Record<string, string>, q: URLSearchParams) {
-  const r = await get<{ users: User[] }>(`/api/admin/users${q.get('q') ? `?q=${encodeURIComponent(q.get('q')!)}` : ''}`);
+  const r = await get<{ users: User[]; entra?: { enabled: boolean; authContext: string | null; accountCheckMinutes: number } }>(`/api/admin/users${q.get('q') ? `?q=${encodeURIComponent(q.get('q')!)}` : ''}`);
   const roles = await get<{ roles: Role[] }>('/api/admin/roles').then((x) => x.roles).catch(() => [] as Role[]);
   const create = async () => {
     const v = { username: '', displayName: '', email: '', department: '', role: 'Benutzer' };
@@ -113,6 +125,7 @@ export async function usersPage(_p: Record<string, string>, q: URLSearchParams) 
   search.append(sInput, h('button', { class: ['btn', 'btn-secondary'], attrs: { type: 'submit' } }, 'Suchen'));
   return h('div', null,
     pageHead('Benutzer', 'Lokale Konten und Microsoft-Benutzer, die sich schon angemeldet haben', [button('Lokalen Benutzer anlegen', create, { kind: 'primary', icon: 'plus' })]),
+    r.entra?.enabled ? entraHint(r.entra) : null,
     search,
     table(r.users, [
       { label: 'Name', class: 'grow', render: (u) => h('span', null, u.displayName, h('br'), h('span', { class: 'muted small' }, u.email ?? '')) },

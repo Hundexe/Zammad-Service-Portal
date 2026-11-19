@@ -19,7 +19,7 @@ if (users === 0 && !cfg.entra.enabled) {
 }
 
 // Einzelprozess-Betrieb (z. B. Entwicklung): Worker im selben Prozess starten
-const stopWorker = process.env.WORKER_INLINE === 'true' ? startWorker(app) : null;
+const stopWorker = process.env.WORKER_INLINE === 'true' ? startWorker(app, 2000, { entra: entra ?? undefined }) : null;
 const sessionTimer = setInterval(() => purgeExpiredSessions(app), 10 * 60_000);
 sessionTimer.unref();
 

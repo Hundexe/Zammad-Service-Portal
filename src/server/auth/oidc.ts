@@ -23,6 +23,8 @@ export interface IdClaims {
   iss: string; aud: string; tid: string; oid: string; sub: string; exp: number; nbf?: number; iat: number;
   nonce?: string; name?: string; email?: string; preferred_username?: string; groups?: string[]; roles?: string[];
   auth_time?: number; _claim_names?: Record<string, string>;
+  /** Erfüllte Authentifizierungskontexte (optionaler Claim, z. B. ["c1"]) */
+  acrs?: string[] | string;
 }
 
 const b64url = (b: Buffer | string) => Buffer.from(b).toString('base64url');
@@ -186,7 +188,13 @@ export class EntraClient {
       code_challenge: challenge,
       code_challenge_method: 'S256',
     });
-    if (tx.stepup) { p.set('prompt', 'login'); p.set('max_age', '0'); }
+    if (tx.stepup) {
+      p.set('prompt', 'login'); p.set('max_age', '0');
+      // Optional: Authentifizierungskontext anfordern – Entra wendet dann die zugehörige Richtlinie (z. B. MFA) an
+      // und bestätigt das im Claim „acrs“ (geprüft in verifyIdToken).
+      const ac = this.cfg.entra.stepupAuthContext;
+      if (ac) p.set('claims', JSON.stringify({ id_token: { acrs: { essential: true, value: ac } } }));
+    }
     if (loginHint) p.set('login_hint', loginHint);
     return `${meta.authorization_endpoint}?${p.toString()}`;
   }
@@ -256,6 +264,11 @@ export class EntraClient {
       // prompt=login steht nur in der Browser-URL). Optionalen Claim auth_time in der App-Registrierung setzen.
       if (typeof c.auth_time !== 'number') throw new Error('Bestätigung: Claim auth_time fehlt (optionalen Claim in der App-Registrierung hinzufügen)');
       if (t - c.auth_time > 600) throw new Error('Erneute Anmeldung nicht erfolgt');
+      const ac = this.cfg.entra.stepupAuthContext;
+      if (ac) {
+        const acrs = Array.isArray(c.acrs) ? c.acrs : typeof c.acrs === 'string' ? c.acrs.split(/[\s,]+/) : [];
+        if (!acrs.includes(ac)) throw new Error(`Bestätigung: Authentifizierungskontext ${ac} nicht erfüllt (Claim acrs fehlt – Richtlinie und optionalen Claim prüfen)`);
+      }
     }
     if (c._claim_names?.groups) {
       log.warn('Entra liefert zu viele Gruppen im Token (Group Overage) – Gruppen werden ignoriert. App-Rollen oder "Gruppen, die der Anwendung zugewiesen sind" verwenden.', { oid: c.oid });
@@ -309,6 +322,46 @@ export class EntraClient {
     } catch (err) {
       log.warn('Verifizierte Domains des Tenants nicht abrufbar', { tenant: tid, error: (err as Error).message });
       return cached?.domains ?? null;
+    }
+  }
+
+  private appTokens = new Map<string, { token: string; exp: number }>();
+
+  /** App-Token für Graph im angegebenen Tenant (Client Credentials, Recht als Anwendungsberechtigung) */
+  private async appToken(tid: string): Promise<string> {
+    const cached = this.appTokens.get(tid);
+    if (cached && cached.exp > Date.now() + 60_000) return cached.token;
+    const tokenUrl = `${this.cfg.entra.authority}/${encodeURIComponent(tid)}/oauth2/v2.0/token`;
+    const body = new URLSearchParams({ grant_type: 'client_credentials', client_id: this.cfg.entra.clientId, scope: `${this.cfg.entra.graphUrl}/.default` });
+    if (this.cfg.entra.certPrivateKey) {
+      body.set('client_assertion_type', 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer');
+      body.set('client_assertion', this.clientAssertion(tokenUrl));
+    } else {
+      body.set('client_secret', this.cfg.entra.clientSecret!);
+    }
+    const r = await this.fetchImpl(tokenUrl, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body, signal: AbortSignal.timeout(15000) });
+    const j = (await r.json().catch(() => ({}))) as { access_token?: string; expires_in?: number; error?: string };
+    if (!r.ok || !j.access_token) throw new Error(`App-Token nicht erhalten (${j.error ?? `HTTP ${r.status}`})`);
+    this.appTokens.set(tid, { token: j.access_token, exp: Date.now() + (j.expires_in ?? 3600) * 1000 });
+    return j.access_token;
+  }
+
+  /**
+   * Ist das Konto in Entra noch aktiv? (Graph /users/{oid}, Anwendungsberechtigung User.Read.All)
+   * true = aktiv, false = deaktiviert oder gelöscht, null = unbekannt (Fehler, fehlendes Recht) – dann nichts tun.
+   */
+  async accountEnabled(tid: string, oid: string): Promise<boolean | null> {
+    if (!/^[0-9a-f-]{36}$/i.test(oid) || !this.cfg.entra.allowedTenants.some((t) => t.toLowerCase() === tid.toLowerCase())) return null;
+    try {
+      const token = await this.appToken(tid);
+      const r = await this.fetchImpl(`${this.cfg.entra.graphUrl}/v1.0/users/${oid}?$select=id,accountEnabled`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8000) });
+      if (r.status === 404) return false;
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = (await r.json()) as { accountEnabled?: boolean };
+      return typeof j.accountEnabled === 'boolean' ? j.accountEnabled : null;
+    } catch (err) {
+      log.warn('Kontostatus in Entra nicht abrufbar', { tenant: tid, error: (err as Error).message });
+      return null;
     }
   }
 

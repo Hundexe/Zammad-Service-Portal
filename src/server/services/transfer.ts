@@ -251,7 +251,8 @@ export async function planImport(app: App, file: unknown, password?: string): Pr
     if (!token && !existing?.api_token) {
       warnings.push(`${w}: kein Zammad-Token in der Datei – das System wird deaktiviert angelegt, bitte Token unter „Verbindung“ eintragen`);
       status = 'inactive';
-    } else if (!token && existing && sameOrigin(existing.base_url, baseUrl) === false) {
+    } else if (!token && existing && sameOrigin(existing.base_url, baseUrl) !== true) {
+      // !== true statt === false: auch eine nicht lesbare alte Adresse gilt als „anders“ (wie beim Speichern in admin.ts)
       // Nie das vorhandene Token an eine andere Adresse schicken (sonst gelangt es an deren Betreiber)
       warnings.push(`${w}: Adresse ändert sich (${existing.base_url} → ${baseUrl}) und die Datei enthält kein Token – das System wird ohne Token und deaktiviert übernommen, bitte Token neu eintragen`);
       status = 'inactive';

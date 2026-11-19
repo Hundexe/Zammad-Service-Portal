@@ -18,6 +18,13 @@ export interface MockEntra {
   verifiedDomains: Record<string, string[]>;
   /** Mail-Attribut in Graph abweichend setzen (wie ein Tenant-Admin es kann), je oid */
   graphMail: Record<string, string>;
+  /** Angeforderten Authentifizierungskontext (claims=…acrs…) bestätigen? Standard: ja */
+  acrs: { grant: boolean; lastRequested: string | null };
+  /** In Entra deaktivierte bzw. gelöschte Konten (Graph /users/{oid}) */
+  disabledOids: Set<string>;
+  deletedOids: Set<string>;
+  /** Anzahl Graph-Abfragen auf /users/{oid} (App-Token) */
+  userLookups: number;
   close: () => Promise<void>;
 }
 
@@ -28,7 +35,11 @@ export async function startMockEntra(users: MockEntraUser[], opts: { port?: numb
   const kid = randomBytes(8).toString('hex');
   const clientId = opts.clientId ?? '11111111-2222-3333-4444-555555555555';
   const clientSecret = opts.clientSecret ?? 'mock-secret';
-  const codes = new Map<string, { user: MockEntraUser; nonce: string; challenge: string; redirect: string }>();
+  const codes = new Map<string, { user: MockEntraUser; nonce: string; challenge: string; redirect: string; acrs: string | null }>();
+  const acrs: MockEntra['acrs'] = { grant: true, lastRequested: null };
+  const disabledOids = new Set<string>();
+  const deletedOids = new Set<string>();
+  const stats = { userLookups: 0 };
   let current = users[0];
   const tamper: MockEntra['tamper'] = {};
   const verifiedDomains: MockEntra['verifiedDomains'] = {};
@@ -63,7 +74,10 @@ export async function startMockEntra(users: MockEntraUser[], opts: { port?: numb
       const code = randomBytes(16).toString('hex');
       const as = url.searchParams.get('as');
       const user = (as && users.find((u) => u.oid === as)) || current;
-      codes.set(code, { user, nonce: url.searchParams.get('nonce') ?? '', challenge: url.searchParams.get('code_challenge') ?? '', redirect });
+      let wanted: string | null = null;
+      try { wanted = (JSON.parse(url.searchParams.get('claims') ?? 'null') as { id_token?: { acrs?: { value?: string } } } | null)?.id_token?.acrs?.value ?? null; } catch { /* ungültig */ }
+      acrs.lastRequested = wanted;
+      codes.set(code, { user, nonce: url.searchParams.get('nonce') ?? '', challenge: url.searchParams.get('code_challenge') ?? '', redirect, acrs: wanted && acrs.grant ? wanted : null });
       const target = new URL(redirect);
       target.searchParams.set('code', code);
       target.searchParams.set('state', url.searchParams.get('state') ?? '');
@@ -74,6 +88,11 @@ export async function startMockEntra(users: MockEntraUser[], opts: { port?: numb
       const chunks: Buffer[] = [];
       for await (const c of req) chunks.push(c as Buffer);
       const form = new URLSearchParams(Buffer.concat(chunks).toString());
+      // App-Token (Client Credentials) für Graph, z. B. für die Prüfung „Konto noch aktiv?“
+      if (form.get('grant_type') === 'client_credentials') {
+        if (form.get('client_id') !== clientId || form.get('client_secret') !== clientSecret) return json(401, { error: 'invalid_client' });
+        return json(200, { access_token: 'mock-app-token', token_type: 'Bearer', expires_in: 3600 });
+      }
       const entry = codes.get(form.get('code') ?? '');
       codes.delete(form.get('code') ?? '');
       if (!entry) return json(400, { error: 'invalid_grant' });
@@ -90,6 +109,7 @@ export async function startMockEntra(users: MockEntraUser[], opts: { port?: numb
         groups: entry.user.groups ?? [], roles: entry.user.roles,
         nonce: tamper.wrongNonce ? 'falsch' : entry.nonce,
         iat: t, nbf: t, exp: tamper.expired ? t - 3600 : t + 3600, auth_time: t,
+        ...(entry.acrs ? { acrs: [entry.acrs] } : {}),
       };
       let idToken = sign({ alg: 'RS256', typ: 'JWT', kid }, claims, privateKey);
       if (tamper.badSignature) {
@@ -102,6 +122,14 @@ export async function startMockEntra(users: MockEntraUser[], opts: { port?: numb
     if (p === '/v1.0/me') {
       if (req.headers.authorization !== 'Bearer mock-access-token') return json(401, { error: 'unauthorized' });
       return json(200, { department: current.groups?.includes('it-admins') ? 'IT' : 'Vertrieb', mail: graphMail[current.oid] ?? current.email });
+    }
+    m = /^\/v1\.0\/users\/([0-9a-f-]{36})$/.exec(p);
+    if (m) {
+      if (req.headers.authorization !== 'Bearer mock-app-token') return json(401, { error: 'unauthorized' });
+      stats.userLookups++;
+      const u = users.find((x) => x.oid === m![1]);
+      if (!u || deletedOids.has(u.oid)) return json(404, { error: { code: 'Request_ResourceNotFound' } });
+      return json(200, { id: u.oid, accountEnabled: !disabledOids.has(u.oid) });
     }
     if (p === '/v1.0/organization') {
       if (req.headers.authorization !== 'Bearer mock-access-token') return json(401, { error: 'unauthorized' });
@@ -118,7 +146,8 @@ export async function startMockEntra(users: MockEntraUser[], opts: { port?: numb
   const addr = server.address();
   base = `http://${opts.publicHost ?? '127.0.0.1'}:${typeof addr === 'object' && addr ? addr.port : opts.port}`;
   return {
-    url: base, server, clientId, clientSecret, tamper, verifiedDomains, graphMail,
+    url: base, server, clientId, clientSecret, tamper, verifiedDomains, graphMail, acrs, disabledOids, deletedOids,
+    get userLookups() { return stats.userLookups; },
     loginAs: (oid) => { current = users.find((u) => u.oid === oid) ?? current; },
     close: () => new Promise((r) => server.close(() => r())),
   };

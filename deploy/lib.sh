@@ -122,10 +122,52 @@ configure_common() {
     note "Weiterleitungs-URI für die App-Registrierung: https://${host}$([ "$https_port" = 443 ] || printf ':%s' "$https_port")/api/auth/entra/callback"
   fi
 
+  configure_hardening
+
   set_env PORTAL_HOST "$host"
   set_env HTTPS_PORT "$https_port"
   set_env HTTP_PORT "$http_port"
   if [ "$https_port" = "443" ]; then set_env PUBLIC_URL "https://${host}"; else set_env PUBLIC_URL "https://${host}:${https_port}"; fi
+}
+
+# Optionale Absicherung: Admin-Netz und Zammad-Server. Enter übernimmt den bisherigen Wert (Standard: leer = keine
+# Einschränkung) – es ändert sich also nichts, solange man nichts einträgt.
+configure_hardening() {
+  local cidrs hosts
+  echo >&2
+  note "Optional – Enter überspringt:"
+  while true; do
+    cidrs="$(ask "Admin-Bereich nur aus diesen Netzen (z. B. 10.10.0.0/16, Komma-getrennt; leer = von überall)" "${ADMIN_ALLOWED_CIDRS:-}")"
+    cidrs="${cidrs// /}"
+    case "$cidrs" in *[!0-9A-Fa-f.:/,]*) note "Nur Netze wie 10.10.0.0/16 oder 192.168.1.0/24, durch Komma getrennt." ;; *) break ;; esac
+    [ "$INTERACTIVE" = 1 ] || { cidrs="${ADMIN_ALLOWED_CIDRS:-}"; break; }
+  done
+  [ -n "$cidrs" ] && note "Achtung: Wer nicht aus diesen Netzen kommt, erreicht die Verwaltung nicht mehr (auch du selbst)."
+  while true; do
+    hosts="$(ask "Hostname eures Zammad (z. B. zammad.firma.intern, Komma-getrennt; leer = jeder Server)" "${TICKET_URL_ALLOWED_HOSTS:-}")"
+    hosts="${hosts// /}"
+    case "$hosts" in *[!A-Za-z0-9.,-]*) note "Nur Hostnamen ohne https:// und ohne Port, z. B. zammad.firma.intern." ;; *) break ;; esac
+    [ "$INTERACTIVE" = 1 ] || { hosts="${TICKET_URL_ALLOWED_HOSTS:-}"; break; }
+  done
+  set_env ADMIN_ALLOWED_CIDRS "$cidrs"
+  set_env TICKET_URL_ALLOWED_HOSTS "$hosts"
+}
+
+# Update-Weg: Update-Dienst (Updates per Klick, root-gleichwertig) oder nur benachrichtigen.
+# $1 = Vorgabe für den Update-Dienst (j/n). Rückgabe 0 = Update-Dienst gewünscht. Setzt UPDATE_NOTIFY.
+ask_updates() {
+  note "Der Update-Dienst installiert Updates per Klick in der Verwaltung. Er hat dafür root-gleichwertige Rechte"
+  note "auf dem Server (Details: docs/UPDATES.md › Sicherheit des Updaters)."
+  if ask_yn "Updates aus der Verwaltungsoberfläche ermöglichen (Update-Dienst)?" "$1"; then
+    set_env UPDATE_NOTIFY false
+    return 0
+  fi
+  if ask_yn "Stattdessen nur über neue Versionen benachrichtigen (das Portal fragt GitHub, Update dann von Hand)?" "j"; then
+    set_env UPDATE_NOTIFY true
+  else
+    set_env UPDATE_NOTIFY false
+  fi
+  return 1
 }
 
 # Prüft, ob PORTAL_HOST, PUBLIC_URL und HTTPS_PORT zusammenpassen.
