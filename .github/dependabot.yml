@@ -16,6 +16,13 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Die Typen müssen zur ältesten unterstützten Node-Version passen (engines: >=22.18) – sonst nutzt der Code
+    # unbemerkt APIs, die es dort noch nicht gibt. Neue Hauptversionen deshalb nur von Hand mit dem Node-Minimum.
+    ignore:
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+      - dependency-name: undici-types
+        update-types: ['version-update:semver-major']
     groups:
       dev:
         dependency-type: development

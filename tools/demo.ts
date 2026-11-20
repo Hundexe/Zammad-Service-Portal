@@ -30,7 +30,7 @@ export function startFakeClamd(port: number): Promise<void> {
   const server = createTcpServer((sock) => {
     let buf = Buffer.alloc(0);
     sock.on('data', (d) => {
-      buf = Buffer.concat([buf, d]);
+      buf = Buffer.concat([buf, Buffer.from(d)]); // d: Buffer (neuere Typen: string | Buffer)
       if (buf.subarray(0, 6).toString() === 'zPING\0') { sock.end('PONG\0'); return; }
       if (buf.length >= 4 && buf.subarray(-4).equals(Buffer.alloc(4))) {
         sock.end(buf.includes(Buffer.from('EICAR-STANDARD-ANTIVIRUS-TEST-FILE')) ? 'stream: Eicar-Test-Signature FOUND\0' : 'stream: OK\0');

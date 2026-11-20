@@ -15,7 +15,8 @@ RUN node --disable-warning=ExperimentalWarning tools/build-web.ts \
  && mkdir -p /out/data && chmod 700 /out/data
 
 # ---------------------------------------------------------------- Laufzeit
-FROM gcr.io/distroless/nodejs${NODE_VERSION}-debian12:nonroot
+# Debian 13: Die debian12-Images von distroless bekommen keine Sicherheitsupdates mehr (z. B. OpenSSL).
+FROM gcr.io/distroless/nodejs${NODE_VERSION}-debian13:nonroot
 ARG APP_VERSION=dev
 LABEL org.opencontainers.image.title="zammad-service-portal" \
       org.opencontainers.image.description="Self-Service-Portal für Zammad mit Microsoft-Anmeldung" \

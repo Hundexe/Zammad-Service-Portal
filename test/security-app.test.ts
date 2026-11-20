@@ -21,7 +21,7 @@ async function startFakeClamd(): Promise<{ server: TcpServer; port: number }> {
   const server = createTcpServer((sock) => {
     let buf = Buffer.alloc(0);
     sock.on('data', (d) => {
-      buf = Buffer.concat([buf, d]);
+      buf = Buffer.concat([buf, Buffer.from(d)]); // d: Buffer (neuere Typen: string | Buffer)
       if (buf.length >= 4 && buf.subarray(-4).equals(Buffer.alloc(4))) {
         const found = buf.includes(Buffer.from('EICAR-STANDARD-ANTIVIRUS-TEST-FILE'));
         sock.end(found ? 'stream: Eicar-Test-Signature FOUND\0' : 'stream: OK\0');

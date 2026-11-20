@@ -472,7 +472,7 @@ describe('#8 Uploads: Grenzen aus der Konfiguration, Scanner-Test', () => {
       const s = createTcpServer((sock) => {
         let buf = Buffer.alloc(0);
         sock.on('data', (d) => {
-          buf = Buffer.concat([buf, d]);
+          buf = Buffer.concat([buf, Buffer.from(d)]); // d: Buffer (neuere Typen: string | Buffer)
           if (buf.subarray(-4).equals(Buffer.alloc(4))) sock.end(detect && buf.includes(Buffer.from('EICAR-STANDARD')) ? 'stream: Eicar-Test-Signature FOUND\0' : 'stream: OK\0');
         });
       });
