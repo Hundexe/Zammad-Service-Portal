@@ -1,5 +1,12 @@
 # Änderungen
 
+## 1.14.1 – 20.11.2026
+
+- **Laufzeit-Image auf distroless Debian 13:** Die Debian-12-Images von distroless bekommen keine Sicherheitsupdates mehr – der Image-Scan meldete deshalb Lücken in OpenSSL (u. a. CVE-2026-31789). Mit Debian 13 ist der Scan wieder sauber
+- CI: begründete Ausnahme im Konfigurations-Scan für den Update-Dienst, der bewusst als root läuft (`.trivyignore.yaml`, gilt nur für `Dockerfile.updater`)
+- Dependabot schlägt für `@types/node` und `undici-types` keine neuen Hauptversionen mehr vor – die Typen müssen zur ältesten unterstützten Node-Version passen
+- Testhilfen an neuere Node-Typen angepasst
+
 ## 1.14.0 – 19.11.2026
 
 Härtungen aus dem zweiten externen Review ([REVIEW-2026-11.md](docs/REVIEW-2026-11.md)). Alles ohne Einschränkung des Portals: Neue Schutzfunktionen, die etwas am Ablauf ändern würden, sind Optionen.
