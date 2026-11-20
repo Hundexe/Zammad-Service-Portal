@@ -73,3 +73,5 @@ jobs:
           scan-ref: .
           severity: CRITICAL,HIGH
           exit-code: '1'
+          # begründete Ausnahmen je Datei (z. B. Update-Dienst als root)
+          trivyignores: .trivyignore.yaml

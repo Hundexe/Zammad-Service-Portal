@@ -1,0 +1,10 @@
+# Begründete Ausnahmen für den Konfigurations-Scan (Trivy). Jede Ausnahme gilt nur für die genannte Datei.
+misconfigurations:
+  - id: DS-0002
+    paths:
+      - Dockerfile.updater
+    statement: >-
+      Der Update-Dienst läuft bewusst als root (user "0:0" in deploy/docker-compose.yml): Er schreibt in das
+      Projektverzeichnis und die Sicherungen des Hosts, die root gehören. Ausgleich: cap_drop ALL mit wenigen
+      cap_add, no-new-privileges, kein offener Port, Docker nur über den eingeschränkten Socket-Proxy.
+      Siehe docs/UPDATES.md › Sicherheit des Updaters.
