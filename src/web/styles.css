@@ -560,7 +560,8 @@ input:disabled, select:disabled, textarea:disabled { background: var(--canvas); 
 .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.25rem; }
 .grid-2 + .check, .check + .check { margin-top: .75rem; }
 .panel .grid-2 { margin-bottom: 1rem; }
-.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1.25rem; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem 1.25rem; margin-bottom: 1rem; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1rem; margin-bottom: 1.25rem; }
 .stat { background: var(--surface); border-radius: var(--r-md); padding: 1.25rem 1.5rem; display: grid; gap: .1rem; color: var(--ink-3); font-size: .9375rem; }
 .stat-n { font: 700 2.75rem/1.1 var(--font-display); letter-spacing: -0.03em; color: var(--ink); font-variant-numeric: tabular-nums; }
 .stat-bad .stat-n { color: var(--error); }
@@ -712,7 +713,7 @@ details.more > * + * { margin-top: .85rem; }
   .hero { width: calc(100% - 16px); margin: 8px auto 0; border-radius: 22px; padding: 2.75rem 1.25rem 2.25rem; }
   .switch-item { padding: .45rem .85rem; font-size: .875rem; }
   .container { padding: 2rem 16px 1.5rem; }
-  .grid-2, .stats { grid-template-columns: 1fr; }
+  .grid-2, .grid-3, .stats { grid-template-columns: 1fr; }
   .portal-form { padding: 1.25rem; }
   .form-list a { padding: .8rem 1rem; column-gap: .85rem; }
   .form-list li + li a::before { left: calc(1rem + 40px + .85rem); }
