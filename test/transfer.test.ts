@@ -84,7 +84,13 @@ test('Vorschau zeigt, was ersetzt, angelegt und gelöscht wird – ohne etwas zu
   const r = await adminB.post('/api/admin/transfer/preview', { file: f, password: PASSWORT });
   assert.equal(r.status, 200, r.text);
   assert.deepEqual(r.json.plan.systems.map((s: any) => [s.slug, s.action, s.token]), [['zentrale-it', 'replace', true]]);
-  assert.deepEqual(r.json.plan.remove.map((s: any) => s.slug), ['wird-geloescht']);
+  assert.equal(r.json.plan.mode, 'merge', 'Standard: zusammenführen');
+  assert.deepEqual(r.json.plan.remove, []);
+  assert.deepEqual(r.json.plan.keep.map((s: any) => s.slug), ['wird-geloescht']);
+  assert.ok(r.json.plan.lines.some((l: string) => /^bleibt unverändert: .*\(wird-geloescht\)$/.test(l)), r.json.plan.lines.join('\n'));
+  const all = await adminB.post('/api/admin/transfer/preview', { file: f, password: PASSWORT, mode: 'replace' });
+  assert.deepEqual(all.json.plan.remove.map((s: any) => s.slug), ['wird-geloescht']);
+  assert.ok(all.json.plan.lines.some((l: string) => /^wird gelöscht: .*\(wird-geloescht\)$/.test(l)), all.json.plan.lines.join('\n'));
   assert.ok(!JSON.stringify(r.json).includes(QUELL_TOKEN), 'Vorschau ohne Geheimnisse');
   assert.equal(b.app.db.get<{ n: number }>('SELECT COUNT(*) n FROM ticket_systems')!.n, before);
 });
@@ -94,11 +100,23 @@ test('Offene Anfragen in einem System, das wegfallen würde, verhindern den Impo
   const weg = b.app.db.get<{ id: string }>("SELECT id FROM ticket_systems WHERE slug = 'wird-geloescht'")!;
   const user = b.app.db.get<{ id: string }>("SELECT id FROM users WHERE username = 'it-admin'")!;
   b.app.db.run("INSERT INTO requests (id, user_id, system_id, form_id, form_version_id, title, status, next_attempt_at, created_at) VALUES (?, ?, ?, 'f', 'v', 'Offen', 'queued', ?, ?)", uuid(), user.id, weg.id, Date.now(), Date.now());
-  const r = await adminB.post('/api/admin/transfer/import', { file: f, password: PASSWORT, confirm: true });
+  const r = await adminB.post('/api/admin/transfer/import', { file: f, password: PASSWORT, confirm: true, mode: 'replace', confirmDelete: ['wird-geloescht'] });
   assert.equal(r.status, 422);
   assert.ok(r.json.details.some((d: string) => /offene Anfrage/.test(d)));
   assert.ok(b.app.db.get("SELECT 1 FROM ticket_systems WHERE slug = 'wird-geloescht'"), 'nichts geändert');
   b.app.db.run("UPDATE requests SET status = 'delivered' WHERE system_id = ?", weg.id);
+});
+
+test('Import zusammenführen (Standard): vorhandene Systeme, die nicht in der Datei stehen, bleiben', async () => {
+  const f = await exportFile(adminA, PASSWORT);
+  const before = b.app.db.all<{ slug: string }>('SELECT slug FROM ticket_systems ORDER BY slug').map((x) => x.slug);
+  const r = await adminB.post('/api/admin/transfer/import', { file: f, password: PASSWORT, confirm: true });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(r.json.imported.mode, 'merge');
+  assert.deepEqual(r.json.imported.remove, []);
+  assert.deepEqual(b.app.db.all<{ slug: string }>('SELECT slug FROM ticket_systems ORDER BY slug').map((x) => x.slug), before);
+  assert.ok(b.app.db.get("SELECT 1 FROM ticket_systems WHERE slug = 'wird-geloescht'"), 'bleibt');
+  assert.equal(b.app.db.get<{ name: string }>("SELECT name FROM ticket_systems WHERE slug = 'zentrale-it'")!.name, 'Zentrale IT', 'gleiches Kürzel ersetzt');
 });
 
 test('Import ersetzt alles: gleiche ID bei gleichem Kürzel, Rollen bleiben, Token und Logos übernommen', async () => {
@@ -106,8 +124,11 @@ test('Import ersetzt alles: gleiche ID bei gleichem Kürzel, Rollen bleiben, Tok
   const sysB = b.app.db.get<{ id: string }>("SELECT id FROM ticket_systems WHERE slug = 'zentrale-it'")!.id;
   const role = b.app.db.get<{ id: string }>("SELECT id FROM roles WHERE name = 'Ziel-Admin'")!;
   b.app.db.run("INSERT INTO role_assignments (id, role_id, subject_type, subject_value, system_id, created_at) VALUES (?, ?, 'group', 'it-admins', ?, ?)", uuid(), role.id, sysB, Date.now());
-  assert.equal((await adminB.post('/api/admin/transfer/import', { file: f, password: PASSWORT })).status, 422, 'ohne Bestätigung nicht');
-  const r = await adminB.post('/api/admin/transfer/import', { file: f, password: PASSWORT, confirm: true });
+  assert.equal((await adminB.post('/api/admin/transfer/import', { file: f, password: PASSWORT, mode: 'replace' })).status, 422, 'ohne Bestätigung nicht');
+  const noDel = await adminB.post('/api/admin/transfer/import', { file: f, password: PASSWORT, mode: 'replace', confirm: true });
+  assert.equal(noDel.status, 422, 'Löschen braucht eigene Bestätigung');
+  assert.deepEqual(noDel.json.details.confirmDelete, ['wird-geloescht']);
+  const r = await adminB.post('/api/admin/transfer/import', { file: f, password: PASSWORT, mode: 'replace', confirm: true, confirmDelete: ['wird-geloescht'] });
   assert.equal(r.status, 200, r.text);
   const sys = b.app.db.get<{ id: string; name: string; api_token: string; released_attributes: string; allowed_groups: string }>("SELECT * FROM ticket_systems WHERE slug = 'zentrale-it'")!;
   assert.equal(sys.id, sysB);

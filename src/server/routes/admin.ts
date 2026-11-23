@@ -32,7 +32,7 @@ import { destroyUserSessions } from '../auth/sessions.ts';
 import { retryRequest } from '../services/requests.ts';
 import { resolveFormServices } from '../services/itsm.ts';
 import { cancelRequest } from '../services/approvals.ts';
-import { applyImport, buildExport, planImport, portableRoutes, sameOrigin, summarizePlan } from '../services/transfer.ts';
+import { applyImport, buildExport, importModeOf, planImport, portableRoutes, sameOrigin, summarizePlan } from '../services/transfer.ts';
 import { ConnectorError } from '../connectors/types.ts';
 import { OVERVIEW_COLUMNS } from './portal.ts';
 import { placeholders, templateHtmlProblems } from '../../shared/template.ts';
@@ -1206,14 +1206,20 @@ export function registerAdminRoutes(router: Router, app: App): void {
   router.post('/api/admin/transfer/preview', admin('system.manage', { bodyLimit: 40 * 1024 * 1024 }), async (ctx: AppCtx) => {
     requireGlobalSystemManage(ctx);
     const b = ctx.body as Body;
-    return { plan: summarizePlan(await planImport(app, b.file, exportPassword(b))) };
+    return { plan: summarizePlan(await planImport(app, b.file, exportPassword(b), importModeOf(b.mode))) };
   });
 
   router.post('/api/admin/transfer/import', admin('system.manage', { stepup: true, bodyLimit: 40 * 1024 * 1024 }), async (ctx: AppCtx) => {
     requireGlobalSystemManage(ctx);
     const b = ctx.body as Body;
     if (b.confirm !== true) throw new HttpError(422, 'Bitte den Import bestätigen', 'validation');
-    const plan = await planImport(app, b.file, exportPassword(b));
+    const plan = await planImport(app, b.file, exportPassword(b), importModeOf(b.mode));
+    // Löschen nur mit eigener Bestätigung genau dieser Systeme
+    if (plan.remove.length) {
+      const ok = Array.isArray(b.confirmDelete) ? new Set(b.confirmDelete.map(String)) : new Set<string>();
+      const missing = plan.remove.filter((r) => !ok.has(r.slug));
+      if (missing.length) throw new HttpError(422, `Bitte das Löschen bestätigen: ${missing.map((r) => r.slug).join(', ')}`, 'validation', { confirmDelete: missing.map((r) => r.slug) });
+    }
     return { imported: applyImport(app, plan, actor(ctx)) };
   });
 

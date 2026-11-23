@@ -14,11 +14,13 @@
 //   zammad:setup [--system KÜRZEL] [--apply]   Zammad prüfen bzw. einrichten (Gruppen, Status, Attribute, Abhängigkeiten)
 //   zammad:baseline [--system KÜRZEL] [--apply]   ITSM-Grundausstattung (Vorschau bzw. anlegen, Standardwerte)
 //   zammad:migrate [--dry-run]      Störungen, Wartungen und Probleme aus 1.x nach Zammad übernehmen
+//   import DATEI [--alles-ersetzen] [--yes]   Export-Datei importieren (Standard: zusammenführen; Passwort in IMPORT_PASSWORD)
 //   secret:generate
 //   healthcheck
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
-import { chmodSync, mkdirSync, rmSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { createInterface } from 'node:readline/promises';
 
 const [, , command = 'serve', ...rest] = process.argv;
 
@@ -53,6 +55,13 @@ async function optionalBox(): Promise<import('./crypto.ts').SecretBox | undefine
   } catch {
     return undefined;
   }
+}
+
+/** Rückfrage auf der Konsole; ohne Terminal (z. B. in Skripten) gilt sie als verneint */
+async function ask(question: string): Promise<string> {
+  if (!process.stdin.isTTY) return '';
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try { return (await rl.question(question)).trim(); } finally { rl.close(); }
 }
 
 async function main(): Promise<void> {
@@ -274,6 +283,26 @@ async function main(): Promise<void> {
         if (!flag('apply')) console.log('Mit --apply wird angelegt (Standardwerte; Zeiten lassen sich in der Verwaltung einstellen).');
       });
       return;
+    case 'import': {
+      const path = rest.find((x) => !x.startsWith('--'));
+      if (!path) { console.error('Aufruf: import DATEI [--alles-ersetzen] [--yes]'); process.exitCode = 64; return; }
+      await withApp(async (app) => {
+        const { applyImport, planImport, summarizePlan } = await import('./services/transfer.ts');
+        const file = JSON.parse(readFileSync(path, 'utf8'));
+        const plan = await planImport(app, file, process.env.IMPORT_PASSWORD || undefined, flag('alles-ersetzen') ? 'replace' : 'merge');
+        const sum = summarizePlan(plan);
+        console.log(plan.mode === 'replace' ? 'Import: alles ersetzen' : 'Import: zusammenführen (andere Ticketsysteme bleiben)');
+        for (const l of sum.lines) console.log(`  ${l}`);
+        for (const w of sum.warnings) console.log(`  Hinweis: ${w}`);
+        if (!flag('yes') && !/^(j|ja|y|yes)$/i.test(await ask('Import ausführen? (ja/nein) '))) { console.log('Abgebrochen – nichts geändert.'); process.exitCode = 1; return; }
+        if (plan.remove.length && !flag('yes') && (await ask(`${plan.remove.length} Ticketsystem(e) werden gelöscht. Zum Bestätigen „löschen“ eingeben: `)).toLowerCase() !== 'löschen') {
+          console.log('Abgebrochen – nichts geändert.'); process.exitCode = 1; return;
+        }
+        applyImport(app, plan, { name: 'Kommandozeile' });
+        console.log('Import abgeschlossen. Bitte je Ticketsystem „Verbindung testen“.');
+      });
+      return;
+    }
     case 'zammad:migrate':
       await withApp(async (app) => {
         const { planMigration, runMigration } = await import('./services/zammad-migrate.ts');

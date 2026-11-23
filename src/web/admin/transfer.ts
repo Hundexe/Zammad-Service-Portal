@@ -1,12 +1,12 @@
 // Verwaltung: Ticketsysteme exportieren und in ein anderes Portal importieren.
 import { h, icon, mount, type Child } from '../lib/dom.ts';
 import { ApiError, post } from '../lib/api.ts';
-import { button, checkbox, confirmDialog, errorText, fieldWrap, notice, pageHead, table, toast } from '../lib/ui.ts';
+import { button, checkbox, confirmDialog, errorText, fieldWrap, notice, pageHead, select, table, toast } from '../lib/ui.ts';
 import { can } from '../lib/app.ts';
 import { loadAdminSystems } from './common.ts';
 
 interface PlanSystem { slug: string; name: string; action: 'create' | 'replace'; token: boolean; baseUrl?: string; previousUrl?: string | null; urlChanged?: boolean; tokenDropped?: boolean; forms: number; templates: number; overviews: number; brandingVersions: number; releasedAttributes: number }
-interface Plan { systems: PlanSystem[]; remove: { slug: string; name: string; requests: number }[]; assets: number; warnings: string[] }
+interface Plan { mode: 'merge' | 'replace'; systems: PlanSystem[]; remove: { slug: string; name: string; requests: number }[]; keep: { slug: string; name: string }[]; assets: number; warnings: string[] }
 
 const MIN_PW = 12;
 
@@ -69,15 +69,20 @@ export async function transferPage() {
   const importPw = h('input', { attrs: { type: 'password', autocomplete: 'off', maxlength: 200 } });
   const importMsg = h('div', { attrs: { 'aria-live': 'polite' } });
   const planHost = h('div');
+  let mode: 'merge' | 'replace' = 'merge';
+  const modeSelect = select(mode, [
+    { value: 'merge', label: 'Zusammenführen – Systeme aus der Datei anlegen bzw. ersetzen, alle anderen bleiben' },
+    { value: 'replace', label: 'Alles ersetzen – Systeme, die nicht in der Datei stehen, werden gelöscht' },
+  ], (v) => { mode = v === 'replace' ? 'replace' : 'merge'; mount(planHost); });
 
-  const body = () => ({ file, password: importPw.value || undefined });
+  const body = () => ({ file, password: importPw.value || undefined, mode });
 
   const showPlan = (plan: Plan) => {
     const created = plan.systems.filter((s) => s.action === 'create').length;
     const replaced = plan.systems.length - created;
     const rows: Child[] = [
       h('h3', null, 'Vorschau'),
-      h('p', null, `${replaced} Ticketsystem(e) werden ersetzt, ${created} neu angelegt`, plan.remove.length ? `, ${plan.remove.length} gelöscht` : '', '. ', `${plan.assets} Logo(s).`),
+      h('p', null, `${replaced} Ticketsystem(e) werden ersetzt, ${created} neu angelegt`, plan.remove.length ? `, ${plan.remove.length} gelöscht` : '', plan.keep.length ? `, ${plan.keep.length} bleiben unverändert` : '', '. ', `${plan.assets} Logo(s).`),
       table(plan.systems, [
         { label: 'Ticketsystem', class: 'grow', render: (s) => h('span', null, s.name, h('br'), h('span', { class: 'muted small' }, s.slug),
           s.urlChanged ? h('span', null, h('br'), h('strong', { class: 'small' }, 'Neue Adresse: '), h('span', { class: 'small' }, `${s.previousUrl} → ${s.baseUrl}`)) : null) },
@@ -91,16 +96,19 @@ export async function transferPage() {
     ];
     if (plan.remove.length) {
       rows.push(notice('warn', h('strong', null, 'Wird gelöscht, weil nicht in der Datei: '),
-        plan.remove.map((r) => `${r.name} (${r.slug}${r.requests ? `, ${r.requests} alte Anfrage(n)` : ''})`).join(', '),
-        ' – mit Formularen, Vorlagen, Übersichten, Stil und Rollen-Zuordnungen dieses Systems.'));
+        h('ul', null, ...plan.remove.map((r) => h('li', null, `wird gelöscht: ${r.name} (${r.slug}${r.requests ? `, ${r.requests} alte Anfrage(n)` : ''})`))),
+        'Mit Formularen, Vorlagen, Übersichten, Stil und Rollen-Zuordnungen dieser Systeme.'));
     }
+    if (plan.keep.length) rows.push(notice('info', h('strong', null, 'Bleiben unverändert: '), plan.keep.map((k) => `${k.name} (${k.slug})`).join(', ')));
     if (plan.warnings.length) rows.push(notice('info', h('ul', null, ...plan.warnings.map((w) => h('li', null, w)))));
     rows.push(notice('warn', 'Ersetzen heißt: Formulare, Versionen, Vorlagen, Übersichten und Stil dieser Ticketsysteme sind danach genau wie in der Datei. Rollen, Benutzer und alte Anfragen bleiben.'));
     const go = button('Import ausführen', async () => {
       if (!await confirmDialog('Import ausführen?', `${fileName}: ${replaced} ersetzen, ${created} neu${plan.remove.length ? `, ${plan.remove.length} löschen` : ''}. Das lässt sich nur mit einer Sicherung rückgängig machen.`, 'Importieren', true)) return;
+      // Löschen ein zweites Mal ausdrücklich bestätigen
+      if (plan.remove.length && !await confirmDialog('Ticketsysteme löschen?', `Diese Ticketsysteme werden gelöscht: ${plan.remove.map((r) => `${r.name} (${r.slug})`).join(', ')}.`, 'Ja, löschen', true)) return;
       go.disabled = true;
       try {
-        await post('/api/admin/transfer/import', { ...body(), confirm: true });
+        await post('/api/admin/transfer/import', { ...body(), confirm: true, confirmDelete: plan.remove.map((r) => r.slug) });
         toast('Import abgeschlossen');
         await loadAdminSystems(true).catch(() => undefined);
         mount(planHost, notice('ok', 'Import abgeschlossen. Bitte unter „Verbindung“ je Ticketsystem „Verbindung testen“ und die Zammad-Objekte prüfen.'));
@@ -153,7 +161,8 @@ export async function transferPage() {
       h('div', { class: 'form-actions' }, exportBtn)),
     h('section', { class: ['panel', 'stack'] },
       h('h2', null, 'Importieren'),
-      notice('warn', h('strong', null, 'Ersetzt alles: '), 'Danach gibt es hier genau die Ticketsysteme aus der Datei. Ticketsysteme mit gleichem Kürzel werden überschrieben, fehlende gelöscht. Vorher am besten eine Sicherung machen (', h('code', null, 'cli.ts backup'), ').'),
+      h('p', { class: 'muted' }, 'Ticketsysteme mit gleichem Kürzel werden überschrieben. Beim Zusammenführen bleiben alle anderen Ticketsysteme erhalten; nur „Alles ersetzen“ löscht, was nicht in der Datei steht. Vorher am besten eine Sicherung machen (', h('code', null, 'cli.ts backup'), ').'),
+      fieldWrap(modeSelect, { label: 'Art des Imports' }),
       h('div', { class: 'row' }, h('label', { class: ['btn', 'btn-secondary'], attrs: { for: 'import-file' } }, icon('file', 16), 'Export-Datei wählen'), fileInput, fileLabel),
       fieldWrap(importPw, { label: 'Export-Passwort', help: 'Nur nötig, wenn die Datei Zammad-Tokens enthält.' }),
       importMsg,

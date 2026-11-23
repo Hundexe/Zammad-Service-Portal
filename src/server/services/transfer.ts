@@ -144,9 +144,16 @@ interface PlannedSystem {
   overviews: { name: string; stateFilter: string; columns: string; sortBy: string; sortDir: string; sort: number }[];
   services: { name: string; description: string; sort: number }[];
 }
+/** Zusammenführen (Standard): Systeme aus der Datei anlegen bzw. ersetzen, alle übrigen bleiben. Alles ersetzen: Systeme, die nicht in der Datei stehen, werden gelöscht. */
+export type ImportMode = 'merge' | 'replace';
+export const importModeOf = (v: unknown): ImportMode => v === 'replace' ? 'replace' : 'merge';
+
 export interface ImportPlan {
+  mode: ImportMode;
   systems: PlannedSystem[];
   remove: { id: string; slug: string; name: string; requests: number }[];
+  /** Beim Zusammenführen: vorhandene Systeme, die nicht in der Datei stehen und bleiben */
+  keep: { slug: string; name: string }[];
   assets: Asset[];
   warnings: string[];
 }
@@ -154,7 +161,7 @@ export interface ImportPlan {
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const isTime = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : Date.now();
 
-export async function planImport(app: App, file: unknown, password?: string): Promise<ImportPlan> {
+export async function planImport(app: App, file: unknown, password?: string, mode: ImportMode = 'merge'): Promise<ImportPlan> {
   const errors: string[] = [];
   const warnings: string[] = [];
   if (!isObj(file) || file.format !== EXPORT_FORMAT) throw new HttpError(422, 'Das ist keine Export-Datei des Self-Service-Portals', 'validation');
@@ -378,19 +385,28 @@ export async function planImport(app: App, file: unknown, password?: string): Pr
   }
   if (systems.length === 0 && !errors.length) errors.push('Die Datei enthält kein Ticketsystem');
 
-  // Was im Zielsystem wegfällt
-  const remove = listSystems(app).filter((s) => !slugs.has(s.slug)).map((s) => {
+  // Was im Zielsystem wegfällt – nur, wenn ausdrücklich „Alles ersetzen“ gewählt ist
+  const remove = mode !== 'replace' ? [] : listSystems(app).filter((s) => !slugs.has(s.slug)).map((s) => {
     const open = app.db.get<{ n: number }>("SELECT COUNT(*) n FROM requests WHERE system_id = ? AND status IN ('queued', 'sending', 'awaiting_approval')", s.id)!.n;
     if (open) errors.push(`Ticketsystem „${s.slug}“ würde gelöscht, hat aber noch ${open} offene Anfrage(n) (Zustellung oder Freigabe) – erst abwarten oder abbrechen`);
     return { id: s.id, slug: s.slug, name: s.name, requests: app.db.get<{ n: number }>('SELECT COUNT(*) n FROM requests WHERE system_id = ?', s.id)!.n };
   });
   if (errors.length) throw new HttpError(422, 'Die Datei kann nicht importiert werden', 'validation', errors.slice(0, 50));
-  return { systems, remove, assets, warnings };
+  const keep = mode === 'replace' ? [] : listSystems(app).filter((s) => !slugs.has(s.slug)).map((s) => ({ slug: s.slug, name: s.name }));
+  return { mode, systems, remove, keep, assets, warnings };
 }
 
 /** Zusammenfassung für die Vorschau (ohne Inhalte und Geheimnisse). */
 export function summarizePlan(plan: ImportPlan) {
   return {
+    mode: plan.mode,
+    /** Klartext für Vorschau und Kommandozeile */
+    lines: [
+      ...plan.systems.map((s) => `${s.existingId ? 'wird ersetzt' : 'wird neu angelegt'}: ${s.row.name} (${s.slug})`),
+      ...plan.remove.map((r) => `wird gelöscht: ${r.name} (${r.slug}${r.requests ? `, ${r.requests} alte Anfrage(n)` : ''})`),
+      ...plan.keep.map((k) => `bleibt unverändert: ${k.name} (${k.slug})`),
+    ],
+    keep: plan.keep,
     systems: plan.systems.map((s) => ({
       slug: s.slug, name: s.name, action: s.existingId ? 'replace' : 'create', token: s.tokenFromFile,
       baseUrl: s.row.base_url, previousUrl: s.previousUrl, urlChanged: s.previousUrl !== null && s.previousUrl !== s.row.base_url, tokenDropped: s.dropToken,
