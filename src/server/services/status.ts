@@ -25,6 +25,15 @@ export async function testScanner(app: App): Promise<ScannerCheck> {
   }
 }
 
+let lastScan: { at: number; check: ScannerCheck } | null = null;
+/** Für die Verwaltungsübersicht: Ergebnis höchstens alle zwei Minuten neu prüfen */
+export async function scannerStatusCached(app: App, maxAgeMs = 120_000): Promise<ScannerCheck> {
+  if (lastScan && Date.now() - lastScan.at < maxAgeMs) return lastScan.check;
+  const check = await testScanner(app);
+  lastScan = { at: Date.now(), check };
+  return check;
+}
+
 export interface StatusReport {
   ok: boolean;
   problems: string[];

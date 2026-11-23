@@ -33,6 +33,7 @@ import { retryRequest } from '../services/requests.ts';
 import { resolveFormServices } from '../services/itsm.ts';
 import { cancelRequest } from '../services/approvals.ts';
 import { applyImport, buildExport, importModeOf, planImport, portableRoutes, sameOrigin, summarizePlan } from '../services/transfer.ts';
+import { scannerStatusCached } from '../services/status.ts';
 import { ConnectorError } from '../connectors/types.ts';
 import { OVERVIEW_COLUMNS } from './portal.ts';
 import { placeholders, templateHtmlProblems } from '../../shared/template.ts';
@@ -162,7 +163,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
   }
 
   // ---------------------------------------------------------------- Übersicht
-  router.get('/api/admin/overview', admin(), (ctx: AppCtx) => {
+  router.get('/api/admin/overview', admin(), async (ctx: AppCtx) => {
     requireAnyAdmin(ctx);
     const systems = adminSystems(ctx.user!);
     const ids = systems.map((s) => s.id);
@@ -177,8 +178,17 @@ export function registerAdminRoutes(router: Router, app: App): void {
     const warnings: string[] = [];
     if (!app.cfg.entra.enabled) warnings.push('Microsoft-Anmeldung (Entra ID) ist noch nicht eingerichtet.');
     if (app.cfg.entra.enabled && app.cfg.localLogin) warnings.push('Lokale Anmeldung ist noch aktiv. Nach der Einrichtung von Entra ID auf Notfallkonten beschränken oder abschalten (LOCAL_LOGIN_ENABLED=false).');
-    if (!app.clamav) warnings.push('Kein Virenscanner (ClamAV) konfiguriert.');
+    const scanner = await scannerStatusCached(app);
+    if (scanner.status === 'missing') warnings.push(`Kein Virenscanner (ClamAV) konfiguriert${app.cfg.clamav.required ? ' – Datei-Uploads werden abgelehnt' : ' – Dateien werden ungeprüft angenommen'}.`);
+    else if (scanner.status !== 'ok') warnings.push(`Virenscanner: ${scanner.message}${app.cfg.clamav.required ? ' – Datei-Uploads werden bis dahin abgelehnt.' : '.'}`);
     if (app.cfg.localLogin && !app.cfg.localAdminRequireTotp && !app.cfg.localUserRequireTotp) warnings.push('Lokale Admin-Konten brauchen keine Zwei-Faktor-Anmeldung (LOCAL_ADMIN_REQUIRE_TOTP=false). Das wird nicht empfohlen.');
+    if (can(ctx.user, 'user.manage', null)) {
+      // Lokale Admin-Konten, die nie benutzt wurden (z. B. doppelt von einem erneuten Setup-Lauf) – ohne Zwei-Faktor
+      for (const u of app.db.all<{ username: string }>(`SELECT DISTINCT u.username FROM users u JOIN role_assignments a ON a.subject_type = 'user' AND a.subject_value = u.id
+        JOIN roles r ON r.id = a.role_id WHERE u.kind = 'local' AND u.disabled = 0 AND u.totp_enabled = 0 AND u.last_login_at IS NULL AND r.name = 'Super-Admin' AND u.created_at < ?`, Date.now() - 86400_000)) {
+        warnings.push(`Lokales Admin-Konto „${u.username}“ wurde nie benutzt und hat keine Zwei-Faktor-Anmeldung – nicht gebraucht? Unter „Benutzer“ deaktivieren oder löschen.`);
+      }
+    }
     if (!app.cfg.lockout.progressive) warnings.push('Die Kontosperre wird bei wiederholten Angriffen nicht länger (LOGIN_LOCK_PROGRESSIVE=false).');
     if (!app.cfg.adminAllowedCidrs.length) warnings.push('Der Admin-Bereich und die lokale Anmeldung von Admins sind nicht auf Admin-Netze beschränkt (ADMIN_ALLOWED_CIDRS) – sie sind von überall erreichbar, wo das Portal erreichbar ist.');
     if (app.cfg.allowPrivateTicketUrls && !app.cfg.ticketUrlAllowedHosts.length) warnings.push('Zammad-Adressen sind nicht auf bestimmte Server beschränkt (TICKET_URL_ALLOWED_HOSTS). Wer Ticketsysteme verwalten darf, kann das Portal mit beliebigen internen Servern sprechen lassen – empfohlen: den Hostnamen eures Zammad eintragen.');
@@ -202,6 +212,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
       awaitingApproval: app.db.get<{ n: number }>(`SELECT COUNT(*) n FROM requests WHERE status = 'awaiting_approval' AND ${inSys('system_id')}`, ...ids)?.n ?? 0,
       pendingApprovals: { forms: pendingForms, branding: pendingBranding },
       warnings,
+      scanner: { ...scanner, required: app.cfg.clamav.required, host: app.cfg.clamav.host ? `${app.cfg.clamav.host}:${app.cfg.clamav.port}` : null },
       update: upd,
     };
   });

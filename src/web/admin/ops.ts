@@ -11,7 +11,10 @@ export async function dashboardPage() {
     version: string; systems: { id: string; name: string; status: string }[]; requests7d: Record<string, number>; failed: number; awaitingApproval: number;
     pendingApprovals: { forms: { id: string; form_id: string; version: number; name: string; system_id: string }[]; branding: { id: string; system_id: string; version: number }[] };
     warnings: string[]; update: { latest_version: string | null; current_version: string | null; updater_seen_at: number | null } | null;
+    scanner?: { status: 'ok' | 'missing' | 'down' | 'not_detecting'; message: string; required: boolean; host: string | null };
   }>('/api/admin/overview');
+  const sc = d.scanner;
+  const scannerLabel = !sc ? '' : sc.status === 'ok' ? 'arbeitet' : sc.status === 'missing' ? 'nicht eingerichtet' : sc.status === 'down' ? 'nicht erreichbar' : 'erkennt keine Viren';
   const sysName = (id: string) => d.systems.find((s) => s.id === id)?.name ?? '';
   const approvals = [...d.pendingApprovals.forms.map((f) => ({ label: `Formular „${f.name}“, Version ${f.version}`, sys: f.system_id, href: `/admin/systeme/${f.system_id}/formulare/${f.form_id}` })),
     ...d.pendingApprovals.branding.map((b) => ({ label: `Stil, Farben, Logo – Version ${b.version}`, sys: b.system_id, href: `/admin/systeme/${b.system_id}/branding` }))];
@@ -24,7 +27,11 @@ export async function dashboardPage() {
       h('div', { class: 'stat' }, h('span', { class: 'stat-n' }, String(delivered)), h('span', null, 'Anfragen übermittelt (7 Tage)')),
       h('div', { class: ['stat', waiting > 0 && 'stat-info'] }, h('span', { class: 'stat-n' }, String(waiting)), h('span', null, 'warten auf Zustellung'),
         d.awaitingApproval ? h('span', { class: 'small' }, link('/admin/zustellung?status=awaiting_approval', `außerdem ${d.awaitingApproval} bei Vorgesetzten zur Freigabe`)) : null),
-      h('div', { class: ['stat', d.failed > 0 && 'stat-bad'] }, h('span', { class: 'stat-n' }, String(d.failed)), h('span', null, d.failed ? link('/admin/zustellung?status=failed', 'fehlgeschlagen') : 'fehlgeschlagen'))),
+      h('div', { class: ['stat', d.failed > 0 && 'stat-bad'] }, h('span', { class: 'stat-n' }, String(d.failed)), h('span', null, d.failed ? link('/admin/zustellung?status=failed', 'fehlgeschlagen') : 'fehlgeschlagen')),
+      sc ? h('div', { class: ['stat', sc.status === 'ok' ? null : sc.status === 'missing' && !sc.required ? 'stat-info' : 'stat-bad'], attrs: { title: sc.message } },
+        h('span', { class: 'stat-n' }, sc.status === 'ok' ? 'OK' : '!'),
+        h('span', null, `Virenscanner ${scannerLabel}`),
+        h('span', { class: 'small muted' }, sc.host ? `ClamAV ${sc.host}${sc.required ? ', Pflicht' : ''}` : 'CLAMAV_HOST nicht gesetzt')) : null),
     approvals.length ? h('section', { class: 'panel' }, h('h2', null, 'Wartet auf Ihre Freigabe'),
       h('ul', { class: 'plain' }, ...approvals.map((a) => h('li', null, link(a.href, a.label), h('span', { class: 'muted' }, ` (${sysName(a.sys)})`))))) : null,
     h('section', { class: 'panel' }, h('h2', null, 'Ticketsysteme'),

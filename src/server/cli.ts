@@ -5,6 +5,7 @@
 //   user:reset-password --username NAME [--reset-totp]
 //   user:unlock --username NAME
 //   user:list
+//   user:has-admin                  Exit 0, wenn es ein aktives lokales Super-Admin-Konto gibt
 //   backup [--out DATEI]
 //   backup:verify DATEI             Sicherung prüfen (Integrität, Schema, passender SECRET_KEY)
 //   restore DATEI --yes             Sicherung wiederherstellen (Portal vorher stoppen!)
@@ -127,6 +128,15 @@ async function main(): Promise<void> {
       await withApp((app) => {
         const r = app.db.run("UPDATE users SET locked_until = NULL, failed_logins = 0, lock_count = 0 WHERE username = ? AND kind = 'local'", arg('username') ?? '');
         console.log(r.changes ? 'Entsperrt.' : 'Nicht gefunden.');
+      });
+      return;
+    case 'user:has-admin':
+      // Für die Installationsskripte: gibt es schon ein aktives lokales Super-Admin-Konto? (Exit 0 = ja)
+      await withApp((app) => {
+        const n = app.db.get<{ n: number }>(`SELECT COUNT(*) n FROM users u JOIN role_assignments a ON a.subject_type = 'user' AND a.subject_value = u.id AND a.system_id IS NULL
+          JOIN roles r ON r.id = a.role_id WHERE u.kind = 'local' AND u.disabled = 0 AND r.name = 'Super-Admin'`)!.n;
+        console.log(n);
+        process.exitCode = n > 0 ? 0 : 1;
       });
       return;
     case 'user:list':

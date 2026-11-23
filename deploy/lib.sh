@@ -185,11 +185,16 @@ check_urls() {
 # Legt den ersten Admin und auf Wunsch einen normalen Testbenutzer an. Erwartet Funktion "cli".
 create_users() {
   local admin="$1" new_install="$2" u n e
+  # Bei erneutem Lauf kein weiteres Admin-Konto anlegen, wenn es schon eins gibt (nur mit ausdrücklichem Namen)
+  if [ -z "$admin" ] && cli user:has-admin >/dev/null 2>&1; then
+    note "Es gibt schon ein lokales Admin-Konto – kein weiteres angelegt. Weitere Konten bei Bedarf mit user:create."
+  else
   [ -n "$admin" ] || admin="$(ask "Benutzername des ersten Admins" "admin")"
   if cli user:list 2>/dev/null | grep -q "'${admin}'"; then
     note "Benutzer ${admin} gibt es schon – übersprungen."
   else
     cli user:create --username "$admin" --name "Portal-Admin" --role Super-Admin
+  fi
   fi
   if [ "$INTERACTIVE" = 1 ] && ask_yn "Zusätzlich einen normalen Benutzer (ohne Verwaltungsrechte) mit generiertem Passwort anlegen?" "$([ "$new_install" = 1 ] && echo j || echo n)"; then
     note "Die E-Mail-Adresse verbindet das Konto mit dem Kunden in Zammad."

@@ -368,9 +368,23 @@ if [ "$WANT_CLAMAV" = 1 ]; then
   conf=/etc/clamav/clamd.conf
   grep -q '^TCPSocket' "$conf" || printf 'TCPSocket 3310\n' >> "$conf"
   grep -q '^TCPAddr' "$conf" || printf 'TCPAddr 127.0.0.1\n' >> "$conf"
+  # Debian/Ubuntu starten clamd über systemd-Socket-Aktivierung – dann gilt TCPSocket aus clamd.conf nicht,
+  # der TCP-Port muss zusätzlich am Socket stehen
+  if systemctl cat clamav-daemon.socket >/dev/null 2>&1; then
+    mkdir -p /etc/systemd/system/clamav-daemon.socket.d
+    printf '# Self-Service-Portal: clamd auch per TCP (nur lokal)\n[Socket]\nListenStream=127.0.0.1:3310\n' > /etc/systemd/system/clamav-daemon.socket.d/zammad-service-portal.conf
+    systemctl daemon-reload
+    systemctl enable --quiet clamav-daemon.socket 2>/dev/null || true
+    systemctl restart clamav-daemon.socket 2>/dev/null || true
+  fi
   systemctl enable --quiet clamav-freshclam clamav-daemon 2>/dev/null || true
   systemctl restart clamav-freshclam 2>/dev/null || true
   systemctl restart clamav-daemon 2>/dev/null || note "ClamAV startet, sobald die Signaturen geladen sind (einige Minuten)."
+  if timeout 3 bash -c 'exec 3<>/dev/tcp/127.0.0.1/3310' 2>/dev/null; then
+    note "ClamAV lauscht auf 127.0.0.1:3310."
+  else
+    note "ClamAV ist auf 127.0.0.1:3310 noch nicht erreichbar (Signaturen werden geladen). Später prüfen: systemctl status clamav-daemon und service-portal-cli scanner:test – der Stand steht auch in der Verwaltung unter „Übersicht“."
+  fi
 fi
 
 if ! command -v caddy >/dev/null; then

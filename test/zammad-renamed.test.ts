@@ -194,3 +194,14 @@ test('Benennung anpassbar: Feld- und Art-Bezeichnungen, Vorsilbe der Abhängigke
   assert.equal(p.zammad.state.attributes.find((a) => a.name === 'portal_art')!.display, 'Portal: Art');
 });
 
+test('Verwaltungsübersicht: Zustand des Virenscanners und nie benutzte Admin-Konten', async () => {
+  const o = (await su.get('/api/admin/overview')).json;
+  assert.equal(o.scanner.status, 'missing');
+  assert.equal(o.scanner.host, null);
+  assert.ok(o.warnings.some((w: string) => /Kein Virenscanner/.test(w)));
+  await createUser(p.app, { username: 'zweit-admin', role: 'Super-Admin' });
+  p.app.db.run("UPDATE users SET created_at = ? WHERE username = 'zweit-admin'", Date.now() - 2 * 86400_000);
+  const w: string[] = (await su.get('/api/admin/overview')).json.warnings;
+  assert.ok(w.some((x) => /„zweit-admin“ wurde nie benutzt/.test(x)), w.join('\n'));
+  assert.ok(!w.some((x) => /„chef“/.test(x)), 'angemeldetes Konto nicht');
+});
