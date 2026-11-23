@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ITSM-Grundausstattung für Zammad – Self-Service-Portal für Zammad</title>
+<meta name="description" content="ITSM-Grundausstattung: Startkonfiguration für Zammad">
+<link rel="icon" href="../demo/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="doku.css">
+</head>
+<body>
+<header class="top"><div class="wrap"><nav class="nav" aria-label="Hauptnavigation">
+  <a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span>Self-Service-Portal für Zammad</a>
+  <div class="nav-links">
+    <a href="../#video">Video</a>
+    <a class="keep" href="./" aria-current="page">Dokumentation</a>
+    <a href="../demo/">Demo</a>
+    <a href="https://github.com/Hundexe/Zammad-Service-Portal">GitHub</a>
+  </div>
+</nav></div></header>
+<div class="wrap layout">
+  <aside class="side" aria-label="Dokumentation">
+    <details open><summary>Anleitungen und Inhalt</summary>
+      <h2>Anleitungen</h2>
+      <ul><li><a href="installation.html">Installation</a></li><li><a href="microsoft-anmeldung.html">Microsoft-Anmeldung</a></li><li><a href="bedienung.html">Bedienung</a></li><li><a href="zammad.html">Zammad als Datenquelle</a></li><li><a href="itsm-grundausstattung.html" aria-current="page">ITSM-Grundausstattung</a></li><li><a href="app.html">Portal als App</a></li><li><a href="betrieb.html">Betrieb</a></li><li><a href="updates.html">Updates</a></li><li><a href="sicherheit.html">Sicherheit</a></li><li><a href="go-live.html">Go-Live-Checkliste</a></li><li><a href="architektur.html">Architektur</a></li></ul>
+      <h2>Sicherheitsprüfungen</h2>
+      <ul><li><a href="pruefungen.html">Übersicht</a></li><li><a href="review-2026-11.html">Review 19.11.2026</a></li><li><a href="sicherheitstest-2026-10-28.html">Sicherheitstest 28.10.2026</a></li><li><a href="review-2026-10.html">Review 27.10.2026</a></li><li><a href="lasttest.html">Lasttest 27.10.2026</a></li><li><a href="pentest.html">Penetrationstest 21.10.2026</a></li></ul>
+      <h2>Auf dieser Seite</h2><ul class="toc"><li><a href="#teile-im-einzelnen">Teile im Einzelnen</a></li><li class="sub"><a href="#ticketart">Ticketart</a></li><li class="sub"><a href="#priorität-aus-auswirkung-und-dringlichkeit">Priorität aus Auswirkung und Dringlichkeit</a></li><li class="sub"><a href="#status">Status</a></li><li class="sub"><a href="#slas-mit-arbeitszeiten">SLAs mit Arbeitszeiten</a></li><li class="sub"><a href="#automatische-nachrichten">Automatische Nachrichten</a></li><li class="sub"><a href="#automatisch-schließen">Automatisch schließen</a></li><li class="sub"><a href="#eskalation">Eskalation</a></li><li class="sub"><a href="#übersichten">Übersichten</a></li><li><a href="#zusammenspiel-mit-dem-portal">Zusammenspiel mit dem Portal</a></li></ul>
+    </details>
+  </aside>
+  <main class="doc" id="inhalt">
+<h1 id="itsm-grundausstattung-für-zammad">ITSM-Grundausstattung für Zammad<a class="anchor" href="#itsm-grundausstattung-für-zammad" aria-label="Link zu diesem Abschnitt">#</a></h1>
+<p>Für einen schnellen Start legt das Portal in Zammad eine Grundkonfiguration nach bewährter ITSM-Praxis (angelehnt an ITIL) an: Ticketart, Priorität aus Auswirkung und Dringlichkeit, Status, SLAs mit Arbeitszeiten, automatische Nachrichten, automatisches Schließen, Eskalation und Übersichten.</p>
+<p>Die Grundausstattung ist unabhängig von der Zammad-Zuordnung des Portals (siehe <a href="zammad.html">ZAMMAD.md</a>) und für frische oder schlanke Zammad-Installationen gedacht. Wer schon eine eigene Struktur hat, nimmt nur einzelne Teile.</p>
+<p><strong>Verwaltung → Ticketsysteme → ITSM-Grundausstattung</strong> (Recht „Ticketsystem verwalten“):</p>
+<ol><li>Teile auswählen, Arbeitszeiten, SLA-Zeiten, Fristen und die Adresse für Eskalationsstufe 2 einstellen.</li><li><strong>Vorschau</strong> zeigt jedes Element mit Stand: <em>wird angelegt</em>, <em>vorhanden</em> (gleicher Name) oder <em>übersprungen</em> (Ähnliches vorhanden oder Voraussetzung fehlt).</li><li><strong>In Zammad anlegen</strong> (mit Bestätigung der Anmeldung).</li></ol>
+<p>Grundsätze:</p>
+<ul><li>Es wird <strong>nichts überschrieben oder gelöscht</strong>. Ein Element mit gleichem Namen bleibt, wie es ist. Ein zweiter Lauf legt nichts doppelt an.</li><li><strong>Überschneidungen:</strong> Gibt es schon Felder mit gleicher Bedeutung (z. B. „Auswirkung“ oder „Ticketart“), legt das Portal keine zweiten an. Die Prioritätsmatrix wird dann übersprungen; für die Übersicht „Offene Störungen“ nutzt es die vorhandene Ticketart.</li><li>Alle Namen sind neutral; Trigger und Automatisierungen beginnen mit „ITSM – “, Felder mit <code>itsm_</code>.</li><li>Alles lässt sich danach in Zammad anpassen oder abschalten.</li></ul>
+<p>Auf der Kommandozeile (mit Standardwerten): <code>service-portal-cli zammad:baseline</code> zeigt die Vorschau, <code>--apply</code> legt an.</p>
+<p>Der API-Benutzer braucht dafür die Admin-Rolle in Zammad (<a href="zammad.html#8-rechte-des-api-benutzers">Rechte</a>).</p>
+<h2 id="teile-im-einzelnen">Teile im Einzelnen<a class="anchor" href="#teile-im-einzelnen" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<h3 id="ticketart">Ticketart<a class="anchor" href="#ticketart" aria-label="Link zu diesem Abschnitt">#</a></h3>
+<p>Auswahlfeld <strong>Ticketart</strong> (<code>itsm_ticketart</code>): Störung, Serviceanfrage, Änderung (Change), Problem, Frage. Grundlage für Übersichten, Berichte und SLAs je Art. Tipp: In Formularen des Portals als festen Wert setzen (Formular → Ticket → Zammad-Objekt freigeben und vorbelegen).</p>
+<h3 id="priorität-aus-auswirkung-und-dringlichkeit">Priorität aus Auswirkung und Dringlichkeit<a class="anchor" href="#priorität-aus-auswirkung-und-dringlichkeit" aria-label="Link zu diesem Abschnitt">#</a></h3>
+<p>Zwei Felder und vier Prioritäten:</p>
+<ul><li><strong>Auswirkung</strong> (<code>itsm_auswirkung</code>): eine Person, eine Gruppe/Abteilung, ganze Organisation</li><li><strong>Dringlichkeit</strong> (<code>itsm_dringlichkeit</code>): hoch (Arbeit nicht möglich), mittel (eingeschränkt), gering (kann warten)</li><li>Prioritäten <strong>P1 Kritisch, P2 Hoch, P3 Mittel, P4 Niedrig</strong></li></ul>
+<p>Neun Trigger („ITSM – Priorität …“) setzen die Priorität nach dieser Matrix, sobald beide Felder gesetzt sind oder sich ändern:</p>
+<div class="table"><table><thead><tr><th>Auswirkung ↓ / Dringlichkeit →</th><th>hoch</th><th>mittel</th><th>gering</th></tr></thead><tbody><tr><td>Ganze Organisation</td><td>P1</td><td>P2</td><td>P3</td></tr><tr><td>Gruppe / Abteilung</td><td>P2</td><td>P3</td><td>P4</td></tr><tr><td>Eine Person</td><td>P3</td><td>P4</td><td>P4</td></tr></tbody></table></div>
+<p>Wer die Priorität von Hand ändern will, ändert Auswirkung oder Dringlichkeit – sonst setzt der Trigger sie bei der nächsten Änderung dieser Felder zurück.</p>
+<h3 id="status">Status<a class="anchor" href="#status" aria-label="Link zu diesem Abschnitt">#</a></h3>
+<div class="table"><table><thead><tr><th>Status</th><th>Typ</th><th>SLA</th></tr></thead><tbody><tr><td>In Bearbeitung</td><td>offen</td><td>läuft</td></tr><tr><td>Warten auf Rückmeldung</td><td>offen</td><td>angehalten</td></tr><tr><td>Warten auf Dritte</td><td>offen</td><td>angehalten</td></tr><tr><td>Gelöst</td><td>geschlossen</td><td>Lösungszeit erfüllt</td></tr></tbody></table></div>
+<p>„Gelöst“ ist für den Kunden das Ende; ohne Antwort wird es nach einigen Tagen „geschlossen“ (siehe unten). Antwortet der Kunde, öffnet ein Trigger das Ticket wieder.</p>
+<h3 id="slas-mit-arbeitszeiten">SLAs mit Arbeitszeiten<a class="anchor" href="#slas-mit-arbeitszeiten" aria-label="Link zu diesem Abschnitt">#</a></h3>
+<p>Ein Kalender (Standard „IT-Servicezeiten“, Mo–Fr 08:00–17:00, Europe/Berlin) und je Priorität eine SLA. Standardzeiten in Arbeitszeit:</p>
+<div class="table"><table><thead><tr><th>Priorität</th><th>Reaktion</th><th>Lösung</th></tr></thead><tbody><tr><td>P1 Kritisch</td><td>30 Minuten</td><td>4 Stunden</td></tr><tr><td>P2 Hoch</td><td>1 Stunde</td><td>8 Stunden</td></tr><tr><td>P3 Mittel</td><td>4 Stunden</td><td>24 Stunden</td></tr><tr><td>P4 Niedrig</td><td>8 Stunden</td><td>40 Stunden</td></tr></tbody></table></div>
+<p>Feiertage danach im Kalender in Zammad pflegen (Einstellungen → Kalender). Die Status „Warten auf …“ halten die SLA an.</p>
+<h3 id="automatische-nachrichten">Automatische Nachrichten<a class="anchor" href="#automatische-nachrichten" aria-label="Link zu diesem Abschnitt">#</a></h3>
+<div class="table"><table><thead><tr><th>Trigger</th><th>Wann</th><th>An</th></tr></thead><tbody><tr><td>ITSM – Eingangsbestätigung</td><td>neues Ticket von einem Kunden (E-Mail, Telefon, Web/Portal)</td><td>Kunde</td></tr><tr><td>ITSM – Antwort der IT per E-Mail</td><td>öffentliche Notiz eines Agenten (z. B. aus dem Portal-Verlauf sichtbar)</td><td>Kunde, mit dem Text der Antwort</td></tr><tr><td>ITSM – Mitteilung bei „Gelöst“</td><td>Status wechselt auf „Gelöst“</td><td>Kunde – mit dem Hinweis, dass eine Antwort das Ticket wieder öffnet</td></tr><tr><td>ITSM – Antwort des Kunden öffnet wieder</td><td>Kunde antwortet auf „Warten …“ oder „Gelöst“</td><td>Status „In Bearbeitung“</td></tr></tbody></table></div>
+<p>Die Texte sind schlicht gehalten und enthalten auf Wunsch einen Link ins Portal. Antworten der IT per E-Mail-Artikel verschickt Zammad ohnehin – der zweite Trigger ist für öffentliche Notizen gedacht. Wer das nicht möchte, schaltet ihn in Zammad ab.</p>
+<h3 id="automatisch-schließen">Automatisch schließen<a class="anchor" href="#automatisch-schließen" aria-label="Link zu diesem Abschnitt">#</a></h3>
+<p>Automatisierungen (stündlich):</p>
+<div class="table"><table><thead><tr><th>Automatisierung</th><th>Bedingung</th><th>Wirkung</th></tr></thead><tbody><tr><td>ITSM – Gelöst nach Frist schließen</td><td>„Gelöst“ seit 5 Tagen unverändert</td><td>geschlossen</td></tr><tr><td>ITSM – Erinnerung bei Warten auf Rückmeldung</td><td>„Warten auf Rückmeldung“, letzte Antwort der IT vor 3 Tagen, noch nicht erinnert</td><td>E-Mail an den Kunden, Tag <code>erinnert</code></td></tr><tr><td>ITSM – Ohne Rückmeldung schließen</td><td>„Warten auf Rückmeldung“, letzte Antwort der IT vor 10 Tagen</td><td>E-Mail an den Kunden, geschlossen</td></tr></tbody></table></div>
+<p>Antwortet der Kunde, entfernt der Trigger „Antwort des Kunden öffnet wieder“ den Tag <code>erinnert</code>.</p>
+<h3 id="eskalation">Eskalation<a class="anchor" href="#eskalation" aria-label="Link zu diesem Abschnitt">#</a></h3>
+<div class="table"><table><thead><tr><th>Regel</th><th>Wann</th><th>Wirkung</th></tr></thead><tbody><tr><td>ITSM – Eskalation Stufe 1 (Trigger, zeitgesteuert)</td><td>eine SLA-Zeit ist abgelaufen</td><td>Tag <code>eskaliert</code>, E-Mail an Besitzer und Agenten der Gruppe</td></tr><tr><td>ITSM – Eskalation Stufe 2 (Automatisierung)</td><td>seit 4 Stunden eskaliert</td><td>E-Mail an die eingestellte Adresse (z. B. Teamleitung), Tag <code>eskaliert-stufe-2</code></td></tr><tr><td>ITSM – Eskalation zurücksetzen</td><td>öffentliche Antwort eines Agenten</td><td>beide Tags entfernt</td></tr></tbody></table></div>
+<p>Die Adresse für Stufe 2 muss ein Benutzer in Zammad sein. Ohne Adresse entfällt Stufe 2.</p>
+<h3 id="übersichten">Übersichten<a class="anchor" href="#übersichten" aria-label="Link zu diesem Abschnitt">#</a></h3>
+<p>Für die Rolle Agent: <strong>Neu und in Bearbeitung</strong>, <strong>Meine offenen Tickets</strong>, <strong>Warten</strong>, <strong>Gelöst</strong>, <strong>Eskaliert</strong>, <strong>Offene Störungen</strong> (Ticketart = Störung) und – wenn die Freigaben des Portals eingerichtet sind – <strong>Wartet auf Freigabe</strong>.</p>
+<h2 id="zusammenspiel-mit-dem-portal">Zusammenspiel mit dem Portal<a class="anchor" href="#zusammenspiel-mit-dem-portal" aria-label="Link zu diesem Abschnitt">#</a></h2>
+<ul><li>Anfragen aus dem Portal sind Kunden-Tickets: Eingangsbestätigung, Antworten und Schließen laufen wie bei E-Mail-Tickets.</li><li>Anfragen mit Freigabe warten im Status „wartet auf Freigabe“ – nicht in „Neu und in Bearbeitung“ und ohne SLA. Nach der Freigabe stehen sie auf „new“ und laufen in die SLA.</li><li>Für Störungen aus dem Portal lässt sich in der <a href="zammad.html#2-zammad-zuordnung-an-die-eigene-struktur-anpassen">Zammad-Zuordnung</a> <code>itsm_ticketart=stoerung</code> als zusätzlicher Wert eintragen – dann erscheinen sie in „Offene Störungen“ und bekommen die SLA ihrer Priorität.</li></ul><nav class="pager" aria-label="Weitere Anleitungen"><a href="zammad.html"><span>Zurück</span>Zammad als Datenquelle</a><a class="next" href="app.html"><span>Weiter</span>Portal als App</a></nav><p class="source"><span>Diese Seite entsteht aus <a href="https://github.com/Hundexe/Zammad-Service-Portal/blob/main/docs/ITSM-GRUNDAUSSTATTUNG.md">docs/ITSM-GRUNDAUSSTATTUNG.md</a>.</span><a href="#inhalt">Nach oben</a></p>
+  </main>
+</div>
+<script>
+  // Auf schmalen Bildschirmen startet das Menü zugeklappt
+  if (matchMedia('(max-width: 960px)').matches) document.querySelector('.side details').removeAttribute('open');
+</script>
+</body>
+</html>
