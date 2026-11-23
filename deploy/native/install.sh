@@ -384,16 +384,34 @@ if ! command -v caddy >/dev/null; then
 fi
 site=/etc/caddy/zammad-service-portal.caddy
 cp "$REPO_DIR/deploy/caddy/security-headers.caddy" /etc/caddy/zammad-service-portal-headers.caddy
+# TLS: 1. TLS_CERT_FILE/TLS_KEY_FILE aus portal.env, 2. sonst eine von Hand eingetragene tls-Zeile behalten,
+# 3. sonst die interne CA von Caddy
+tls_line="tls internal"
+if [ -n "${TLS_CERT_FILE:-}" ] && [ "${TLS_CERT_FILE}" != internal ]; then
+  [ -n "${TLS_KEY_FILE:-}" ] || fail "TLS_CERT_FILE ist gesetzt, TLS_KEY_FILE fehlt (portal.env)."
+  for f in "$TLS_CERT_FILE" "$TLS_KEY_FILE"; do
+    [ -f "$f" ] || fail "Zertifikatsdatei $f nicht gefunden (portal.env: TLS_CERT_FILE/TLS_KEY_FILE)."
+    if id caddy >/dev/null 2>&1 && command -v runuser >/dev/null && ! runuser -u caddy -- test -r "$f"; then
+      note "Achtung: $f ist für den Benutzer caddy nicht lesbar (z. B. chgrp caddy \"$f\" && chmod 640 \"$f\")."
+    fi
+  done
+  tls_line="tls $TLS_CERT_FILE $TLS_KEY_FILE"
+elif [ -f "$site" ]; then
+  kept=$(sed -n 's/^[[:space:]]*\(tls[[:space:]].*\)$/\1/p' "$site" | head -n1)
+  if [ -n "$kept" ] && [ "$kept" != "tls internal" ]; then
+    tls_line="$kept"
+    note "TLS-Einstellung aus $site übernommen ($kept). Dauerhaft besser in portal.env: TLS_CERT_FILE/TLS_KEY_FILE."
+  fi
+fi
 cat > "$site" <<EOF
-# Self-Service-Portal für Zammad – erzeugt von deploy/native/install.sh (wird bei jedem Lauf neu geschrieben)
+# Self-Service-Portal für Zammad – erzeugt von deploy/native/install.sh (wird bei jedem Lauf neu geschrieben,
+# die tls-Zeile bleibt erhalten). Eigenes Zertifikat am besten in portal.env: TLS_CERT_FILE und TLS_KEY_FILE.
 http://${PORTAL_HOST}:${HTTP_PORT:-80} {
 	redir https://${PORTAL_HOST}:${HTTPS_PORT:-443}{uri} 308
 }
 
 ${PORTAL_HOST}:${HTTPS_PORT:-443} {
-	# Interne CA von Caddy. Mit Firmenzertifikat stattdessen:
-	#   tls $CONF_DIR/certs/portal.crt $CONF_DIR/certs/portal.key
-	tls internal
+	${tls_line}
 	import /etc/caddy/zammad-service-portal-headers.caddy
 	@hidden path /.* */.*
 	respond @hidden 404
