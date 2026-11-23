@@ -357,20 +357,20 @@ test('Zuordnung: eigener Status, Tags während der Freigabe, ohne E-Mails', asyn
   const su = new Client(p.url);
   await createUser(p.app, { username: 'chef-zuordnung', role: 'Super-Admin' });
   await su.loginLocal('chef-zuordnung', 'Test-Passwort-123!');
-  const put = await su.put(`/api/admin/systems/${systemId}/zammad`, { mapping: { approval: { state: 'Freigabe offen', pendingTags: ['nicht eskalieren'], emailApprover: false, emailRequester: false } } });
+  const put = await su.put(`/api/admin/systems/${systemId}/zammad`, { mapping: { approval: { state: 'Freigabe offen', pendingTags: ['pause-eskalation'], emailApprover: false, emailRequester: false } } });
   assert.equal(put.status, 200, put.text);
   assert.ok(put.json.report.missing.states.includes('Freigabe offen'));
-  assert.equal((await su.put(`/api/admin/systems/${systemId}/zammad`, { mapping: { approval: { state: 'new' } } })).status, 422, 'gleich dem Status nach Freigabe');
+  assert.equal((await su.put(`/api/admin/systems/${systemId}/zammad`, { mapping: { approval: { state: 'In Arbeit', approvedState: 'In Arbeit' } } })).status, 422, 'gleich dem Status nach Freigabe');
   assert.equal((await su.put(`/api/admin/systems/${systemId}/zammad`, { mapping: { attrs: { approver: 'group_id' } } })).status, 422);
   await applySetup(p.app, getSystem(p.app, sys.id)!);
   const a = await anna();
   const { ticket, ref } = await asked(a, 'alex.berger@example.org', { programm: 'Mit Tags' });
   assert.equal(stateName(ticket), 'Freigabe offen');
-  assert.ok(ticket.tags.includes('nicht eskalieren'));
+  assert.ok(ticket.tags.includes('pause-eskalation'));
   assert.ok(!articlesOf(ticket.id).some((art) => art.type === 'email'), 'keine E-Mail');
   const x = await alex();
   assert.equal((await x.post(`/api/portal/approvals/${ref}/approve`, {})).status, 200);
-  assert.ok(!ticket.tags.includes('nicht eskalieren'), 'Tag nach der Entscheidung entfernt');
+  assert.ok(!ticket.tags.includes('pause-eskalation'), 'Tag nach der Entscheidung entfernt');
   assert.equal(stateName(ticket), 'new');
   // zurück auf Standard
   await su.put(`/api/admin/systems/${systemId}/zammad`, { mapping: {} });

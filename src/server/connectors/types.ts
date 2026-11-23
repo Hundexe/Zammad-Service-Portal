@@ -180,21 +180,31 @@ export interface Connector {
   // ---- Einrichtung (braucht Admin-Rechte in Zammad)
   setupInfo(): Promise<SetupInfo>;
   createGroup(name: string): Promise<void>;
-  createState(name: string, likeState: string, opts?: { ignoreEscalation?: boolean }): Promise<void>;
+  /** Status anlegen – vom Typ `type` (Zammad-Status-Typ, unabhängig von den Namen der vorhandenen Status) */
+  createState(name: string, type: StateType, opts?: { ignoreEscalation?: boolean }): Promise<void>;
   /** Verwaltungsobjekte in Zammad (Grundausstattung): Liste bzw. Anlegen */
   adminList(kind: AdminKind): Promise<{ id: number; name: string; [k: string]: unknown }[]>;
   adminCreate(kind: AdminKind, body: Record<string, unknown>): Promise<{ id: number }>;
   saveAttribute(def: AttributeDef, existingId?: number): Promise<void>;
   executeMigrations(): Promise<void>;
   /** Core Workflows (Abhängigkeiten zwischen Feldern) */
-  workflows(): Promise<{ id: number; name: string; active: boolean }[]>;
+  /** Core Workflows, die Zammad über die API zeigt (nur „changeable“) – mit Notiz zum Wiedererkennen */
+  workflows(): Promise<{ id: number; name: string; active: boolean; note: string }[]>;
+  /** Neu anlegen bzw. ändern. Wirft ConnectorError mit status 404 (nicht änderbar) oder 422 (Name vergeben) */
   saveWorkflow(def: WorkflowDef, existingId?: number): Promise<void>;
+  adminUpdate(kind: AdminKind, id: number, body: Record<string, unknown>): Promise<void>;
 }
+
+/** Status-Typen in Zammad (Grundinstallation; IDs in Klammern) */
+export type StateType = 'new' | 'open' | 'pending reminder' | 'pending action' | 'closed' | 'merged' | 'removed';
+export const STATE_TYPE_IDS: Record<StateType, number> = { new: 1, open: 2, 'pending reminder': 3, 'pending action': 4, closed: 5, merged: 6, removed: 7 };
 
 export type AdminKind = 'ticket_priorities' | 'calendars' | 'slas' | 'triggers' | 'jobs' | 'overviews' | 'roles' | 'ticket_states';
 
 /** Core Workflow für Tickets: Bedingung (Feld → Operator/Wert) und Wirkung (Feld → show/hide) */
 export interface WorkflowDef {
+  /** fester Schlüssel – steht in der Notiz, damit das Portal den Workflow auch nach Umbenennen wiederfindet */
+  key: string;
   name: string;
   priority: number;
   condition: Record<string, { operator: 'is' | 'is set'; value?: string[] }>;
@@ -211,6 +221,6 @@ export interface AttributeDef {
 
 export interface SetupInfo {
   groups: { id: number; name: string; active: boolean }[];
-  states: { id: number; name: string; active: boolean; stateTypeId: number | null }[];
+  states: { id: number; name: string; active: boolean; stateTypeId: number | null; type: StateType | null; defaultCreate: boolean; defaultFollowUp: boolean }[];
   attributes: { id: number; name: string; display: string; dataType: string; options: Record<string, string> }[];
 }

@@ -25,6 +25,7 @@ import { markReadByLink, notify } from './notifications.ts';
 import { localEmailTaken } from './requests.ts';
 import { connectorFor, getSystem, listSystems, type SystemRow } from './systems.ts';
 import { getMapping } from './zammad-setup.ts';
+import { resolveState } from './zammad-states.ts';
 import { getFeatures } from './features.ts';
 import { getForm, publishedVersion } from './forms.ts';
 import { formatHtmlArticle, formatTextArticle } from './article-format.ts';
@@ -308,7 +309,8 @@ async function finish(app: App, l: Loaded, status: Exclude<ApprovalStatus, 'auss
   const c = connectorFor(app, l.sys);
   const now = new Date();
   await c.updateTicket(l.t.id, {
-    state: status === 'genehmigt' ? l.m.approval.approvedState : l.t.closed ? undefined : l.m.approval.closedState,
+    state: status === 'genehmigt' ? await resolveState(app, l.sys, l.m, 'new', l.m.approval.approvedState)
+      : l.t.closed ? undefined : await resolveState(app, l.sys, l.m, 'closed', l.m.approval.closedState),
     fields: { [l.m.attrs.approvalStatus]: status, [l.m.attrs.approvedAt]: now.toISOString() },
   });
   forgetCounts();

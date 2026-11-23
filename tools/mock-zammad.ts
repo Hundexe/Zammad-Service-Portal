@@ -9,7 +9,11 @@ interface Ticket { id: number; number: string; title: string; group_id: number; 
 interface Article { id: number; ticket_id: number; from: string; sender: string; body: string; content_type: string; internal: boolean; created_at: string; type?: string; subject?: string; to?: string; attachments: { id: number; filename: string; size: number; data: Buffer; mime: string }[] }
 interface Link { source: number; target: number; type: 'normal' | 'parent' }
 
-export interface MockOptions { port?: number; token?: string; name?: string; customers?: { email: string; firstname: string; lastname: string }[]; quiet?: boolean }
+export interface MockOptions {
+  port?: number; token?: string; name?: string; customers?: { email: string; firstname: string; lastname: string }[]; quiet?: boolean;
+  /** Status umbenannt wie in manchen Installationen („1 Neu“, „2 In Arbeit“, „9 Erledigt“ …) */
+  renamedStates?: boolean;
+}
 
 export interface MockZammad {
   server: Server;
@@ -36,10 +40,13 @@ const GROUPS_INIT = [
 ];
 const STATES_INIT = [
   { id: 1, name: 'new', active: true, state_type_id: 1 }, { id: 2, name: 'open', active: true, state_type_id: 2 }, { id: 3, name: 'pending reminder', active: true, state_type_id: 3 },
-  { id: 4, name: 'closed', active: true, state_type_id: 5 }, { id: 5, name: 'merged', active: true, state_type_id: 7 }, { id: 7, name: 'pending close', active: true, state_type_id: 4 },
+  { id: 4, name: 'closed', active: true, state_type_id: 5 }, { id: 5, name: 'merged', active: true, state_type_id: 6 }, { id: 7, name: 'pending close', active: true, state_type_id: 4 },
 ];
 /** Status-Typen, die als „geschlossen“ zählen (closed, merged) */
-const CLOSED_TYPES = [5, 7];
+const CLOSED_TYPES = [5, 6, 7];
+/** Status-Typen wie in Zammad (Grundinstallation) */
+const STATE_TYPES: Record<number, string> = { 1: 'new', 2: 'open', 3: 'pending reminder', 4: 'pending action', 5: 'closed', 6: 'merged', 7: 'removed' };
+const RENAMED: Record<string, string> = { new: '1 Neu', open: '2 In Arbeit', 'pending reminder': '5 Erinnerung', closed: '9 Erledigt' };
 const PRIORITIES_INIT = [{ id: 1, name: '1 low', active: true }, { id: 2, name: '2 normal', active: true }, { id: 3, name: '3 high', active: true }];
 
 const ATTRIBUTES_INIT = [
@@ -75,7 +82,8 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
     { id: 2, login: 'agent', email: 'support@example.org', firstname: 'Sabine', lastname: 'Support', roles: ['Agent'], organization_id: null },
   ];
   const GROUPS = GROUPS_INIT.map((g) => ({ ...g }));
-  const STATES = STATES_INIT.map((s) => ({ ...s }));
+  const STATES = STATES_INIT.map((s) => ({ ...s, name: opts.renamedStates ? RENAMED[s.name] ?? s.name : s.name, default_create: s.id === 1, default_follow_up: s.id === 2 }));
+  if (opts.renamedStates) STATES.push({ id: 8, name: '3 Rückfrage', active: true, state_type_id: 2, default_create: false, default_follow_up: false });
   const PRIORITIES = PRIORITIES_INIT.map((x) => ({ ...x }));
   const ATTRIBUTES: any[] = ATTRIBUTES_INIT.map((a) => structuredClone(a));
   const links: Link[] = [];
@@ -182,7 +190,9 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
       if (req.method === 'GET' && p === '/api/v1/users/me') return send(res, 200, { id: current.id, login: current.login, email: current.email });
       if (req.method === 'GET' && p === '/api/v1/version') return send(res, 200, { version: '6.5.0 (Simulator)' });
       if (req.method === 'GET' && p === '/api/v1/groups') return send(res, 200, GROUPS);
-      if (req.method === 'GET' && p === '/api/v1/ticket_states') return send(res, 200, STATES);
+      if (req.method === 'GET' && p === '/api/v1/ticket_states') {
+        return send(res, 200, url.searchParams.get('expand') === 'true' ? STATES.map((x) => ({ ...x, state_type: STATE_TYPES[x.state_type_id] })) : STATES);
+      }
       if (req.method === 'GET' && p === '/api/v1/ticket_priorities') return send(res, 200, PRIORITIES);
       if (req.method === 'GET' && p === '/api/v1/object_manager_attributes') return send(res, 200, ATTRIBUTES);
       if (req.method === 'GET' && p === '/api/v1/users/search') {
@@ -324,7 +334,7 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
       if (req.method === 'POST' && p === '/api/v1/ticket_states') {
         if (!isAdmin) return send(res, 403, { error: 'Not authorized (admin.object)' });
         if (STATES.some((s) => s.name === json.name)) return send(res, 422, { error: 'Name already exists' });
-        STATES.push({ id: Math.max(...STATES.map((s) => s.id)) + 1, name: String(json.name), active: true, state_type_id: Number(json.state_type_id), ignore_escalation: json.ignore_escalation === true } as typeof STATES[number]);
+        STATES.push({ id: Math.max(...STATES.map((s) => s.id)) + 1, name: String(json.name), active: true, state_type_id: Number(json.state_type_id), ignore_escalation: json.ignore_escalation === true, default_create: false, default_follow_up: false } as typeof STATES[number]);
         return send(res, 201, STATES.at(-1));
       }
       let ma = /^\/api\/v1\/object_manager_attributes(?:\/(\d+))?$/.exec(p);
@@ -348,9 +358,18 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
         const list = admin[ma2[1]!]!;
         if (req.method === 'GET') return send(res, 200, list);
         if (!json.name || ma2[1] === 'roles') return send(res, 422, { error: 'invalid' });
-        if (list.some((x) => x.name === json.name)) return send(res, 422, { error: 'Name already exists' });
+        if (ma2[1] !== 'overviews' && list.some((x) => x.name === json.name)) return send(res, 422, { error: 'Name already exists' });
+        if (ma2[1] === 'overviews' && list.some((x) => x.link === json.link)) return send(res, 422, { error: 'Link already exists' });
         list.push({ id: list.length + 1, ...json });
         return send(res, 201, list.at(-1));
+      }
+      const ma3 = /^\/api\/v1\/(calendars|slas|triggers|jobs|overviews)\/(\d+)$/.exec(p);
+      if (ma3 && req.method === 'PUT') {
+        if (!isAdmin) return send(res, 403, { error: 'Not authorized' });
+        const x = admin[ma3[1]!]!.find((o) => o.id === Number(ma3[2]));
+        if (!x) return send(res, 404, { error: 'not found' });
+        Object.assign(x, json);
+        return send(res, 200, x);
       }
       if (req.method === 'POST' && p === '/api/v1/ticket_priorities') {
         if (!isAdmin) return send(res, 403, { error: 'Not authorized' });
@@ -358,17 +377,21 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
         PRIORITIES.push({ id: Math.max(...PRIORITIES.map((x) => x.id)) + 1, name: String(json.name), active: true });
         return send(res, 201, PRIORITIES.at(-1));
       }
-      if (req.method === 'GET' && p === '/api/v1/core_workflows') {
+      // Wie Zammad: index, show, update und search sehen nur Workflows mit changeable: true
+      if (req.method === 'GET' && (p === '/api/v1/core_workflows' || p === '/api/v1/core_workflows/search')) {
         if (!isAdmin) return send(res, 403, { error: 'Not authorized (admin.core_workflow)' });
-        return send(res, 200, workflows);
+        const q = (url.searchParams.get('query') ?? '').toLowerCase();
+        return send(res, 200, workflows.filter((w) => w.changeable === true && (!q || String(w.name).toLowerCase().includes(q))));
       }
       const mw = /^\/api\/v1\/core_workflows(?:\/(\d+))?$/.exec(p);
       if ((req.method === 'POST' || req.method === 'PUT') && mw) {
         if (!isAdmin) return send(res, 403, { error: 'Not authorized (admin.core_workflow)' });
         if (!json.name || json.object !== 'Ticket') return send(res, 422, { error: 'invalid' });
-        if (req.method === 'POST') { workflows.push({ id: workflows.length + 1, ...json }); return send(res, 201, workflows.at(-1)); }
-        const w = workflows.find((x) => x.id === Number(mw[1]));
-        if (!w) return send(res, 404, { error: 'not found' });
+        const taken = workflows.find((x) => String(x.name).toLowerCase() === String(json.name).toLowerCase() && x.id !== Number(mw[1]));
+        if (taken) return send(res, 422, { error: 'Name has already been taken', error_human: 'Name has already been taken' });
+        if (req.method === 'POST') { workflows.push({ id: workflows.length + 1, changeable: true, ...json }); return send(res, 201, workflows.at(-1)); }
+        const w = workflows.find((x) => x.id === Number(mw[1]) && x.changeable === true);
+        if (!w) return send(res, 404, { error: 'Couldn\'t find CoreWorkflow' });
         Object.assign(w, json);
         return send(res, 200, w);
       }

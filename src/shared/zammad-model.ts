@@ -95,9 +95,9 @@ export interface ZammadMapping {
   approval: {
     /** Status, solange die Freigabe aussteht (wird vom Typ „offen“ angelegt, falls er fehlt) */
     state: string;
-    /** Status nach der Freigabe – ab hier bearbeitet die Fachgruppe */
+    /** Status nach der Freigabe – ab hier bearbeitet die Fachgruppe; leer = Status für neue Tickets (siehe `states`) */
     approvedState: string;
-    /** Status nach Ablehnung, Rückzug oder Ablauf */
+    /** Status nach Ablehnung, Rückzug oder Ablauf; leer = Status für geschlossene Tickets */
     closedState: string;
     /** Tags, solange die Freigabe aussteht (z. B. um Eskalationen auszunehmen); danach entfernt */
     pendingTags: string[];
@@ -114,12 +114,47 @@ export interface ZammadMapping {
   closeAffected: boolean;
   /** Abhängigkeiten in Zammad pflegen (Core Workflows „Portal: …“): Felder nur zeigen, wo sie gebraucht werden */
   workflows: boolean;
+  /**
+   * Status, die das Portal setzt. Leer = automatisch: der aktive Zammad-Status mit passendem Typ
+   * (bei mehreren der als Standard markierte). So funktionieren auch umbenannte Status („1 Neu“, „9 Erledigt“).
+   */
+  states: Record<StateRole, string>;
+  /** Benennung: Anzeigenamen der Felder (leer = Standard), der Arten und Vorsilbe der Abhängigkeiten in Zammad */
+  names: {
+    attrs: Partial<Record<AttrKey, string>>;
+    kinds: Record<ItsmKind, string>;
+    workflowPrefix: string;
+  };
+  /** Übersichten in Zammad, die das Portal anlegt und pflegt */
+  overviews: {
+    enabled: boolean;
+    builtin: Record<OverviewKey, { active: boolean; name: string }>;
+    /** Zusätzlich je Formular (z. B. Software): alle offenen Tickets dieses Formulars, auch die wartenden */
+    forms: { formId: string; name: string }[];
+  };
 }
+
+/** Rollen der Status, die das Portal setzt */
+export const STATE_ROLES = ['new', 'open', 'closed'] as const;
+export type StateRole = (typeof STATE_ROLES)[number];
+export const STATE_ROLE_LABEL: Record<StateRole, string> = { new: 'Neue Tickets', open: 'Wieder geöffnet / in Bearbeitung', closed: 'Geschlossen' };
+
+export const OVERVIEW_KEYS = ['approvals', 'incidents', 'maintenance', 'problems'] as const;
+export type OverviewKey = (typeof OVERVIEW_KEYS)[number];
+export const OVERVIEW_INFO: Record<OverviewKey, { name: string; description: string }> = {
+  approvals: { name: 'Wartet auf Freigabe', description: 'Anfragen, über die noch nicht entschieden ist' },
+  incidents: { name: 'Störungen', description: 'offene Störungen' },
+  maintenance: { name: 'Wartungen', description: 'geplante und laufende Wartungen' },
+  problems: { name: 'Probleme', description: 'offene Probleme und bekannte Fehler' },
+};
+
+/** Anzeigename eines Portal-Felds (eigene Benennung oder Standard) */
+export const attrLabel = (m: ZammadMapping, key: AttrKey) => m.names.attrs[key] || specOf(key).display;
 
 export const DEFAULT_MAPPING: ZammadMapping = {
   attrs: Object.fromEntries(ATTR_SPECS.map((s) => [s.key, s.name])) as Record<AttrKey, string>,
   approval: {
-    state: 'wartet auf Freigabe', approvedState: 'new', closedState: 'closed',
+    state: 'wartet auf Freigabe', approvedState: '', closedState: '',
     pendingTags: [], approvedTag: 'freigegeben', emailApprover: true, emailRequester: true,
   },
   kinds: {
@@ -130,6 +165,13 @@ export const DEFAULT_MAPPING: ZammadMapping = {
   affectedTags: [],
   closeAffected: true,
   workflows: true,
+  states: { new: '', open: '', closed: '' },
+  names: { attrs: {}, kinds: { ...KIND_LABEL }, workflowPrefix: 'Portal: ' },
+  overviews: {
+    enabled: true,
+    builtin: Object.fromEntries(OVERVIEW_KEYS.map((k) => [k, { active: true, name: OVERVIEW_INFO[k].name }])) as Record<OverviewKey, { active: boolean; name: string }>,
+    forms: [],
+  },
 };
 
 /** Welche Portal-Attribute bei welcher Art sichtbar sind (alle anderen blendet der Core Workflow aus) */
@@ -175,6 +217,8 @@ export function normalizeMapping(raw: unknown): ZammadMapping {
   const state = (key: 'state' | 'approvedState' | 'closedState') => {
     const v = a[key];
     if (v === undefined || v === '') return d.approval[key];
+    // Werte aus 2.0.0 (damals Standard): „new“ und „closed“ heißen jetzt „automatisch“
+    if ((key === 'approvedState' && v === 'new') || (key === 'closedState' && v === 'closed')) return '';
     if (!textOk(v, 60)) throw new Error('Status ungültig');
     return String(v).trim();
   };
@@ -185,7 +229,7 @@ export function normalizeMapping(raw: unknown): ZammadMapping {
     emailApprover: a.emailApprover === undefined ? d.approval.emailApprover : a.emailApprover === true,
     emailRequester: a.emailRequester === undefined ? d.approval.emailRequester : a.emailRequester === true,
   };
-  if (approval.state === approval.approvedState) throw new Error('„Wartet auf Freigabe“ und „nach der Freigabe“ müssen verschiedene Status sein');
+  if (approval.approvedState && approval.state === approval.approvedState) throw new Error('„Wartet auf Freigabe“ und „nach der Freigabe“ müssen verschiedene Status sein');
   const kindsOut = {} as Record<ItsmKind, KindMapping>;
   for (const k of ITSM_KINDS) {
     const m = r.kinds?.[k] ?? {};
@@ -212,7 +256,52 @@ export function normalizeMapping(raw: unknown): ZammadMapping {
     affectedTags: tagList(r.affectedTags, 'Tags für Betroffene'),
     closeAffected: r.closeAffected === undefined ? d.closeAffected : r.closeAffected === true,
     workflows: r.workflows === undefined ? d.workflows : r.workflows === true,
+    states: Object.fromEntries(STATE_ROLES.map((k) => {
+      const v = r.states?.[k];
+      if (v === undefined || v === '') return [k, ''];
+      if (!textOk(v, 60)) throw new Error(`Status für „${STATE_ROLE_LABEL[k]}“ ungültig`);
+      return [k, String(v).trim()];
+    })) as Record<StateRole, string>,
+    names: normalizeNames(r.names),
+    overviews: normalizeOverviews(r.overviews),
   };
+}
+
+function label(v: unknown, fallback: string, what: string, max = 80): string {
+  if (v === undefined || v === '') return fallback;
+  if (!textOk(v, max)) throw new Error(`${what}: höchstens ${max} Zeichen, keine Steuerzeichen`);
+  return String(v).trim();
+}
+
+function normalizeNames(raw: any): ZammadMapping['names'] {
+  const d = DEFAULT_MAPPING.names;
+  const attrs: Partial<Record<AttrKey, string>> = {};
+  for (const k of ATTR_KEYS) {
+    const v = raw?.attrs?.[k];
+    if (v !== undefined && v !== '' && v !== specOf(k).display) attrs[k] = label(v, '', `Anzeigename „${specOf(k).display}“`);
+  }
+  const kinds = Object.fromEntries(ITSM_KINDS.map((k) => [k, label(raw?.kinds?.[k], d.kinds[k], `Name für ${KIND_LABEL[k]}`, 40)])) as Record<ItsmKind, string>;
+  const prefix = raw?.workflowPrefix === undefined ? d.workflowPrefix : String(raw.workflowPrefix);
+  if (!prefix.trim() || prefix.length > 30 || /[\u0000-\u001f]/.test(prefix)) throw new Error('Vorsilbe der Abhängigkeiten: 1 bis 30 Zeichen');
+  return { attrs, kinds, workflowPrefix: prefix };
+}
+
+function normalizeOverviews(raw: any): ZammadMapping['overviews'] {
+  const d = DEFAULT_MAPPING.overviews;
+  const builtin = Object.fromEntries(OVERVIEW_KEYS.map((k) => {
+    const o = raw?.builtin?.[k] ?? {};
+    return [k, { active: o.active === undefined ? d.builtin[k].active : o.active === true, name: label(o.name, d.builtin[k].name, `Name der Übersicht „${OVERVIEW_INFO[k].name}“`) }];
+  })) as ZammadMapping['overviews']['builtin'];
+  const forms: { formId: string; name: string }[] = [];
+  if (raw?.forms !== undefined) {
+    if (!Array.isArray(raw.forms) || raw.forms.length > 30) throw new Error('Höchstens 30 Übersichten je Formular');
+    for (const f of raw.forms) {
+      if (!f || typeof f.formId !== 'string' || !/^[0-9a-f-]{36}$/.test(f.formId)) throw new Error('Übersicht je Formular: Formular ungültig');
+      if (forms.some((x) => x.formId === f.formId)) continue;
+      forms.push({ formId: f.formId, name: label(f.name, '', 'Name der Übersicht') || 'Formular' });
+    }
+  }
+  return { enabled: raw?.enabled === undefined ? d.enabled : raw.enabled === true, builtin, forms };
 }
 
 /** Schlüssel für einen Auswahlwert aus einem Anzeigenamen (Zammad: Kleinbuchstaben, Ziffern, Unterstrich) */

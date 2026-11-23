@@ -4,11 +4,27 @@
 import {
   ConnectorError, type ZammadAttribute, type ArticleSummary, type Attachment, type Connector, type CreateTicketInput,
   type CustomerRef, type SystemMetadata, type TicketSummary, type TicketSystemConfig,
-  type AgentArticle, type AttributeDef, type LinkType, type NewAgentTicket, type NewArticle, type SearchCondition, type SetupInfo, type WorkflowDef, type AdminKind, type ZTicket,
+  type AgentArticle, type AttributeDef, type LinkType, type NewAgentTicket, type NewArticle, type SearchCondition, type SetupInfo, type WorkflowDef, type AdminKind, type StateType, STATE_TYPE_IDS, type ZTicket,
 } from './types.ts';
 import { isProtectedZammadField } from '../../shared/form.ts';
 import { log } from '../log.ts';
 import { escapeHtml, textToHtml } from '../../shared/template.ts';
+
+/** Kennung in der Notiz eines Core Workflows: „[portal:<schlüssel>]“ */
+export const WORKFLOW_MARK = '[portal:';
+
+const STATE_TTL = 10 * 60_000;
+const closedByType = new Map<string, { at: number; names: Set<string> }>();
+const CLOSED_TYPES = new Set(['closed', 'merged', 'removed']);
+function isClosedType(s: Json): boolean {
+  if (typeof s.state_type === 'string') return CLOSED_TYPES.has(s.state_type);
+  const id = Number(s.state_type_id);
+  return [STATE_TYPE_IDS.closed, STATE_TYPE_IDS.merged, STATE_TYPE_IDS.removed].includes(id);
+}
+/** Zwischengespeicherte Status-Typen vergessen (nach Änderungen an den Status in Zammad) */
+export function forgetClosedStates(systemId?: string): void {
+  if (systemId) closedByType.delete(systemId); else closedByType.clear();
+}
 
 const MAX_RESPONSE = 30 * 1024 * 1024;
 /** Aufrufe, die länger dauern, landen mit Dauer im Log – hilft bei „manchmal langsam“ */
@@ -260,6 +276,21 @@ export class ZammadConnector implements Connector {
     return String(customer.customerId);
   }
 
+  /**
+   * Welche Status gelten als erledigt? Die Liste in den Einstellungen und zusätzlich jeder Zammad-Status vom Typ
+   * geschlossen, zusammengeführt oder entfernt – so stimmt „erledigt“ auch bei umbenannten Status („9 Erledigt“).
+   */
+  private async loadClosedStates(): Promise<void> {
+    const hit = closedByType.get(this.sys.id);
+    if (hit && Date.now() - hit.at < STATE_TTL) return;
+    let names = new Set<string>();
+    try {
+      const list = await this.call('GET', '/api/v1/ticket_states?per_page=500&expand=true');
+      names = new Set((list ?? []).filter((x: Json) => isClosedType(x)).map((x: Json) => String(x.name)));
+    } catch { /* ohne Leserecht: nur die Liste aus den Einstellungen */ }
+    closedByType.set(this.sys.id, { at: Date.now(), names });
+  }
+
   private summary(t: Json): TicketSummary {
     const state = String(t.state ?? t.state_id ?? '');
     return {
@@ -267,7 +298,7 @@ export class ZammadConnector implements Connector {
       number: String(t.number ?? ''),
       title: String(t.title ?? ''),
       state,
-      closed: this.sys.closedStates.includes(state),
+      closed: this.sys.closedStates.includes(state) || (closedByType.get(this.sys.id)?.names.has(state) ?? false),
       priority: t.priority !== undefined ? String(t.priority) : null,
       group: t.group !== undefined ? String(t.group) : null,
       customerId: Number(t.customer_id),
@@ -342,6 +373,7 @@ export class ZammadConnector implements Connector {
   }
 
   async listTickets(customer: CustomerRef): Promise<TicketSummary[]> {
+    await this.loadClosedStates();
     // Früher: alle für das Konto sichtbaren Tickets seitenweise (älteste zuerst) und dann filtern. Ist der Kunde in
     // Zammad zugleich Agent, sieht er dort Tausende Tickets – die eigenen neuen lagen dann jenseits der ersten Seiten.
     const onBehalfOf = this.sys.creationMode === 'on_behalf_of' ? this.behalf(customer) : undefined;
@@ -386,6 +418,7 @@ export class ZammadConnector implements Connector {
   }
 
   async findTicketByNumber(number: string): Promise<TicketSummary | null> {
+    await this.loadClosedStates();
     if (!/^\d{1,20}$/.test(number)) return null;
     const q = new URLSearchParams({
       'condition[ticket.number][operator]': 'is',
@@ -397,6 +430,7 @@ export class ZammadConnector implements Connector {
   }
 
   async ticketInfo(ticketId: number): Promise<TicketSummary | null> {
+    await this.loadClosedStates();
     const t = await this.call('GET', `/api/v1/tickets/${ticketId}?expand=true`);
     return t && t.id !== undefined ? this.summary(t) : null;
   }
@@ -417,6 +451,7 @@ export class ZammadConnector implements Connector {
   }
 
   async getTicket(customer: CustomerRef, ticketId: number): Promise<{ ticket: TicketSummary; articles: ArticleSummary[] } | null> {
+    await this.loadClosedStates();
     const onBehalfOf = this.sys.creationMode === 'on_behalf_of' ? this.behalf(customer) : undefined;
     let raw: Json;
     try {
@@ -461,6 +496,7 @@ export class ZammadConnector implements Connector {
   }
 
   async findTicketForRequest(customer: CustomerRef, requestId: string, title: string, since: number): Promise<{ id: number; number: string } | null> {
+    await this.loadClosedStates();
     const candidates = (await this.listTickets(customer)).filter((t) =>
       t.customerId === customer.customerId && t.title === title && (!t.createdAt || Date.parse(t.createdAt) >= since - 120_000));
     for (const t of candidates.slice(0, 10)) {
@@ -479,12 +515,14 @@ export class ZammadConnector implements Connector {
   }
 
   async getTicketFull(ticketId: number): Promise<ZTicket | null> {
+    await this.loadClosedStates();
     if (!Number.isSafeInteger(ticketId) || ticketId <= 0) return null;
     const t = await this.call('GET', `/api/v1/tickets/${ticketId}?expand=true`);
     return t && t.id !== undefined ? this.full(t) : null;
   }
 
   async searchTickets(conditions: Record<string, SearchCondition>, limit = 200): Promise<ZTicket[]> {
+    await this.loadClosedStates();
     const q = new URLSearchParams({ sort_by: 'updated_at', order_by: 'desc', limit: String(Math.min(Math.max(limit, 1), 200)), expand: 'true' });
     for (const [k, raw] of Object.entries(conditions)) {
       if (!/^[a-z][a-z0-9_.]{0,60}$/.test(k)) throw new ConnectorError(`Ungültige Bedingung ${k}`, false);
@@ -512,6 +550,7 @@ export class ZammadConnector implements Connector {
   }
 
   async updateTicket(ticketId: number, changes: { title?: string; state?: string; group?: string; fields?: Record<string, unknown> }): Promise<ZTicket> {
+    await this.loadClosedStates();
     const body: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(changes.fields ?? {})) if (/^[a-z][a-z0-9_]{0,60}$/.test(k) && !SYSTEM_ATTRIBUTES.includes(k)) body[k] = v;
     if (changes.title !== undefined) body.title = changes.title;
@@ -536,6 +575,7 @@ export class ZammadConnector implements Connector {
   }
 
   async createAgentTicket(input: NewAgentTicket): Promise<ZTicket> {
+    await this.loadClosedStates();
     const body: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(input.fields ?? {})) if (/^[a-z][a-z0-9_]{0,60}$/.test(k) && !SYSTEM_ATTRIBUTES.includes(k)) body[k] = v;
     Object.assign(body, { title: input.title, group: input.group, customer_id: input.customerId, article: { subject: input.article.subject ?? input.title, ...this.articleBody(input.article) } });
@@ -607,12 +647,22 @@ export class ZammadConnector implements Connector {
   async setupInfo(): Promise<SetupInfo> {
     const [groups, states, attrs] = await Promise.all([
       this.call('GET', '/api/v1/groups?per_page=500'),
-      this.call('GET', '/api/v1/ticket_states?per_page=500'),
+      this.call('GET', '/api/v1/ticket_states?per_page=500&expand=true'),
       this.call('GET', '/api/v1/object_manager_attributes'),
     ]);
+    closedByType.set(this.sys.id, { at: Date.now(), names: new Set((states ?? []).filter((x: Json) => isClosedType(x)).map((x: Json) => String(x.name))) });
+    const typeOf = (s: Json): StateType | null => {
+      const byName = typeof s.state_type === 'string' ? s.state_type : null;
+      if (byName && byName in STATE_TYPE_IDS) return byName as StateType;
+      const id = Number(s.state_type_id);
+      return (Object.entries(STATE_TYPE_IDS).find(([, v]) => v === id)?.[0] as StateType | undefined) ?? null;
+    };
     return {
       groups: (groups ?? []).map((g: Json) => ({ id: Number(g.id), name: String(g.name), active: g.active !== false })),
-      states: (states ?? []).map((s: Json) => ({ id: Number(s.id), name: String(s.name), active: s.active !== false, stateTypeId: s.state_type_id === undefined ? null : Number(s.state_type_id) })),
+      states: (states ?? []).map((s: Json) => ({
+        id: Number(s.id), name: String(s.name), active: s.active !== false, stateTypeId: s.state_type_id === undefined ? null : Number(s.state_type_id),
+        type: typeOf(s), defaultCreate: s.default_create === true, defaultFollowUp: s.default_follow_up === true,
+      })),
       attributes: (attrs ?? []).filter((a: Json) => a.object === 'Ticket').map((a: Json) => ({
         id: Number(a.id), name: String(a.name), display: String(a.display ?? a.name), dataType: String(a.data_type ?? ''),
         options: a.data_option?.options && typeof a.data_option.options === 'object' && !Array.isArray(a.data_option.options)
@@ -637,12 +687,14 @@ export class ZammadConnector implements Connector {
     return { id: Number(r.id) };
   }
 
-  async createState(name: string, likeState: string, opts: { ignoreEscalation?: boolean } = {}): Promise<void> {
-    const states = (await this.call('GET', '/api/v1/ticket_states?per_page=500')) as Json[];
-    const like = (states ?? []).find((s) => s.name === likeState);
-    if (!like?.state_type_id) throw new ConnectorError(`Status „${likeState}“ fehlt in Zammad`, false);
-    await this.call('POST', '/api/v1/ticket_states', { body: { name, state_type_id: like.state_type_id, active: true, ignore_escalation: opts.ignoreEscalation ?? true, note: 'Angelegt vom Self-Service-Portal' } });
+  async createState(name: string, type: StateType, opts: { ignoreEscalation?: boolean } = {}): Promise<void> {
+    // Typ-ID aus einem vorhandenen Status dieses Typs (Namen sind frei wählbar), sonst die ID der Grundinstallation
+    const states = (await this.call('GET', '/api/v1/ticket_states?per_page=500&expand=true')) as Json[];
+    const like = (states ?? []).find((s) => s.state_type === type && s.state_type_id);
+    const typeId = like ? Number(like.state_type_id) : STATE_TYPE_IDS[type];
+    await this.call('POST', '/api/v1/ticket_states', { body: { name, state_type_id: typeId, active: true, ignore_escalation: opts.ignoreEscalation ?? true, note: 'Angelegt vom Self-Service-Portal' } });
   }
+
 
   async saveAttribute(def: AttributeDef, existingId?: number): Promise<void> {
     const opt: Record<string, unknown> = { null: true };
@@ -666,23 +718,28 @@ export class ZammadConnector implements Connector {
     else await this.call('POST', '/api/v1/object_manager_attributes', { body });
   }
 
-  async workflows(): Promise<{ id: number; name: string; active: boolean }[]> {
+  async workflows(): Promise<{ id: number; name: string; active: boolean; note: string }[]> {
     const list = await this.call('GET', '/api/v1/core_workflows?per_page=500');
-    return (Array.isArray(list) ? list : []).map((w: Json) => ({ id: Number(w.id), name: String(w.name ?? ''), active: w.active !== false }));
+    return (Array.isArray(list) ? list : []).map((w: Json) => ({ id: Number(w.id), name: String(w.name ?? ''), active: w.active !== false, note: String(w.note ?? '') }));
   }
 
   async saveWorkflow(def: WorkflowDef, existingId?: number): Promise<void> {
     const field = (k: string) => `ticket.${k}`;
     const body = {
-      name: def.name, object: 'Ticket', active: true, priority: def.priority, stop_after_match: false, changeable: false,
+      // changeable: true – nur solche zeigt Zammad über die API (Liste, Suche, Ändern); sonst findet das Portal sie nie wieder
+      name: def.name, object: 'Ticket', active: true, priority: def.priority, stop_after_match: false, changeable: true,
       preferences: { screen: ['create_middle', 'edit'] },
       condition_saved: {},
       condition_selected: Object.fromEntries(Object.entries(def.condition).map(([k, c]) => [field(k), c.value ? { operator: c.operator, value: c.value } : { operator: c.operator }])),
       perform: Object.fromEntries(Object.entries(def.perform).map(([k, op]) => [field(k), { operator: op, [op]: 'true' }])),
-      note: 'Angelegt und gepflegt vom Self-Service-Portal – Änderungen hier überschreibt „In Zammad einrichten“.',
+      note: `${WORKFLOW_MARK}${def.key}] Angelegt und gepflegt vom Self-Service-Portal – Änderungen hier überschreibt „In Zammad einrichten“.`,
     };
     if (existingId) await this.call('PUT', `/api/v1/core_workflows/${existingId}`, { body });
     else await this.call('POST', '/api/v1/core_workflows', { body });
+  }
+
+  async adminUpdate(kind: AdminKind, id: number, body: Record<string, unknown>): Promise<void> {
+    await this.call('PUT', `/api/v1/${kind}/${id}`, { body });
   }
 
   async executeMigrations(): Promise<void> {

@@ -11,10 +11,12 @@ import { log } from '../log.ts';
 import { getFeatures } from './features.ts';
 import { connectorFor, getSystem, listSystems, type SystemRow } from './systems.ts';
 import {
-  APPROVAL_ATTRS, ATTR_SPECS, DEFAULT_MAPPING, ITSM_KINDS, KIND_ATTRS, KIND_LABEL, KIND_VALUE, normalizeMapping, optionKey,
-  type AttrKey, type AttrSpec, type ItsmKind, type ZammadMapping,
+  APPROVAL_ATTRS, ATTR_SPECS, DEFAULT_MAPPING, ITSM_KINDS, KIND_ATTRS, KIND_LABEL, KIND_VALUE, STATE_ROLES, STATE_ROLE_LABEL, attrLabel, normalizeMapping, optionKey,
+  type AttrKey, type AttrSpec, type ItsmKind, type StateRole, type ZammadMapping,
 } from '../../shared/zammad-model.ts';
-import type { SetupInfo, WorkflowDef } from '../connectors/types.ts';
+import { ConnectorError, type SetupInfo, type WorkflowDef } from '../connectors/types.ts';
+import { WORKFLOW_MARK } from '../connectors/zammad.ts';
+import { pickState, resetStateCache } from './zammad-states.ts';
 
 // ------------------------------------------------------------------------------------------ Zuordnung
 
@@ -28,6 +30,7 @@ export function saveMapping(app: App, sys: SystemRow, raw: unknown): ZammadMappi
   const m = normalizeMapping(raw);
   app.db.run('UPDATE ticket_systems SET zammad_mapping = ?, updated_at = ? WHERE id = ?', JSON.stringify(m), Date.now(), sys.id);
   reports.delete(sys.id);
+  resetStateCache(sys.id);
   return m;
 }
 
@@ -42,7 +45,7 @@ export function kindGroup(m: ZammadMapping, sys: SystemRow, kind: ItsmKind): str
 // ------------------------------------------------------------------------------------------ Bedarf
 
 /** Was die eingeschalteten Funktionen in Zammad brauchen */
-export function needed(app: App, sys: SystemRow, m = getMapping(app, sys)): { groups: string[]; states: string[]; existingStates: string[]; specs: AttrSpec[]; kinds: ItsmKind[] } {
+export function needed(app: App, sys: SystemRow, m = getMapping(app, sys)): { groups: string[]; states: string[]; specs: AttrSpec[]; kinds: ItsmKind[] } {
   const f = getFeatures(app);
   const kinds: ItsmKind[] = [];
   if (f.incidents) kinds.push('incident');
@@ -62,14 +65,14 @@ export function needed(app: App, sys: SystemRow, m = getMapping(app, sys)): { gr
   return {
     groups,
     states: f.approvals ? [m.approval.state] : [],
-    existingStates: f.approvals ? [m.approval.approvedState, m.approval.closedState] : [],
     specs,
     kinds,
   };
 }
 
 /** Gewünschte Auswahlwerte eines Attributs (fest oder aus dem Portal) */
-export function desiredOptions(app: App, systemId: string, spec: AttrSpec): Record<string, string> | undefined {
+export function desiredOptions(app: App, systemId: string, spec: AttrSpec, m = getMapping(app, systemId)): Record<string, string> | undefined {
+  if (spec.key === 'kind') return Object.fromEntries(ITSM_KINDS.map((k) => [KIND_VALUE[k], m.names.kinds[k]]));
   if (spec.dynamic === 'services') {
     const rows = app.db.all<{ zkey: string | null; name: string }>('SELECT zkey, name FROM services WHERE system_id = ? ORDER BY sort, name', systemId);
     const out = Object.fromEntries(rows.filter((r) => r.zkey).map((r) => [r.zkey!, r.name]));
@@ -78,7 +81,7 @@ export function desiredOptions(app: App, systemId: string, spec: AttrSpec): Reco
   if (spec.dynamic === 'locations') {
     // Auf ein vorhandenes Attribut umgelenkt: dessen Werte gelten, das Portal ergänzt nur gepflegte Standorte
     const locs = getFeatures(app).locations;
-    if (!locs.length && getMapping(app, systemId).attrs.locations !== spec.name) return undefined;
+    if (!locs.length && m.attrs.locations !== spec.name) return undefined;
     return locs.length ? Object.fromEntries(locs.map((l) => [locationKey(l), l])) : { alle: 'Alle Standorte' };
   }
   return spec.options;
@@ -98,17 +101,26 @@ export interface SetupReport {
     states: string[];
     attributes: { name: string; display: string }[];
     options: { attribute: string; values: string[] }[];
+    /** Bezeichnungen, die das Portal nachzieht (Anzeigenamen der Felder bzw. von Auswahlwerten) */
+    labels: { attribute: string; from: string; to: string }[];
+    overviews: string[];
   };
   /** Was das Portal nicht selbst anlegt (vorhandene Struktur): fehlende Status bzw. Attribute für Zusatzwerte */
   problems: string[];
+  /** Hinweise, die nicht blockieren (z. B. Status-Ersatz, gesperrte Abhängigkeiten aus 2.0.0) */
+  notes: string[];
   /** Fehlende Abhängigkeiten (Core Workflows „Portal: …“) */
   workflows: string[];
   /** Überschneidungen mit vorhandenen Attributen: Vorschläge zum Übernehmen */
   suggestions: Suggestion[];
   /** Typ und Auswahlwerte der zugeordneten Attribute (für Eingaben in der Verwaltung) */
   attributes: Record<string, { display: string; dataType: string; options: Record<string, string> }>;
-  /** Alle übrigen Ticket-Attribute in Zammad (zum Ausblenden je Art) */
-  others: { name: string; display: string }[];
+  /** Alle übrigen Ticket-Attribute in Zammad (zum Ausblenden je Art, zum Umlenken) */
+  others: { name: string; display: string; dataType: string }[];
+  /** Aktive Status mit Typ und was das Portal je Rolle setzt */
+  states: { name: string; type: string | null }[];
+  resolvedStates: Record<StateRole, string | null>;
+  groups: string[];
   error: string | null;
 }
 
@@ -165,8 +177,7 @@ function findSuggestions(info: SetupInfo, m: ZammadMapping, specs: AttrSpec[], k
 
 // ------------------------------------------------------------------------------------------ Abhängigkeiten
 
-const WF_PREFIX = 'Portal: ';
-/** Core Workflows, die das Portal in Zammad pflegt */
+/** Core Workflows, die das Portal in Zammad pflegt (Name = Vorsilbe + Bezeichnung, beides anpassbar) */
 export function workflowDefs(app: App, sys: SystemRow, m = getMapping(app, sys)): WorkflowDef[] {
   if (!m.workflows) return [];
   const need = needed(app, sys, m);
@@ -174,59 +185,144 @@ export function workflowDefs(app: App, sys: SystemRow, m = getMapping(app, sys))
   const all = need.specs.filter((s) => s.key !== 'kind').map((s) => m.attrs[s.key]);
   const defs: WorkflowDef[] = [];
   if (!all.length) return defs;
+  const P = m.names.workflowPrefix;
   // Grundregel: Portal-Felder sind ausgeblendet; nur „Portal: Art“ bleibt als Schalter sichtbar
-  defs.push({ name: `${WF_PREFIX}Felder ausblenden`, priority: 9000, condition: {}, perform: Object.fromEntries(all.map((n) => [n, 'hide'])) });
-  if (need.specs.some((s) => s.key === 'form')) defs.push({ name: `${WF_PREFIX}Formular`, priority: 9001, condition: { [m.attrs.form]: { operator: 'is set' } }, perform: { [m.attrs.form]: 'show' } });
+  defs.push({ key: 'hide', name: `${P}Felder ausblenden`, priority: 9000, condition: {}, perform: Object.fromEntries(all.map((n) => [n, 'hide'])) });
+  if (need.specs.some((s) => s.key === 'form')) defs.push({ key: 'form', name: `${P}${attrLabel(m, 'form').replace(/^Portal: /, '')}`, priority: 9001, condition: { [m.attrs.form]: { operator: 'is set' } }, perform: { [m.attrs.form]: 'show' } });
   const approval = names(APPROVAL_ATTRS);
-  if (approval.length) defs.push({ name: `${WF_PREFIX}Freigabe`, priority: 9002, condition: { [m.attrs.approvalStatus]: { operator: 'is set' } }, perform: Object.fromEntries(approval.map((n) => [n, 'show'])) });
+  if (approval.length) defs.push({ key: 'approval', name: `${P}Freigabe`, priority: 9002, condition: { [m.attrs.approvalStatus]: { operator: 'is set' } }, perform: Object.fromEntries(approval.map((n) => [n, 'show'])) });
   for (const [key, label] of [['incidentRef', 'Betroffen von Störung'], ['problemRef', 'Bekanntes Problem']] as const) {
-    if (names([key]).length) defs.push({ name: `${WF_PREFIX}${label}`, priority: 9003, condition: { [m.attrs[key]]: { operator: 'is set' } }, perform: { [m.attrs[key]]: 'show' } });
+    if (names([key]).length) defs.push({ key, name: `${P}${label}`, priority: 9003, condition: { [m.attrs[key]]: { operator: 'is set' } }, perform: { [m.attrs[key]]: 'show' } });
   }
   for (const k of need.kinds) {
     const perform: Record<string, 'show' | 'hide'> = Object.fromEntries(names(KIND_ATTRS[k]).map((n) => [n, 'show']));
     for (const n of m.kinds[k].hide) perform[n] = 'hide';
-    defs.push({ name: `${WF_PREFIX}${KIND_LABEL[k]}`, priority: 9010 + ITSM_KINDS.indexOf(k), condition: { [m.attrs.kind]: { operator: 'is', value: [KIND_VALUE[k]] } }, perform });
+    defs.push({ key: `kind-${k}`, name: `${P}${m.names.kinds[k]}`, priority: 9010 + ITSM_KINDS.indexOf(k), condition: { [m.attrs.kind]: { operator: 'is', value: [KIND_VALUE[k]] } }, perform });
   }
   return defs;
 }
 
-function compare(app: App, sys: SystemRow, info: SetupInfo, m: ZammadMapping): { missing: SetupReport['missing']; problems: string[]; addOptions: { id: number; name: string; options: Record<string, string>; spec?: AttrSpec; dataType: string }[] } {
+/**
+ * Zammad zeigt über die API nur Core Workflows mit „changeable“. Workflows aus 2.0.0 wurden ohne angelegt – Zammad
+ * meldet dann beim Anlegen „Name has already been taken“, ändern lassen sie sich nicht. Solche Namen merkt sich das
+ * Portal je Ticketsystem und meldet sie als Hinweis, statt sie immer wieder anlegen zu wollen.
+ */
+const lockedKey = (sysId: string) => `zammad.locked_workflows.${sysId}`;
+export function lockedWorkflows(app: App, sysId: string): string[] {
+  const row = app.db.get<{ value: string }>('SELECT value FROM settings WHERE key = ?', lockedKey(sysId));
+  return row ? parseJson<string[]>(row.value, []) : [];
+}
+function setLockedWorkflows(app: App, sysId: string, names: string[]): void {
+  app.db.run('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', lockedKey(sysId), JSON.stringify([...new Set(names)].sort()));
+}
+/** Befehl, mit dem die Zammad-Verwaltung gesperrte Portal-Workflows einmalig freigibt */
+export const UNLOCK_COMMAND = `zammad run rails r "CoreWorkflow.where(changeable: false).where('note LIKE ? OR name LIKE ?', '%Self-Service-Portal%', 'Portal: %').update_all(changeable: true)"`;
+
+type WfList = Awaited<ReturnType<ReturnType<typeof connectorFor>['workflows']>>;
+/** Vorhandenen Workflow zu einer Definition finden: über die Kennung in der Notiz, sonst über den Namen */
+function findWorkflow(have: WfList, d: WorkflowDef) {
+  return have.find((w) => w.note.includes(`${WORKFLOW_MARK}${d.key}]`)) ?? have.find((w) => w.name.toLowerCase() === d.name.toLowerCase());
+}
+
+// ------------------------------------------------------------------------------------------ Übersichten
+
+export interface OverviewDef { link: string; name: string; prio: number; condition: Record<string, unknown> }
+
+/** Übersichten, die das Portal in Zammad pflegt; erkannt am festen Verweis (link) „portal_…“ */
+export function overviewDefs(app: App, sys: SystemRow, info: SetupInfo, m = getMapping(app, sys)): OverviewDef[] {
+  if (!m.overviews.enabled) return [];
+  const f = getFeatures(app);
+  // „offen“ = jeder Status, der nicht vom Typ geschlossen ist – unabhängig vom Namen
+  const openIds = info.states.filter((s) => s.active && s.type && !['closed', 'merged', 'removed'].includes(s.type)).map((s) => String(s.id));
+  const notClosed = { 'ticket.state_id': { operator: 'is', value: openIds } };
+  const b = m.overviews.builtin;
+  const out: OverviewDef[] = [];
+  const kind = (key: 'incidents' | 'maintenance' | 'problems', k: ItsmKind, on: boolean, prio: number) => {
+    if (on && b[key].active) out.push({ link: `portal_${key}`, name: b[key].name, prio, condition: { [`ticket.${m.attrs.kind}`]: { operator: 'is', value: [KIND_VALUE[k]] }, ...notClosed } });
+  };
+  if (f.approvals && b.approvals.active) out.push({ link: 'portal_approvals', name: b.approvals.name, prio: 2000, condition: { [`ticket.${m.attrs.approvalStatus}`]: { operator: 'is', value: ['ausstehend'] } } });
+  kind('incidents', 'incident', f.incidents, 2010);
+  kind('maintenance', 'maintenance', f.maintenance, 2020);
+  kind('problems', 'problem', f.problems, 2030);
+  m.overviews.forms.forEach((fo, i) => {
+    if (!app.db.get('SELECT 1 FROM forms WHERE id = ? AND system_id = ?', fo.formId, sys.id)) return;
+    out.push({ link: `portal_form_${fo.formId.replace(/-/g, '').slice(0, 12)}`, name: fo.name, prio: 2100 + i, condition: { [`ticket.${m.attrs.form}`]: { operator: 'contains', value: fo.formId }, ...notClosed } });
+  });
+  return out;
+}
+
+function overviewBody(d: OverviewDef, agentRole: number) {
+  return {
+    name: d.name, link: d.link, prio: d.prio, active: true, role_ids: [agentRole], condition: d.condition,
+    order: { by: 'created_at', direction: 'ASC' }, group_by: '',
+    view: { d: ['title', 'customer', 'group', 'state', 'owner', 'created_at'], s: ['number', 'title', 'customer', 'group', 'state', 'owner', 'created_at'], m: ['number', 'title', 'customer', 'group', 'state', 'owner', 'created_at'], view_mode_default: 's' },
+  };
+}
+
+// ------------------------------------------------------------------------------------------ Vergleich
+
+interface Diff {
+  missing: SetupReport['missing'];
+  problems: string[];
+  notes: string[];
+  addOptions: { id: number; name: string; display: string; options: Record<string, string>; dataType: string }[];
+}
+
+function compare(app: App, sys: SystemRow, info: SetupInfo, m: ZammadMapping): Diff {
   const need = needed(app, sys, m);
   const groups = need.groups.filter((g) => !info.groups.some((x) => x.name === g && x.active));
   const states = need.states.filter((s) => !info.states.some((x) => x.name === s && x.active));
   const problems: string[] = [];
-  for (const s of need.existingStates) if (!info.states.some((x) => x.name === s && x.active)) problems.push(`Status „${s}“ gibt es in Zammad nicht (Zammad-Zuordnung → Freigaben)`);
+  const notes: string[] = [];
+  // Status, die das Portal setzt: Zuordnung, sonst nach Typ – geprüft wird, ob sich jede Rolle auflösen lässt
+  for (const role of STATE_ROLES) {
+    const preferred = role === 'new' ? m.approval.approvedState : role === 'closed' ? m.approval.closedState : '';
+    for (const name of [preferred, m.states[role]].filter(Boolean)) {
+      if (!info.states.some((x) => x.name === name && x.active)) notes.push(`Status „${name}“ (${STATE_ROLE_LABEL[role]}) gibt es in Zammad nicht – das Portal nimmt stattdessen „${pickState(info.states, role, m) ?? '–'}“.`);
+    }
+    if (!pickState(info.states, role, m, preferred)) problems.push(`Kein aktiver Status vom Typ „${role}“ für „${STATE_ROLE_LABEL[role]}“ – bitte in der Zammad-Zuordnung einen Status eintragen.`);
+  }
   const attributes: SetupReport['missing']['attributes'] = [];
   const options: SetupReport['missing']['options'] = [];
-  const addOptions: { id: number; name: string; options: Record<string, string>; spec?: AttrSpec; dataType: string }[] = [];
+  const labels: SetupReport['missing']['labels'] = [];
+  const addOptions: Diff['addOptions'] = [];
+  const queue = (have: SetupInfo['attributes'][number], opts: Record<string, string>, display: string) => {
+    const prev = addOptions.find((x) => x.id === have.id);
+    if (prev) { Object.assign(prev.options, opts); prev.display = display; } else addOptions.push({ id: have.id, name: have.name, display, options: { ...have.options, ...opts }, dataType: have.dataType });
+  };
   for (const spec of need.specs) {
     const name = m.attrs[spec.key];
     const have = info.attributes.find((a) => a.name === name);
-    if (!have) { attributes.push({ name, display: spec.display }); continue; }
-    const want = desiredOptions(app, sys.id, spec);
+    const own = name === spec.name;
+    if (!have) { attributes.push({ name, display: attrLabel(m, spec.key) }); continue; }
+    // Anzeigename: eigene Felder immer, umgelenkte nur, wenn ausdrücklich umbenannt
+    const wantDisplay = own || m.names.attrs[spec.key] ? attrLabel(m, spec.key) : have.display;
+    let display = have.display;
+    if (wantDisplay !== have.display) { labels.push({ attribute: name, from: have.display, to: wantDisplay }); display = wantDisplay; }
+    const want = desiredOptions(app, sys.id, spec, m);
+    const opts: Record<string, string> = {};
     if (want && /select/.test(have.dataType)) {
       const lacking = Object.keys(want).filter((k) => !(k in have.options));
-      if (lacking.length) {
-        options.push({ attribute: name, values: lacking });
-        addOptions.push({ id: have.id, name, options: { ...have.options, ...Object.fromEntries(lacking.map((k) => [k, want[k]!])) }, spec, dataType: have.dataType });
-      }
+      if (lacking.length) options.push({ attribute: name, values: lacking });
+      for (const k of lacking) opts[k] = want[k]!;
+      // Bezeichnungen fester Werte (z. B. Arten) bei eigenen Feldern nachziehen
+      if (own && !spec.dynamic) for (const [k, v] of Object.entries(want)) if (k in have.options && have.options[k] !== v) { opts[k] = v; labels.push({ attribute: name, from: have.options[k]!, to: v }); }
     }
+    if (Object.keys(opts).length || display !== have.display) queue(have, opts, display);
   }
   // Zusätzliche Werte für Störungen, Wartungen und Probleme: Attribut muss es geben, fehlende Auswahlwerte ergänzt das Portal
   for (const k of need.kinds) {
     for (const [name, value] of Object.entries(m.kinds[k].fields)) {
       const have = info.attributes.find((a) => a.name === name);
-      if (!have) { problems.push(`${KIND_LABEL[k]}: Attribut „${name}“ gibt es in Zammad nicht`); continue; }
+      if (!have) { problems.push(`${m.names.kinds[k]}: Attribut „${name}“ gibt es in Zammad nicht`); continue; }
       if (/select/.test(have.dataType) && !(value in have.options)) {
-        const prev = addOptions.find((x) => x.id === have.id);
-        if (prev) prev.options[value] = value;
-        else addOptions.push({ id: have.id, name, options: { ...have.options, [value]: value }, dataType: have.dataType });
+        queue(have, { [value]: value }, have.display);
         const o = options.find((x) => x.attribute === name);
         if (o) o.values.push(value); else options.push({ attribute: name, values: [value] });
       }
     }
   }
-  return { missing: { groups, states, attributes, options }, problems, addOptions };
+  return { missing: { groups, states, attributes, options, labels, overviews: [] }, problems, notes, addOptions };
 }
 
 const reports = new Map<string, SetupReport>();
@@ -243,30 +339,51 @@ export async function checkSetup(app: App, sys: SystemRow): Promise<SetupReport>
     const m = getMapping(app, sys);
     const c = connectorFor(app, sys);
     const info = await c.setupInfo();
-    const { missing, problems } = compare(app, sys, info, m);
+    resetStateCache(sys.id);
+    const { missing, problems, notes } = compare(app, sys, info, m);
     const defs = workflowDefs(app, sys, m);
     const have = defs.length ? await c.workflows() : [];
-    const workflows = defs.filter((d) => !have.some((w) => w.name === d.name && w.active)).map((d) => d.name);
+    const locked = lockedWorkflows(app, sys.id);
+    const workflows: string[] = [];
+    for (const d of defs) {
+      const w = findWorkflow(have, d);
+      if (w?.active) continue;
+      if (!w && locked.includes(d.name)) notes.push(`Abhängigkeit „${d.name}“ ist in Zammad gesperrt (angelegt von Version 2.0.0) und lässt sich über die API nicht ändern. Einmalig auf dem Zammad-Server freigeben: ${UNLOCK_COMMAND}`);
+      else workflows.push(d.name);
+    }
+    const ovDefs = overviewDefs(app, sys, info, m);
+    if (ovDefs.length) {
+      const list = await c.adminList('overviews');
+      missing.overviews = ovDefs.filter((d) => !list.some((o) => o.link === d.link)).map((d) => d.name);
+      if (!(await c.adminList('roles')).some((r) => r.name === 'Agent')) problems.push('Rolle „Agent“ fehlt in Zammad – Übersichten lassen sich nicht zuordnen.');
+    }
     const need = needed(app, sys, m);
     const portalNames = new Set(Object.values(m.attrs));
-    const ready = !missing.groups.length && !missing.states.length && !missing.attributes.length && !missing.options.length && !problems.length && !workflows.length;
+    const ready = !missing.groups.length && !missing.states.length && !missing.attributes.length && !missing.options.length && !missing.labels.length
+      && !missing.overviews.length && !problems.length && !workflows.length;
     report = {
-      ...base, ready, missing, problems, workflows,
+      ...base, ready, missing, problems, notes, workflows,
       suggestions: findSuggestions(info, m, need.specs, need.kinds),
       attributes: Object.fromEntries(info.attributes.filter((a) => portalNames.has(a.name)).map((a) => [a.name, { display: a.display, dataType: a.dataType, options: a.options }])),
-      others: info.attributes.filter((a) => !portalNames.has(a.name) && !SYSTEM_NAMES.has(a.name)).map((a) => ({ name: a.name, display: a.display })),
+      others: info.attributes.filter((a) => !portalNames.has(a.name) && !SYSTEM_NAMES.has(a.name)).map((a) => ({ name: a.name, display: a.display, dataType: a.dataType })),
+      states: info.states.filter((x) => x.active).map((x) => ({ name: x.name, type: x.type })),
+      resolvedStates: Object.fromEntries(STATE_ROLES.map((r) => [r, pickState(info.states, r, m, r === 'new' ? m.approval.approvedState : r === 'closed' ? m.approval.closedState : '')])) as Record<StateRole, string | null>,
+      groups: info.groups.filter((g) => g.active).map((g) => g.name),
       error: null,
     };
   } catch (err) {
     // Ohne Admin-Rechte liefert Zammad die Attributliste nicht – das Portal kann dann nichts prüfen oder anlegen
     const msg = (err as Error).message;
-    report = { ...base, ready: false, missing: { groups: [], states: [], attributes: [], options: [] }, problems: [], workflows: [], suggestions: [], attributes: {}, others: [], error: msg.slice(0, 300) };
+    report = {
+      ...base, ready: false, missing: { groups: [], states: [], attributes: [], options: [], labels: [], overviews: [] }, problems: [], notes: [], workflows: [],
+      suggestions: [], attributes: {}, others: [], states: [], resolvedStates: { new: null, open: null, closed: null }, groups: [], error: msg.slice(0, 300),
+    };
   }
   reports.set(sys.id, report);
   return report;
 }
 
-/** Legt Fehlendes an und prüft danach erneut. */
+/** Legt Fehlendes an, zieht Bezeichnungen, Abhängigkeiten und Übersichten nach und prüft danach erneut. Beliebig oft ausführbar. */
 export async function applySetup(app: App, sys: SystemRow): Promise<SetupReport & { created: string[] }> {
   const c = connectorFor(app, sys);
   const m = getMapping(app, sys);
@@ -279,26 +396,54 @@ export async function applySetup(app: App, sys: SystemRow): Promise<SetupReport 
   let position = 1500;
   for (const a of missing.attributes) {
     const spec = ATTR_SPECS.find((s) => m.attrs[s.key] === a.name)!;
-    await c.saveAttribute({ name: a.name, display: spec.display, dataType: spec.type, options: desiredOptions(app, sys.id, spec), position: position++ });
-    created.push(`Attribut „${spec.display}“`);
+    await c.saveAttribute({ name: a.name, display: attrLabel(m, spec.key), dataType: spec.type, options: desiredOptions(app, sys.id, spec, m), position: position++ });
+    created.push(`Attribut „${attrLabel(m, spec.key)}“`);
     migrate = true;
   }
   for (const a of addOptions) {
-    const have = info.attributes.find((x) => x.id === a.id)!;
-    const display = a.spec?.display ?? a.name;
-    await c.saveAttribute({ name: a.name, display: have.display ?? display, dataType: a.dataType as never, options: a.options }, a.id);
-    created.push(`Auswahlwerte für „${a.name}“`);
+    await c.saveAttribute({ name: a.name, display: a.display, dataType: a.dataType as never, options: a.options }, a.id);
+    created.push(`Attribut „${a.display}“ aktualisiert`);
     migrate = true;
   }
   if (migrate) await c.executeMigrations();
+  resetStateCache(sys.id);
+
   // Abhängigkeiten immer neu schreiben – so folgen sie der aktuellen Zuordnung
   const defs = workflowDefs(app, sys, m);
   if (defs.length) {
     const have = await c.workflows();
+    const locked = new Set(lockedWorkflows(app, sys.id));
     for (const d of defs) {
-      const w = have.find((x) => x.name === d.name);
-      await c.saveWorkflow(d, w?.id);
-      if (!w) created.push(`Abhängigkeit „${d.name}“`);
+      const w = findWorkflow(have, d);
+      try {
+        if (w) { await c.saveWorkflow(d, w.id); locked.delete(d.name); continue; }
+        if (locked.has(d.name)) continue; // gesperrt – siehe Hinweis in der Prüfung
+        await c.saveWorkflow(d);
+        created.push(`Abhängigkeit „${d.name}“`);
+      } catch (err) {
+        if (err instanceof ConnectorError && err.status === 422 && /taken|vergeben|already/i.test(err.message)) { locked.add(d.name); continue; }
+        if (err instanceof ConnectorError && err.status === 404 && w) {
+          // zwischenzeitlich gesperrt oder gelöscht: neu versuchen
+          try { await c.saveWorkflow(d); created.push(`Abhängigkeit „${d.name}“`); } catch { locked.add(d.name); }
+          continue;
+        }
+        throw err;
+      }
+    }
+    setLockedWorkflows(app, sys.id, [...locked].filter((n) => defs.some((d) => d.name === n)));
+  }
+
+  // Übersichten: anlegen bzw. Name und Bedingung nachziehen
+  const ovDefs = overviewDefs(app, sys, await c.setupInfo(), m);
+  if (ovDefs.length) {
+    const agent = (await c.adminList('roles')).find((r) => r.name === 'Agent')?.id;
+    if (agent) {
+      const list = await c.adminList('overviews');
+      for (const d of ovDefs) {
+        const o = list.find((x) => x.link === d.link);
+        if (o) await c.adminUpdate('overviews', o.id, overviewBody(d, agent));
+        else { await c.adminCreate('overviews', overviewBody(d, agent)); created.push(`Übersicht „${d.name}“`); }
+      }
     }
   }
   log.info('Zammad eingerichtet', { system: sys.slug, created });
@@ -315,8 +460,8 @@ export async function syncOptions(app: App, systemId: string | null, which: 'ser
       const name = getMapping(app, sys).attrs[spec.key];
       const have = (await c.setupInfo()).attributes.find((a) => a.name === name);
       if (!have) continue; // noch nicht eingerichtet – „Zammad einrichten“ legt es an
-      const want = desiredOptions(app, sys.id, spec)!;
-      if (Object.entries(want).every(([k, v]) => have.options[k] === v)) continue;
+      const want = desiredOptions(app, sys.id, spec);
+      if (!want || Object.entries(want).every(([k, v]) => have.options[k] === v)) continue;
       await c.saveAttribute({ name, display: have.display ?? spec.display, dataType: have.dataType as never, options: { ...have.options, ...want } }, have.id);
       await c.executeMigrations();
     } catch (err) {
@@ -340,7 +485,7 @@ export function setupWarnings(app: App): string[] {
     if (!r || r.ready) continue;
     if (r.error) out.push(`${sys.name}: Zammad-Einrichtung nicht prüfbar (${r.error}). Der API-Benutzer braucht Admin-Rechte.`);
     else {
-      const n = r.missing.groups.length + r.missing.states.length + r.missing.attributes.length + r.missing.options.length + r.workflows.length;
+      const n = r.missing.groups.length + r.missing.states.length + r.missing.attributes.length + r.missing.options.length + r.missing.labels.length + r.missing.overviews.length + r.workflows.length;
       if (n) out.push(`${sys.name}: In Zammad fehlt etwas für das Portal (${n} Punkte). Ticketsysteme → Zammad-Zuordnung → „In Zammad einrichten“.`);
       for (const p of r.problems) out.push(`${sys.name}: ${p}`);
     }

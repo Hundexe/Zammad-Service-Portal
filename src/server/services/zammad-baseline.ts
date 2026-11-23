@@ -5,7 +5,8 @@ import type { App } from '../app.ts';
 import { log } from '../log.ts';
 import { connectorFor, type SystemRow } from './systems.ts';
 import { getMapping } from './zammad-setup.ts';
-import type { AdminKind, Connector, SetupInfo } from '../connectors/types.ts';
+import type { AdminKind, Connector, SetupInfo, StateType } from '../connectors/types.ts';
+import { pickState } from './zammad-states.ts';
 import { optionKey } from '../../shared/zammad-model.ts';
 import {
   BASELINE_PART_INFO, IMPACTS, MATRIX, PRIORITY_NAMES, STATE_NAMES, TICKET_TYPES, URGENCIES, WEEKDAYS,
@@ -42,8 +43,9 @@ const NAMES = {
   matrix: (i: string, u: string) => T(`Priorität ${IMPACTS[i as keyof typeof IMPACTS].split(' /')[0]} + ${URGENCIES[u as keyof typeof URGENCIES].split(' –')[0]}`),
 };
 const OVERVIEWS = {
-  open: 'Neu und in Bearbeitung', mine: 'Meine offenen Tickets', waiting: 'Warten', resolved: 'Gelöst', escalated: 'Eskaliert', incidents: 'Offene Störungen', approvals: 'Wartet auf Freigabe',
+  open: 'Neu und in Bearbeitung', mine: 'Meine offenen Tickets', waiting: 'Warten', resolved: 'Gelöst', escalated: 'Eskaliert', incidents: 'Offene Störungen',
 };
+// „Wartet auf Freigabe“, „Störungen“, „Wartungen“ und „Probleme“ pflegt die Zammad-Einrichtung des Portals selbst
 
 const norm = (s: string) => optionKey(s);
 
@@ -105,10 +107,7 @@ export function plan(ctx: Ctx, o: BaselineOptions): BaselineItem[] {
   add('escalation', 'trigger', NAMES.escReset, has('triggers', NAMES.escReset));
   add('escalation', 'job', NAMES.esc2, has('jobs', NAMES.esc2), !o.escalation.stage2Email ? 'Keine Adresse für Stufe 2 angegeben.' : undefined);
 
-  for (const [k, n] of Object.entries(OVERVIEWS)) {
-    if (k === 'approvals' && !ctx.info.attributes.some((a) => a.name === 'portal_freigabe')) continue;
-    add('overviews', 'overview', n, has('overviews', n));
-  }
+  for (const n of Object.values(OVERVIEWS)) add('overviews', 'overview', n, has('overviews', n));
   // Status-Abhängigkeiten: ohne eigene Status nutzen Nachrichten, Schließen und Übersichten die vorhandenen
   return items;
 }
@@ -164,7 +163,7 @@ export async function applyBaseline(app: App, sys: SystemRow, o: BaselineOptions
   if (migrate) await c.executeMigrations().catch((err) => errors.push(`Felder aktivieren: ${(err as Error).message}`));
 
   // 2. Status und Prioritäten
-  const stateOpts: Record<string, [string, boolean]> = {
+  const stateOpts: Record<string, [StateType, boolean]> = {
     [STATE_NAMES.working]: ['open', false], [STATE_NAMES.waitingCustomer]: ['open', true], [STATE_NAMES.waitingThird]: ['open', true], [STATE_NAMES.resolved]: ['closed', false],
   };
   for (const [name, [like, ignore]] of Object.entries(stateOpts)) if (todo('state', name)) await step(`Status „${name}“`, () => c.createState(name, like, { ignoreEscalation: ignore }));
@@ -173,11 +172,16 @@ export async function applyBaseline(app: App, sys: SystemRow, o: BaselineOptions
   const stateId = (n: string) => ctx.info.states.find((s) => s.name === n)?.id;
   const prioId = (n: string) => ctx.priorities.find((x) => x.name === n)?.id;
   const ids = (...list: (number | undefined)[]) => list.filter((x): x is number => x !== undefined).map(String);
-  const open = ids(stateId('new'), stateId('open'), stateId(STATE_NAMES.working));
+  // Status nach Typ statt Namen – Installationen benennen sie oft um
+  const m = getMapping(app, sys);
+  const waitingNames: string[] = [STATE_NAMES.waitingCustomer, STATE_NAMES.waitingThird, m.approval.state];
+  const active = ctx.info.states.filter((s) => s.active);
+  const open = ids(...active.filter((s) => (s.type === 'new' || s.type === 'open') && !waitingNames.includes(s.name)).map((s) => s.id));
   const waiting = ids(stateId(STATE_NAMES.waitingCustomer), stateId(STATE_NAMES.waitingThird));
   const resolvedId = stateId(STATE_NAMES.resolved);
-  const closedId = stateId('closed');
-  const notClosed = ids(...ctx.info.states.filter((s) => s.active && s.name !== 'closed' && s.name !== 'merged' && s.name !== STATE_NAMES.resolved && s.name !== 'removed').map((s) => s.id));
+  const closedName = pickState(ctx.info.states.filter((s) => s.name !== STATE_NAMES.resolved), 'closed', m);
+  const closedId = closedName ? stateId(closedName) : undefined;
+  const notClosed = ids(...active.filter((s) => s.type !== 'closed' && s.type !== 'merged' && s.type !== 'removed').map((s) => s.id));
 
   // 3. Prioritätsmatrix
   for (const [i, row] of Object.entries(MATRIX)) for (const [u, idx] of Object.entries(row)) {
@@ -224,7 +228,8 @@ export async function applyBaseline(app: App, sys: SystemRow, o: BaselineOptions
   if (resolvedId) await trigger(NAMES.resolved,
     { 'ticket.action': { operator: 'is', value: 'update' }, 'ticket.state_id': { operator: 'is', value: [String(resolvedId)] } },
     mail(tx.resolved.s, tx.resolved.b, ['ticket_customer']));
-  const working = stateId(STATE_NAMES.working) ?? stateId('open');
+  const workingName = stateId(STATE_NAMES.working) ? STATE_NAMES.working : pickState(ctx.info.states, 'open', m);
+  const working = workingName ? stateId(workingName) : undefined;
   if (working) await trigger(NAMES.reopen,
     { 'ticket.action': { operator: 'is', value: 'update' }, 'article.sender_id': { operator: 'is', value: [SENDER.customer] }, 'ticket.state_id': { operator: 'is', value: [...waiting, ...(resolvedId ? [String(resolvedId)] : [])] } },
     { 'ticket.state_id': { value: String(working) }, 'ticket.tags': { operator: 'remove', value: TAG.reminded } });
@@ -279,8 +284,6 @@ export async function applyBaseline(app: App, sys: SystemRow, o: BaselineOptions
   if (resolvedId) await overview(OVERVIEWS.resolved, { 'ticket.state_id': { operator: 'is', value: [String(resolvedId)] } });
   await overview(OVERVIEWS.escalated, { 'ticket.tags': { operator: 'contains one', value: TAG.escalated }, 'ticket.state_id': { operator: 'is', value: notClosed } });
   if (typeAttr && incidentValue) await overview(OVERVIEWS.incidents, { [`ticket.${typeAttr.name}`]: { operator: 'is', value: [incidentValue] }, 'ticket.state_id': { operator: 'is', value: notClosed } });
-  const portalApproval = getMapping(app, sys).attrs.approvalStatus;
-  if (ctx.info.attributes.some((a) => a.name === portalApproval)) await overview(OVERVIEWS.approvals, { [`ticket.${portalApproval}`]: { operator: 'is', value: ['ausstehend'] } });
 
   log.info('ITSM-Grundausstattung', { system: sys.slug, angelegt: created.length, fehler: errors.length });
   return { items: plan(await context(c), o), created, errors };

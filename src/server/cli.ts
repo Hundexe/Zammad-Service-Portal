@@ -242,8 +242,11 @@ async function main(): Promise<void> {
           for (const st of r.missing.states) console.log(`  fehlt: Status „${st}“`);
           for (const a of r.missing.attributes) console.log(`  fehlt: Attribut „${a.display}“ (${a.name})`);
           for (const o of r.missing.options) console.log(`  fehlt: Auswahlwerte ${o.values.join(', ')} in ${o.attribute}`);
+          for (const l of r.missing.labels) console.log(`  Bezeichnung: ${l.attribute} „${l.from}“ → „${l.to}“`);
+          for (const o of r.missing.overviews) console.log(`  fehlt: Übersicht „${o}“`);
           for (const w of r.workflows) console.log(`  fehlt: Abhängigkeit „${w}“`);
-          for (const p of r.problems) console.log(`  Hinweis: ${p}`);
+          for (const p of r.problems) console.log(`  Problem: ${p}`);
+          for (const n of r.notes) console.log(`  Hinweis: ${n}`);
           for (const s of r.suggestions) console.log(s.type === 'attr' ? `  Vorschlag: vorhandenes Attribut „${s.display}“ (${s.attribute}) statt „${s.portalDisplay}“` : `  Vorschlag: ${s.kind} zusätzlich ${s.attribute} = ${s.valueLabel}`);
           if (!r.ready) process.exitCode = 2;
         }

@@ -11,7 +11,7 @@ import { EntraClient } from '../src/server/auth/oidc.ts';
 import { setLogLevel } from '../src/server/log.ts';
 import { hashPassword } from '../src/server/crypto.ts';
 import { uuid } from '../src/server/db/db.ts';
-import { startMockZammad, type MockZammad } from '../tools/mock-zammad.ts';
+import { startMockZammad, type MockZammad, type MockOptions } from '../tools/mock-zammad.ts';
 import { startMockEntra, type MockEntra, type MockEntraUser } from '../tools/mock-entra.ts';
 import { saveDraft, publishVersion, emptyDefinition } from '../src/server/services/forms.ts';
 import type { FormDefinition } from '../src/shared/form.ts';
@@ -37,10 +37,10 @@ export interface Portal {
   close: () => Promise<void>;
 }
 
-export async function startPortal(over: Partial<Config> = {}): Promise<Portal> {
+export async function startPortal(over: Partial<Config> = {}, mock: Partial<MockOptions> = {}): Promise<Portal> {
   setLogLevel('error', true);
   const dir = mkdtempSync(join(tmpdir(), 'zsp-test-'));
-  const zammad = await startMockZammad({ quiet: true, customers: [{ email: 'anna.becker@example.org', firstname: 'Anna', lastname: 'Becker' }] });
+  const zammad = await startMockZammad({ quiet: true, customers: [{ email: 'anna.becker@example.org', firstname: 'Anna', lastname: 'Becker' }], ...mock });
   const entra = await startMockEntra(ENTRA_USERS);
   process.env.NODE_ENV = 'test';
   const cfg = loadConfig({

@@ -7,6 +7,7 @@ import { log } from '../log.ts';
 import { connectorFor, getSystem, listSystems, type SystemRow } from './systems.ts';
 import { applySetup, checkSetup, getMapping, listValue, locationChoices } from './zammad-setup.ts';
 import { createKindTicket, invalidate, serviceKeys } from './itsm.ts';
+import { resolveState } from './zammad-states.ts';
 import { customerFor } from './requests.ts';
 import { escapeHtml, textToHtml } from '../../shared/template.ts';
 import { INCIDENT_STATE_LABEL, incidentNumber, problemNumber, type IncidentState } from '../../shared/itsm.ts';
@@ -73,7 +74,7 @@ export async function runMigration(app: App): Promise<MigrationResult[]> {
           await c.addLink(t.number, lt.ticket_id, 'normal').catch(() => undefined);
           await c.updateTicket(lt.ticket_id, { fields: { [m.attrs.problemRef]: t.id } }).catch(() => undefined);
         }
-        if (pr.state === 'closed') await c.updateTicket(t.id, { state: 'closed' });
+        if (pr.state === 'closed') await c.updateTicket(t.id, { state: await resolveState(app, sys, m, 'closed') });
         res.problems++;
       } catch (err) { res.errors.push(`${problemNumber(pr.number)}: ${(err as Error).message}`); }
     }
@@ -102,14 +103,14 @@ export async function runMigration(app: App): Promise<MigrationResult[]> {
           const pt = await c.getTicketFull(problemTicket);
           if (pt) await c.addLink(pt.number, t.id, 'normal').catch(() => undefined);
         }
-        if (inc.state === 'resolved') await c.updateTicket(t.id, { state: 'closed' });
+        if (inc.state === 'resolved') await c.updateTicket(t.id, { state: await resolveState(app, sys, m, 'closed') });
         else {
           // Noch offen: Betroffene bekommen ihr Ticket wie bei „Ich bin auch betroffen“
           for (const a of app.db.all<{ id: string; email: string | null; display_name: string }>('SELECT u.id, u.email, u.display_name FROM incident_affected a JOIN users u ON u.id = a.user_id WHERE a.incident_id = ?', inc.id)) {
             if (!a.email) continue;
             const customer = await customerFor(app, sys, a.id, a.email, a.display_name, true);
             const child = await c.createTicket({
-              customer: customer!, title: `Betroffen: ${inc.title}`, group: t.group ?? sys.default_group ?? '', state: 'new',
+              customer: customer!, title: `Betroffen: ${inc.title}`, group: t.group ?? sys.default_group ?? '', state: await resolveState(app, sys, m, 'new'),
               bodyHtml: `<p>${escapeHtml(a.display_name)} ist von der Störung „${escapeHtml(inc.title)}“ betroffen (übernommen aus dem Portal).</p>`,
               attachments: [], fields: { [m.attrs.incidentRef]: t.id }, tags: m.affectedTags,
             });
@@ -131,7 +132,7 @@ export async function runMigration(app: App): Promise<MigrationResult[]> {
         });
         mark(app, 'maintenance', mt.id, sys.id, t.id);
         if (mt.cancelled) await c.addArticle(t.id, { type: 'note', internal: false, subject: 'Wartung abgesagt', body: '<p>Die Wartung findet nicht statt.</p>' });
-        if (mt.cancelled || mt.ends_at <= Date.now()) await c.updateTicket(t.id, { state: 'closed' });
+        if (mt.cancelled || mt.ends_at <= Date.now()) await c.updateTicket(t.id, { state: await resolveState(app, sys, m, 'closed') });
         res.maintenances++;
       } catch (err) { res.errors.push(`Wartung „${mt.title}“: ${(err as Error).message}`); }
     }

@@ -20,6 +20,7 @@ import { toAuthUser, type UserRow } from './users.ts';
 import { customerFor } from './requests.ts';
 import { userOfCustomer } from './approvals.ts';
 import { getMapping, kindGroup, listOf, listValue, locationChoices, syncOptions } from './zammad-setup.ts';
+import { resolveState } from './zammad-states.ts';
 import { blocksToText, formatHtmlArticle, formatTextArticle } from './article-format.ts';
 import { escapeHtml, textToHtml } from '../../shared/template.ts';
 import {
@@ -390,7 +391,7 @@ export async function addIncidentUpdate(app: App, inc: Incident, actor: AuthUser
   const fields: Record<string, unknown> = {};
   if (state === 'resolved') fields[m.attrs.incidentEnd] = new Date(time(b, 'resolvedAt') ?? Date.now()).toISOString();
   else fields[m.attrs.phase] = state;
-  const t = await c.updateTicket(inc.t.id, { state: state === 'resolved' ? 'closed' : inc.t.closed ? 'open' : undefined, fields });
+  const t = await c.updateTicket(inc.t.id, { state: state === 'resolved' ? await resolveState(app, sys, m, 'closed') : inc.t.closed ? await resolveState(app, sys, m, 'open') : undefined, fields });
   invalidate(sys.id);
   const label = INCIDENT_STATE_LABEL[state];
   for (const a of await affectedTickets(app, sys, inc.t.id, true)) {
@@ -411,7 +412,7 @@ async function closeAffected(app: App, sys: SystemRow, incident: ZTicket, note: 
   for (const a of (await affectedTickets(app, sys, incident.id, true)).filter((x) => !x.closed)) {
     try {
       await c.addArticle(a.id, { type: 'note', internal: false, subject: 'Störung behoben', body: `<p>Die Störung „${escapeHtml(incident.title)}“ ist behoben.</p>${note ? textToHtml(note) : ''}` });
-      await c.updateTicket(a.id, { state: 'closed' });
+      await c.updateTicket(a.id, { state: await resolveState(app, sys, m, 'closed') });
       n++;
     } catch (err) {
       log.warn('Ticket einer betroffenen Person nicht geschlossen', { system: sys.slug, ticket: a.number, error: (err as Error).message });
@@ -435,7 +436,7 @@ export async function setAffected(app: App, inc: Incident, user: AuthUser, affec
   if (affected && !mine.length) {
     // Als API-Benutzer anlegen (Kunden dürfen das Attribut nicht setzen), Absender bleibt die Person
     const t = await c.createTicket({
-      customer, title: `Betroffen: ${inc.title}`, group: inc.t.group ?? kindGroup(m, sys, 'incident'), state: 'new',
+      customer, title: `Betroffen: ${inc.title}`, group: inc.t.group ?? kindGroup(m, sys, 'incident'), state: await resolveState(app, sys, m, 'new'),
       bodyHtml: `<p>${escapeHtml(user.displayName)} ist von der Störung „${escapeHtml(inc.title)}“ (Ticket ${escapeHtml(inc.t.number)}) betroffen.</p><p><small>Gemeldet über das Self-Service-Portal</small></p>`,
       attachments: [], fields: { [m.attrs.incidentRef]: inc.t.id }, tags: m.affectedTags,
     });
@@ -444,7 +445,7 @@ export async function setAffected(app: App, inc: Incident, user: AuthUser, affec
   if (!affected) {
     for (const t of mine) {
       await c.addArticle(t.id, { type: 'note', internal: false, subject: 'Nicht mehr betroffen', body: `<p>${escapeHtml(user.displayName)} ist nicht mehr betroffen.</p>` }).catch(() => undefined);
-      await c.updateTicket(t.id, { state: 'closed' });
+      await c.updateTicket(t.id, { state: await resolveState(app, sys, m, 'closed') });
     }
   }
   affectedCache.delete(`${sys.id}:${inc.t.id}`);
@@ -503,14 +504,14 @@ export async function saveMaintenance(app: App, sys: SystemRow, actor: AuthUser,
 export async function cancelMaintenance(app: App, mnt: Maintenance): Promise<void> {
   const c = connectorFor(app, mnt.sys);
   await c.addArticle(mnt.t.id, { type: 'note', internal: false, subject: 'Wartung abgesagt', body: '<p>Die Wartung findet nicht statt.</p>' });
-  await c.updateTicket(mnt.t.id, { state: 'closed' });
+  await c.updateTicket(mnt.t.id, { state: await resolveState(app, mnt.sys, getMapping(app, mnt.sys), 'closed') });
   invalidate(mnt.sys.id);
 }
 
 /** Aus dem Portal nehmen: nicht mehr anzeigen und schließen (das Ticket bleibt in Zammad) */
 export async function removeFromPortal(app: App, sys: SystemRow, t: ZTicket): Promise<void> {
   const m = getMapping(app, sys);
-  await connectorFor(app, sys).updateTicket(t.id, { state: t.closed ? undefined : 'closed', fields: { [m.attrs.public]: false } });
+  await connectorFor(app, sys).updateTicket(t.id, { state: t.closed ? undefined : await resolveState(app, sys, m, 'closed'), fields: { [m.attrs.public]: false } });
   invalidate(sys.id);
 }
 
@@ -534,13 +535,13 @@ export async function saveProblem(app: App, sys: SystemRow, actor: AuthUser, b: 
   let t: ZTicket;
   const c = connectorFor(app, sys);
   if (existing) {
-    t = await c.updateTicket(existing.t.id, { title, fields, state: state === 'closed' ? 'closed' : existing.t.closed ? 'open' : undefined });
+    t = await c.updateTicket(existing.t.id, { title, fields, state: state === 'closed' ? await resolveState(app, sys, m, 'closed') : existing.t.closed ? await resolveState(app, sys, m, 'open') : undefined });
     const first = (await publicNotes(app, sys, existing.t))[0];
     if (description && first?.body.trim() !== description) await c.addArticle(existing.t.id, { type: 'note', internal: false, subject: 'Beschreibung', body: textToHtml(description) });
     invalidate(sys.id);
   } else {
     t = await createKindTicket(app, sys, 'problem', title, 'Beschreibung', description, fields);
-    if (state === 'closed') t = await c.updateTicket(t.id, { state: 'closed' });
+    if (state === 'closed') t = await c.updateTicket(t.id, { state: await resolveState(app, sys, m, 'closed') });
   }
   log.info(existing ? 'Problem geändert' : 'Problem angelegt', { system: sys.slug, ticket: t.number, by: actor.id });
   return toProblem(app, sys, m, t);
@@ -717,7 +718,7 @@ export async function itsmHousekeeping(app: App, now = Date.now()): Promise<{ af
         for (const mnt of (await maintenancesOf(app, sys, true)).filter((x) => !x.t.closed && x.endsAt <= now)) {
           const c = connectorFor(app, sys);
           await c.addArticle(mnt.t.id, { type: 'note', internal: false, subject: 'Wartung beendet', body: '<p>Das Wartungsfenster ist vorbei.</p>' });
-          await c.updateTicket(mnt.t.id, { state: 'closed' });
+          await c.updateTicket(mnt.t.id, { state: await resolveState(app, sys, getMapping(app, sys), 'closed') });
           maintenancesClosed++;
         }
         if (maintenancesClosed) invalidate(sys.id);
