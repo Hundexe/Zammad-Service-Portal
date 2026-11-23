@@ -6,14 +6,17 @@ import { createServer, type IncomingMessage, type ServerResponse, type Server } 
 
 interface User { id: number; login: string; email: string; firstname: string; lastname: string; roles: string[]; organization_id: number | null }
 interface Ticket { id: number; number: string; title: string; group_id: number; state_id: number; priority_id: number; customer_id: number; organization_id: number | null; created_at: string; updated_at: string; tags: string[]; [k: string]: unknown }
-interface Article { id: number; ticket_id: number; from: string; sender: string; body: string; content_type: string; internal: boolean; created_at: string; attachments: { id: number; filename: string; size: number; data: Buffer; mime: string }[] }
+interface Article { id: number; ticket_id: number; from: string; sender: string; body: string; content_type: string; internal: boolean; created_at: string; type?: string; subject?: string; to?: string; attachments: { id: number; filename: string; size: number; data: Buffer; mime: string }[] }
+interface Link { source: number; target: number; type: 'normal' | 'parent' }
 
 export interface MockOptions { port?: number; token?: string; name?: string; customers?: { email: string; firstname: string; lastname: string }[]; quiet?: boolean }
 
 export interface MockZammad {
   server: Server;
   url: string;
-  state: { users: User[]; tickets: Ticket[]; articles: Article[]; requests: { method: string; path: string; onBehalfOf?: string; body?: any }[] };
+  state: { users: User[]; tickets: Ticket[]; articles: Article[]; links: Link[]; workflows: any[]; groups: { id: number; name: string; active: boolean }[]; states: { id: number; name: string; active: boolean; state_type_id: number }[]; attributes: any[]; requests: { method: string; path: string; onBehalfOf?: string; body?: any }[] };
+  /** Wie ein Admin in Zammad: Gruppen, Status und Attribute fürs Portal schon vorhanden? (Standard: nein) */
+  setAdmin: (on: boolean) => void;
   failNext: (n: number, status?: number) => void;
   /** Wie ältere Zammad-Versionen: Suche mit Bedingung wird nicht unterstützt */
   setLegacySearch: (on: boolean) => void;
@@ -24,20 +27,22 @@ export interface MockZammad {
   close: () => Promise<void>;
 }
 
-const GROUPS = [
+const GROUPS_INIT = [
   { id: 1, name: 'Users', active: true },
   { id: 2, name: 'IT-Support', active: true },
   { id: 3, name: 'IT-Support::Hardware', active: true },
   { id: 4, name: 'IT-Support::Netzwerk', active: true },
   { id: 5, name: 'Alt (deaktiviert)', active: false },
 ];
-const STATES = [
-  { id: 1, name: 'new', active: true }, { id: 2, name: 'open', active: true }, { id: 3, name: 'pending reminder', active: true },
-  { id: 4, name: 'closed', active: true }, { id: 5, name: 'merged', active: true }, { id: 7, name: 'pending close', active: true },
+const STATES_INIT = [
+  { id: 1, name: 'new', active: true, state_type_id: 1 }, { id: 2, name: 'open', active: true, state_type_id: 2 }, { id: 3, name: 'pending reminder', active: true, state_type_id: 3 },
+  { id: 4, name: 'closed', active: true, state_type_id: 5 }, { id: 5, name: 'merged', active: true, state_type_id: 7 }, { id: 7, name: 'pending close', active: true, state_type_id: 4 },
 ];
+/** Status-Typen, die als „geschlossen“ zählen (closed, merged) */
+const CLOSED_TYPES = [5, 7];
 const PRIORITIES = [{ id: 1, name: '1 low', active: true }, { id: 2, name: '2 normal', active: true }, { id: 3, name: '3 high', active: true }];
 
-const ATTRIBUTES = [
+const ATTRIBUTES_INIT = [
   { id: 1, object: 'Ticket', name: 'number', display: '#', data_type: 'input', active: true, editable: false, data_option: {} },
   { id: 2, object: 'Ticket', name: 'title', display: 'Title', data_type: 'input', active: true, editable: false, data_option: {} },
   { id: 3, object: 'Ticket', name: 'customer_id', display: 'Customer', data_type: 'user_autocompletion', active: true, editable: false, data_option: {} },
@@ -69,6 +74,12 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
     { id: 1, login: 'api-portal', email: 'api-portal@example.org', firstname: 'Service', lastname: 'Portal', roles: ['Admin', 'Agent'], organization_id: null },
     { id: 2, login: 'agent', email: 'support@example.org', firstname: 'Sabine', lastname: 'Support', roles: ['Agent'], organization_id: null },
   ];
+  const GROUPS = GROUPS_INIT.map((g) => ({ ...g }));
+  const STATES = STATES_INIT.map((s) => ({ ...s }));
+  const ATTRIBUTES: any[] = ATTRIBUTES_INIT.map((a) => structuredClone(a));
+  const links: Link[] = [];
+  const workflows: any[] = [];
+  let isAdmin = true;
   const tickets: Ticket[] = [];
   const articles: Article[] = [];
   const requests: MockZammad['state']['requests'] = [];
@@ -117,7 +128,18 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
   addTicket(other, 'Geheimes Ticket einer anderen Person', 2, 2, 1, [['Customer', '<p>Das darf niemand anderes sehen.</p>', false]]);
 
   const name = (list: { id: number; name: string }[], id: number) => list.find((x) => x.id === id)?.name ?? '';
-  const expandTicket = (t: Ticket) => ({ ...t, group: name(GROUPS, t.group_id), state: name(STATES, t.state_id), priority: name(PRIORITIES, t.priority_id), tags: undefined });
+  const expandTicket = (t: Ticket) => ({ ...t, group: name(GROUPS, t.group_id), state: name(STATES, t.state_id), priority: name(PRIORITIES, t.priority_id), customer: users.find((u) => u.id === t.customer_id)?.login ?? '', tags: undefined });
+  const isClosedState = (id: number) => CLOSED_TYPES.includes(STATES.find((s) => s.id === id)?.state_type_id ?? 0);
+  const setState = (t: Ticket, raw: unknown): string | null => {
+    const st = STATES.find((s) => s.name === raw || s.id === raw);
+    if (!st) return `No lookup value found for 'state': ${String(raw)}`;
+    const wasClosed = isClosedState(t.state_id);
+    t.state_id = st.id;
+    if (isClosedState(st.id) && !wasClosed) t.close_at = iso(new Date());
+    if (!isClosedState(st.id)) t.close_at = null;
+    return null;
+  };
+  const customAttr = (n: string) => ATTRIBUTES.find((a) => a.object === 'Ticket' && a.name === n && a.editable !== false);
 
   async function body(req: IncomingMessage): Promise<any> {
     const chunks: Buffer[] = [];
@@ -184,11 +206,18 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
           tags: typeof json.tags === 'string' ? json.tags.split(',').filter(Boolean) : [],
         };
         for (const a of ATTRIBUTES.filter((x) => x.editable && x.object === 'Ticket')) if (a.name in json) t[a.name] = json[a.name];
+        if (json.state !== undefined || json.state_id !== undefined) {
+          if (isCustomer) return send(res, 403, { error: 'Not authorized' });
+          const err = setState(t, json.state ?? json.state_id);
+          if (err) return send(res, 422, { error: err });
+        }
         tickets.push(t);
         const art = json.article ?? {};
+        const author = isCustomer || (art.sender ?? 'Customer') === 'Customer' ? customer : current;
         articles.push({
-          id: nextArticle++, ticket_id: t.id, from: `${customer.firstname} ${customer.lastname}`, sender: art.sender ?? 'Customer', body: String(art.body ?? ''),
+          id: nextArticle++, ticket_id: t.id, from: `${author.firstname} ${author.lastname}`, sender: art.sender ?? 'Customer', body: String(art.body ?? ''),
           content_type: art.content_type ?? 'text/html', internal: Boolean(art.internal), created_at: iso(new Date()),
+          type: art.type ?? 'web', subject: art.subject, to: art.to,
           attachments: (art.attachments ?? []).map((x: any) => { const data = Buffer.from(x.data, 'base64'); return { id: nextAtt++, filename: x.filename, size: data.length, data, mime: x['mime-type'] }; }),
         });
         if (loseCreate > 0) { loseCreate--; return send(res, 504, { error: 'Gateway Timeout (simuliert)' }); }
@@ -200,20 +229,32 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
       }
       if (req.method === 'GET' && p === '/api/v1/tickets/search') {
         // Wie Zammad: mit Suchbegriff über den Suchindex, ohne Suchbegriff mit Bedingung direkt in der Datenbank
-        const cond: Record<string, string> = {};
+        const cond: Record<string, string[]> = {};
+        const not: Record<string, string[]> = {};
         let after: string | null = null;
         for (const [k, v] of url.searchParams) {
-          const c = /^condition\[ticket\.([a-z_]+)\]\[value\]$/.exec(k);
-          if (c && c[1] === 'updated_at') after = v;
-          else if (c) cond[c[1]] = v;
+          const c = /^condition\[ticket\.([a-z_]+)\]\[value\](\[\])?$/.exec(k);
+          if (!c) continue;
+          const op = url.searchParams.get(`condition[ticket.${c[1]}][operator]`);
+          if (c[1] === 'updated_at') after = v;
+          else if (op === 'is not') (not[c[1]] ??= []).push(v);
+          else (cond[c[1]] ??= []).push(v);
         }
         if (after !== null && legacySearch) return send(res, 500, { error: 'invalid selector' });
         if (Object.keys(cond).length && legacySearch) return send(res, 500, { error: 'invalid selector' });
         const m = /customer_id:(\d+)/.exec(url.searchParams.get('query') ?? '');
-        let list = tickets.filter((t) => canSee(t) && (!m || t.customer_id === Number(m[1])) && (after === null || t.updated_at > after) && Object.entries(cond).every(([f, v]) => String(t[f]) === v));
+        const val = (t: Ticket, f: string) => (Array.isArray(t[f]) ? (t[f] as unknown[]).map(String) : [String(t[f] ?? '')]);
+        // Wie Zammad: mehrere Werte = einer davon; Tags: „contains one“
+        let list = tickets.filter((t) => canSee(t) && (!m || t.customer_id === Number(m[1])) && (after === null || t.updated_at > after)
+          && Object.entries(cond).every(([f, v]) => v.some((x) => val(t, f).includes(x))) && Object.entries(not).every(([f, v]) => !v.some((x) => val(t, f).includes(x))));
         if (url.searchParams.get('sort_by') === 'updated_at') list = [...list].sort((a, b) => (url.searchParams.get('order_by') === 'desc' ? -1 : 1) * a.updated_at.localeCompare(b.updated_at));
         const limit = Number(url.searchParams.get('limit') ?? 50);
         return send(res, 200, list.slice(0, Math.min(limit, 200)).map(expandTicket));
+      }
+      if (req.method === 'GET' && p === '/api/v1/tags') {
+        const t = tickets.find((x) => x.id === Number(url.searchParams.get('o_id')));
+        if (!t || !canSee(t)) return send(res, 404, { error: 'not found' });
+        return send(res, 200, { tags: t.tags });
       }
       if ((req.method === 'POST' && p === '/api/v1/tags/add') || (req.method === 'DELETE' && p === '/api/v1/tags/remove')) {
         if (isCustomer) return send(res, 403, { error: 'Not authorized' });
@@ -221,6 +262,101 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
         if (!t || json.object !== 'Ticket' || typeof json.item !== 'string') return send(res, 422, { error: 'invalid' });
         if (p.endsWith('/add')) { if (!t.tags.includes(json.item)) t.tags.push(json.item); } else t.tags = t.tags.filter((x) => x !== json.item);
         return send(res, 200, true);
+      }
+      let mt = /^\/api\/v1\/tickets\/(\d+)$/.exec(p);
+      if (req.method === 'PUT' && mt) {
+        const t = tickets.find((x) => x.id === Number(mt![1]));
+        if (!t) return send(res, 404, { error: "Couldn't find Ticket" });
+        if (isCustomer) return send(res, 403, { error: 'Not authorized' });
+        if (json.title !== undefined) t.title = String(json.title);
+        if (json.group !== undefined) {
+          const g = GROUPS.find((x) => x.name === json.group);
+          if (!g) return send(res, 422, { error: "No lookup value found for 'group'" });
+          t.group_id = g.id;
+        }
+        if (json.state !== undefined) { const err = setState(t, json.state); if (err) return send(res, 422, { error: err }); }
+        for (const [k, v] of Object.entries(json)) {
+          if (['title', 'group', 'state', 'id'].includes(k)) continue;
+          if (!customAttr(k)) return send(res, 422, { error: `Unknown attribute ${k}` });
+          t[k] = v;
+        }
+        t.updated_at = iso(new Date());
+        return send(res, 200, expandTicket(t));
+      }
+      void mt;
+      if (req.method === 'GET' && p === '/api/v1/links') {
+        const id = Number(url.searchParams.get('link_object_value'));
+        const t = tickets.find((x) => x.id === id);
+        if (!t) return send(res, 404, { error: 'not found' });
+        if (isCustomer) return send(res, 403, { error: 'Not authorized' });
+        const out: { link_type: string; link_object: string; link_object_value: number }[] = [];
+        // Wie Zammad: aus Sicht des Tickets – „child“ = Kind dieses Tickets, „parent“ = sein Eltern-Ticket
+        for (const l of links) {
+          if (l.source === id) out.push({ link_type: l.type === 'parent' ? 'child' : 'normal', link_object: 'Ticket', link_object_value: l.target });
+          else if (l.target === id) out.push({ link_type: l.type === 'parent' ? 'parent' : 'normal', link_object: 'Ticket', link_object_value: l.source });
+        }
+        return send(res, 200, { links: out, assets: {} });
+      }
+      if (req.method === 'POST' && p === '/api/v1/links/add') {
+        if (isCustomer) return send(res, 403, { error: 'Not authorized' });
+        const src = tickets.find((x) => x.number === String(json.link_object_source_number));
+        const target = tickets.find((x) => x.id === Number(json.link_object_target_value));
+        if (!src || !target || !['parent', 'normal'].includes(json.link_type)) return send(res, 422, { error: 'invalid link' });
+        if (!links.some((l) => l.source === src.id && l.target === target.id && l.type === json.link_type)) links.push({ source: src.id, target: target.id, type: json.link_type });
+        return send(res, 201, { result: 'ok' });
+      }
+      if (req.method === 'DELETE' && p === '/api/v1/links/remove') {
+        if (isCustomer) return send(res, 403, { error: 'Not authorized' });
+        const i = links.findIndex((l) => l.source === Number(json.link_object_source_value) && l.target === Number(json.link_object_target_value) && l.type === json.link_type);
+        if (i < 0) return send(res, 422, { error: 'no such link' });
+        links.splice(i, 1);
+        return send(res, 200, { result: 'ok' });
+      }
+      if (req.method === 'POST' && p === '/api/v1/groups') {
+        if (!isAdmin) return send(res, 403, { error: 'Not authorized (admin.group)' });
+        if (GROUPS.some((g) => g.name === json.name)) return send(res, 422, { error: 'Name already exists' });
+        GROUPS.push({ id: Math.max(...GROUPS.map((g) => g.id)) + 1, name: String(json.name), active: json.active !== false });
+        return send(res, 201, GROUPS.at(-1));
+      }
+      if (req.method === 'POST' && p === '/api/v1/ticket_states') {
+        if (!isAdmin) return send(res, 403, { error: 'Not authorized (admin.object)' });
+        if (STATES.some((s) => s.name === json.name)) return send(res, 422, { error: 'Name already exists' });
+        STATES.push({ id: Math.max(...STATES.map((s) => s.id)) + 1, name: String(json.name), active: true, state_type_id: Number(json.state_type_id) });
+        return send(res, 201, STATES.at(-1));
+      }
+      let ma = /^\/api\/v1\/object_manager_attributes(?:\/(\d+))?$/.exec(p);
+      if ((req.method === 'POST' || req.method === 'PUT') && ma) {
+        if (!isAdmin) return send(res, 403, { error: 'Not authorized (admin.object)' });
+        if (!/^[a-z][a-z0-9_]*$/.test(String(json.name ?? ''))) return send(res, 422, { error: 'invalid name' });
+        if (req.method === 'POST') {
+          if (ATTRIBUTES.some((a) => a.object === json.object && a.name === json.name)) return send(res, 422, { error: 'already exists' });
+          ATTRIBUTES.push({ id: Math.max(...ATTRIBUTES.map((a) => a.id)) + 1, object: json.object, name: json.name, display: json.display, data_type: json.data_type, active: true, editable: true, data_option: json.data_option, to_migrate: true });
+        } else {
+          const a = ATTRIBUTES.find((x) => x.id === Number(ma![1]));
+          if (!a) return send(res, 404, { error: 'not found' });
+          Object.assign(a, { display: json.display, data_option: json.data_option, data_type: json.data_type });
+        }
+        return send(res, req.method === 'POST' ? 201 : 200, ATTRIBUTES.at(-1));
+      }
+      void ma;
+      if (req.method === 'GET' && p === '/api/v1/core_workflows') {
+        if (!isAdmin) return send(res, 403, { error: 'Not authorized (admin.core_workflow)' });
+        return send(res, 200, workflows);
+      }
+      const mw = /^\/api\/v1\/core_workflows(?:\/(\d+))?$/.exec(p);
+      if ((req.method === 'POST' || req.method === 'PUT') && mw) {
+        if (!isAdmin) return send(res, 403, { error: 'Not authorized (admin.core_workflow)' });
+        if (!json.name || json.object !== 'Ticket') return send(res, 422, { error: 'invalid' });
+        if (req.method === 'POST') { workflows.push({ id: workflows.length + 1, ...json }); return send(res, 201, workflows.at(-1)); }
+        const w = workflows.find((x) => x.id === Number(mw[1]));
+        if (!w) return send(res, 404, { error: 'not found' });
+        Object.assign(w, json);
+        return send(res, 200, w);
+      }
+      if (req.method === 'POST' && p === '/api/v1/object_manager_attributes_execute_migrations') {
+        if (!isAdmin) return send(res, 403, { error: 'Not authorized' });
+        for (const a of ATTRIBUTES) delete a.to_migrate;
+        return send(res, 200, { result: 'ok' });
       }
       let mu = /^\/api\/v1\/users\/(\d+)$/.exec(p);
       if (req.method === 'GET' && mu) {
@@ -260,13 +396,16 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
         if (!t) return send(res, 404, { error: 'not found' });
         if (!canSee(t)) return send(res, 403, { error: 'Not authorized' });
         if (isCustomer && json.internal) return send(res, 403, { error: 'Not authorized' });
+        if (json.type === 'email' && !json.to) return send(res, 422, { error: 'Need recipient' });
         articles.push({
           id: nextArticle++, ticket_id: t.id, from: `${current.firstname} ${current.lastname}`, sender: json.sender ?? 'Customer', body: String(json.body ?? ''),
           content_type: json.content_type ?? 'text/html', internal: Boolean(json.internal), created_at: iso(new Date()),
+          type: json.type ?? 'note', subject: json.subject, to: json.to,
           attachments: (json.attachments ?? []).map((x: any) => { const data = Buffer.from(x.data, 'base64'); return { id: nextAtt++, filename: x.filename, size: data.length, data, mime: x['mime-type'] }; }),
         });
         t.updated_at = iso(new Date());
-        if (t.state_id === 4) t.state_id = 2;
+        // Wie Zammad (Standard-Trigger): Antwort des Kunden öffnet ein geschlossenes Ticket wieder
+        if (t.state_id === 4 && (json.sender ?? 'Customer') === 'Customer') { t.state_id = 2; t.close_at = null; }
         return send(res, 201, { id: nextArticle - 1 });
       }
       return send(res, 404, { error: 'No route matches' });
@@ -281,7 +420,8 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
   if (!opts.quiet) console.log(`Zammad-Simulator „${opts.name ?? 'Zammad'}“ läuft auf ${url} (Token: ${token})`);
   return {
     server, url,
-    state: { users, tickets, articles, requests },
+    state: { users, tickets, articles, links, workflows, groups: GROUPS, states: STATES, attributes: ATTRIBUTES, requests },
+    setAdmin: (on) => { isAdmin = on; },
     failNext: (n, status = 503) => { failCount = n; failStatus = status; },
     setLegacySearch: (on) => { legacySearch = on; },
     loseNextCreateResponse: (n) => { loseCreate = n; },

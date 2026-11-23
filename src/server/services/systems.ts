@@ -17,6 +17,8 @@ export interface SystemRow {
   closed_states: string; portal_tag: string; released_attributes: string; sort: number; created_at: number; updated_at: number;
   /** JSON-Liste erlaubter Zammad-Gruppen (leer = keine Einschränkung) */
   allowed_groups: string; hide_agent_names: number;
+  /** JSON: Zammad-Zuordnung (siehe shared/zammad-model.ts) */
+  zammad_mapping: string;
 }
 
 /** Zammad-Gruppen, in die das Portal Tickets anlegen darf. Leer = keine Einschränkung. */

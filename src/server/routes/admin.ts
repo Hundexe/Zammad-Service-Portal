@@ -2,6 +2,12 @@
 // aus der URL – und schreibt Änderungen mit Vorher/Nachher ins Audit-Log.
 import type { App } from '../app.ts';
 import { openTitle } from '../services/request-title.ts';
+import { applySetup, checkSetup, getMapping, lastReport, saveMapping, setupWarnings, workflowDefs } from '../services/zammad-setup.ts';
+import { ATTR_SPECS, DEFAULT_MAPPING } from '../../shared/zammad-model.ts';
+
+/** Zuordnung flach für das Audit-Log */
+const flat = (m: unknown, prefix = ''): Record<string, unknown> => Object.fromEntries(Object.entries(m as Record<string, unknown>).flatMap(([k, v]) =>
+  v && typeof v === 'object' && !Array.isArray(v) ? Object.entries(flat(v, `${prefix}${k}.`)) : [[`${prefix}${k}`, Array.isArray(v) ? v.join(', ') : v]]));
 import { HttpError, type Router, type RouteOptions } from '../http/core.ts';
 import type { AppCtx } from '../server.ts';
 import { parseJson, uuid } from '../db/db.ts';
@@ -177,6 +183,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
     for (const sys of listSystems(app)) {
       if (sys.status !== 'inactive' && !allowedGroups(sys).length) warnings.push(`Ticketsystem „${sys.name}“: keine erlaubten Zammad-Gruppen festgelegt – Formulare können Tickets in jede Gruppe legen, die der API-Benutzer sieht.`);
     }
+    warnings.push(...setupWarnings(app).filter((w) => listSystems(app).some((x) => ids.includes(x.id) && w.startsWith(`${x.name}:`))));
     // Freigabe-Felder ohne Gruppen: freigeben kann dann jedes Konto (auch ein Zweitkonto oder eine beliebige Kollegin)
     if (getFeatures(app).approvals) {
       const open = app.db.all<{ name: string; system_id: string; definition: string }>(
@@ -1117,8 +1124,35 @@ export function registerAdminRoutes(router: Router, app: App): void {
   router.post('/api/admin/requests/:requestId/cancel', admin(), (ctx: AppCtx) => {
     const r = /^[0-9a-f-]{36}$/.test(ctx.params.requestId) ? app.db.get<{ system_id: string }>('SELECT system_id FROM requests WHERE id = ?', ctx.params.requestId) : undefined;
     if (!r || !can(ctx.user, 'system.manage', r.system_id)) throw new HttpError(404, 'Anfrage nicht gefunden', 'not_found');
-    cancelRequest(app, ctx.user!, actor(ctx), ctx.params.requestId, (ctx.body as { reason?: unknown })?.reason);
+    cancelRequest(app, ctx.user!, actor(ctx), ctx.params.requestId, (ctx.body as { reason?: unknown })?.reason, (id) => removeRequestFiles(app, id), (t) => openTitle(app.box, t));
     return { ok: true };
+  });
+
+  // ---------------------------------------------------------------- Zammad-Zuordnung und Einrichtung
+  router.get('/api/admin/systems/:systemId/zammad', admin('system.manage'), (ctx: AppCtx) => {
+    const sys = sysOr404(ctx.params.systemId);
+    return { mapping: getMapping(app, sys), defaults: DEFAULT_MAPPING, specs: ATTR_SPECS, report: lastReport(sys.id) ?? null, workflows: workflowDefs(app, sys) };
+  });
+  router.put('/api/admin/systems/:systemId/zammad', admin('system.manage'), async (ctx: AppCtx) => {
+    const sys = sysOr404(ctx.params.systemId);
+    const before = getMapping(app, sys);
+    let m;
+    try { m = saveMapping(app, sys, (ctx.body as { mapping?: unknown })?.mapping); } catch (err) { throw new HttpError(422, (err as Error).message, 'validation'); }
+    audit(app.db, actor(ctx), { action: 'system.zammad_mapping', targetType: 'system', targetId: sys.id, systemId: sys.id, details: diff(flat(before), flat(m)) });
+    return { mapping: m, report: await checkSetup(app, getSystem(app, sys.id)!) };
+  });
+  router.post('/api/admin/systems/:systemId/zammad/check', admin('system.manage'), async (ctx: AppCtx) => {
+    const sys = sysOr404(ctx.params.systemId);
+    return { report: await checkSetup(app, sys), workflows: workflowDefs(app, sys) };
+  });
+  router.post('/api/admin/systems/:systemId/zammad/apply', admin('system.manage', { stepup: true }), async (ctx: AppCtx) => {
+    const sys = sysOr404(ctx.params.systemId);
+    let r;
+    try { r = await applySetup(app, sys); } catch (err) {
+      throw new HttpError(502, `Zammad hat abgelehnt: ${(err as Error).message.slice(0, 300)}. Hat der API-Benutzer Admin-Rechte?`, 'zammad_error');
+    }
+    audit(app.db, actor(ctx), { action: 'system.zammad_setup', targetType: 'system', targetId: sys.id, systemId: sys.id, details: { angelegt: r.created } });
+    return { report: r, created: r.created };
   });
 
   // ---------------------------------------------------------------- Export und Import der Ticketsysteme

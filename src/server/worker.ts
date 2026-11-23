@@ -2,7 +2,9 @@
 import type { App } from './app.ts';
 import { deliverNext, purgeOld } from './services/requests.ts';
 import { purgeExpiredSessions } from './auth/sessions.ts';
-import { approvalHousekeeping } from './services/approvals.ts';
+import { approvalHousekeeping, upgradeWaitingApprovals } from './services/approvals.ts';
+import { itsmHousekeeping } from './services/itsm.ts';
+import { checkAll } from './services/zammad-setup.ts';
 import { purgeNotifications } from './services/notifications.ts';
 import { watchTickets } from './services/ticket-watch.ts';
 import { checkForUpdates } from './services/update-notify.ts';
@@ -29,7 +31,6 @@ export function startWorker(app: App, intervalMs = 2000, deps: { entra?: Pick<En
   };
   const housekeeping = () => {
     try {
-      approvalHousekeeping(app);
       const n = purgeOld(app);
       purgeExpiredSessions(app);
       purgeNotifications(app);
@@ -82,6 +83,26 @@ export function startWorker(app: App, intervalMs = 2000, deps: { entra?: Pick<En
   const minutes = app.cfg.entra.accountCheckMinutes ?? 0;
   const t5 = deps.entra && minutes > 0 ? setInterval(() => void accounts(), minutes * 60_000) : null;
   if (t5) void accounts();
+  // Alle fünf Minuten in Zammad: Fristen der Freigaben, Tickets der Betroffenen, beendete Wartungen;
+  // stündlich prüfen, ob Zammad zur Zuordnung passt (Hinweise in der Verwaltung)
+  let zammadBusy = false;
+  let lastSetupCheck = 0;
+  const zammad = async () => {
+    if (zammadBusy || stopped) return;
+    zammadBusy = true;
+    try {
+      if (Date.now() - lastSetupCheck > 3600_000) { lastSetupCheck = Date.now(); await checkAll(app); }
+      await approvalHousekeeping(app);
+      await itsmHousekeeping(app);
+    } catch (err) {
+      log.warn('Arbeiten in Zammad fehlgeschlagen', { error: (err as Error).message });
+    } finally {
+      zammadBusy = false;
+    }
+  };
+  try { upgradeWaitingApprovals(app); } catch (err) { log.error('Übernahme wartender Freigaben fehlgeschlagen', { error: (err as Error).message }); }
+  const t6 = setInterval(() => void zammad(), 5 * 60_000);
+  void zammad();
   const t1 = setInterval(() => void tick(), intervalMs);
   // Stündlich: Fristen der Freigaben, Aufbewahrung, Sitzungen
   const t2 = setInterval(housekeeping, 3600_000);
@@ -94,6 +115,7 @@ export function startWorker(app: App, intervalMs = 2000, deps: { entra?: Pick<En
     if (t3) clearInterval(t3);
     if (t4) clearInterval(t4);
     if (t5) clearInterval(t5);
+    clearInterval(t6);
   };
 }
 

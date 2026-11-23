@@ -8,7 +8,7 @@ import { DEMO } from '../lib/env.ts';
 
 interface Approval {
   id: string; status: string; title: string; systemName: string; requesterName: string;
-  createdAt: number; expiresAt: number; decidedAt: number | null; decidedByName: string | null; comment: string | null;
+  createdAt: number; expiresAt: number; decidedAt: number | null; decidedByName: string | null; comment: string | null; ticketNumber?: string;
 }
 interface Summary { form: string; system: string; requester: { name: string; email: string; department: string }; fields: { label: string; value: string; multiline: boolean }[] }
 
@@ -55,7 +55,7 @@ export async function approvalDetailPage(p: Record<string, string>) {
     btn.disabled = true;
     try {
       await post(`/api/portal/approvals/${a.id}/${decision}`, { comment });
-      toast(decision === 'approve' ? 'Freigegeben – die Anfrage geht jetzt an die IT' : 'Abgelehnt – die anfragende Person wird benachrichtigt');
+      toast(decision === 'approve' ? 'Freigegeben – die IT bearbeitet die Anfrage jetzt' : 'Abgelehnt – die anfragende Person wird benachrichtigt');
       void refreshCounts();
       navigate(DEMO ? '/freigaben' : `/freigaben/${a.id}`, true);
     } catch (err) {
@@ -67,7 +67,7 @@ export async function approvalDetailPage(p: Record<string, string>) {
   const facts: Child[] = s ? [
     h('dt', null, 'Angefragt von'), h('dd', null, s.requester.name, s.requester.department ? h('span', { class: 'muted' }, ` · ${s.requester.department}`) : null, h('br'), h('span', { class: 'muted small' }, s.requester.email)),
     h('dt', null, 'Formular'), h('dd', null, s.form),
-    h('dt', null, 'Geht an'), h('dd', null, s.system),
+    h('dt', null, 'Ticket'), h('dd', null, `${s.system}${a.ticketNumber ? `, #${a.ticketNumber}` : ''}`),
     h('dt', null, 'Gesendet'), h('dd', null, fmtDate(a.createdAt)),
     h('dt', null, 'Frist'), h('dd', null, `bis ${fmtDate(a.expiresAt, false)} – danach verfällt die Anfrage`),
   ] : [
@@ -87,7 +87,7 @@ export async function approvalDetailPage(p: Record<string, string>) {
     a.status !== 'pending' ? notice(a.status === 'approved' ? 'ok' : a.status === 'rejected' ? 'error' : 'info',
       h('strong', null, DONE_TEXT[a.status] ?? a.status), a.decidedAt ? ` am ${fmtDate(a.decidedAt)}` : '', a.decidedByName && !['withdrawn', 'expired', 'cancelled'].includes(a.status) ? ` von ${a.decidedByName}` : '',
       a.comment ? h('p', { class: 'quote' }, a.comment) : null,
-      a.status === 'approved' ? h('p', { class: 'small' }, 'Die Anfrage wurde an das Ticketsystem übermittelt. Den Inhalt zeigt das Portal nach der Entscheidung nicht mehr an.') : null) : null,
+      a.status === 'approved' ? h('p', { class: 'small' }, `Die IT bearbeitet jetzt Ticket ${a.ticketNumber ? `#${a.ticketNumber}` : ''}. Den Inhalt zeigt das Portal nach der Entscheidung nicht mehr an.`) : null) : null,
     h('section', { class: 'panel' }, h('dl', { class: 'facts' }, ...facts)),
     s ? h('section', { class: 'panel' }, h('h2', null, 'Inhalt der Anfrage'),
       s.fields.length ? h('dl', { class: 'facts facts-wide' }, ...s.fields.flatMap((f) => [h('dt', null, f.label), h('dd', { class: f.multiline ? 'pre' : undefined }, f.value)])) : h('p', { class: 'muted' }, 'Keine weiteren Angaben.'),
@@ -95,7 +95,7 @@ export async function approvalDetailPage(p: Record<string, string>) {
         h('a', { attrs: { href: `/api/portal/approvals/${a.id}/files/${f.id}`, download: f.filename } }, icon('file', 14), f.filename))))) : null) : null,
     a.status === 'pending' ? h('section', { class: 'panel decide' },
       h('h2', null, 'Ihre Entscheidung'),
-      h('p', { class: 'muted' }, 'Nach der Freigabe geht die Anfrage an das Ticketsystem. Ihr Name, die Uhrzeit und Ihr Hinweis stehen im Ticket. Bei Ablehnung wird die Anfrage gelöscht und die anfragende Person benachrichtigt.'),
+      h('p', { class: 'muted' }, 'Die Anfrage ist schon als Ticket im Ticketsystem und wartet auf Sie. Nach der Freigabe bearbeitet die IT sie. Ihr Name, die Uhrzeit und Ihr Hinweis stehen im Ticket. Bei Ablehnung wird das Ticket geschlossen und die anfragende Person benachrichtigt.'),
       fieldWrap(commentBox, { label: 'Hinweis oder Begründung', help: 'Bei Ablehnung Pflicht, bei Freigabe freiwillig (z. B. Kostenstelle).' }),
       msg,
       h('div', { class: 'form-actions' }, approveBtn, rejectBtn)) : null,

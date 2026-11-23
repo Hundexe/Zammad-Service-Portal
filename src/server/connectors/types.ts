@@ -33,6 +33,51 @@ export interface TicketSummary {
   updatedAt: string;
 }
 
+/** Ticket mit allen Attributen (Sicht des API-Benutzers) – für Freigaben, Störungen, Wartungen, Probleme */
+export interface ZTicket extends TicketSummary {
+  /** Eigene Ticket-Attribute (z. B. freigabe_status, auswirkung) */
+  fields: Record<string, unknown>;
+  /** Zeitpunkt des Schließens (ISO), sonst null */
+  closeAt: string | null;
+  tags?: string[];
+}
+
+/** Artikel aus Sicht des API-Benutzers (auch interne Notizen) */
+export interface AgentArticle extends ArticleSummary {
+  internal: boolean;
+  type: string;
+  subject: string;
+}
+
+export interface NewArticle {
+  body: string;
+  /** text/html (Standard) oder text/plain */
+  contentType?: string;
+  /** note (Standard) oder email (Zammad verschickt sie über den E-Mail-Kanal) */
+  type?: 'note' | 'email' | 'web';
+  internal?: boolean;
+  subject?: string;
+  /** Empfänger bei type = email */
+  to?: string;
+  /** Absenderrolle im Ticket (Standard: Agent) */
+  sender?: 'Agent' | 'Customer' | 'System';
+  /** Im Namen dieses Kunden schreiben (X-On-Behalf-Of) – nur in dessen eigenem Ticket */
+  asCustomer?: CustomerRef;
+  attachments?: Attachment[];
+}
+
+export interface NewAgentTicket {
+  customerId: number;
+  title: string;
+  group: string;
+  state?: string;
+  fields?: Record<string, unknown>;
+  tags?: string[];
+  article: NewArticle;
+}
+
+export type LinkType = 'normal' | 'parent' | 'child';
+
 export interface ArticleSummary {
   id: number;
   from: string;
@@ -52,7 +97,12 @@ export interface CreateTicketInput {
   attachments: Attachment[];
   fields: Record<string, unknown>;
   tags: string[];
+  /** Status beim Anlegen (z. B. „wartet auf Freigabe“) – legt das Ticket als API-Benutzer an, Absender bleibt der Kunde */
+  state?: string;
 }
+
+/** Bedingung für die Suche: Wert = genaue Übereinstimmung; Tags: enthält einen der Werte */
+export type SearchCondition = string | number | boolean | { operator: 'is' | 'is not' | 'contains one'; value: string | number | boolean | (string | number)[] };
 
 export interface SystemMetadata {
   groups: { id: number; name: string }[];
@@ -105,4 +155,57 @@ export interface Connector {
   /** Tag am Ticket setzen bzw. entfernen – so bleibt die Zuordnung in Zammad sichtbar */
   addTag(ticketId: number, tag: string): Promise<void>;
   removeTag(ticketId: number, tag: string): Promise<void>;
+
+  // ---- Zammad als einzige Datenquelle (ab 2.0): alles als API-Benutzer
+  /** Ticket mit Attributen; null, wenn es nicht existiert */
+  getTicketFull(ticketId: number): Promise<ZTicket | null>;
+  /** Tickets mit Bedingungen (Wert = genaue Übereinstimmung), neueste zuerst */
+  searchTickets(conditions: Record<string, SearchCondition>, limit?: number): Promise<ZTicket[]>;
+  /** ID des API-Benutzers (Kunde der Tickets für Störungen, Wartungen und Probleme) */
+  selfId(): Promise<number>;
+  /** Tags eines Tickets */
+  tags(ticketId: number): Promise<string[]>;
+  /** Titel, Status, Gruppe und eigene Attribute ändern */
+  updateTicket(ticketId: number, changes: { title?: string; state?: string; group?: string; fields?: Record<string, unknown> }): Promise<ZTicket>;
+  createAgentTicket(input: NewAgentTicket): Promise<ZTicket>;
+  addArticle(ticketId: number, article: NewArticle): Promise<number>;
+  /** Alle Artikel inkl. interner Notizen */
+  agentArticles(ticketId: number): Promise<AgentArticle[]>;
+  agentAttachment(ticketId: number, articleId: number, attachmentId: number): Promise<{ data: Buffer; mime: string; filename: string } | null>;
+  /** Verknüpfungen aus Sicht des Tickets: child = Kind dieses Tickets, parent = Eltern-Ticket */
+  links(ticketId: number): Promise<{ type: LinkType; ticketId: number }[]>;
+  /** parentId wird Eltern-Ticket von childId (type parent) bzw. normale Verknüpfung */
+  addLink(parentNumber: string, childId: number, type?: 'parent' | 'normal'): Promise<void>;
+  removeLink(parentId: number, childId: number, type?: 'parent' | 'normal'): Promise<void>;
+  // ---- Einrichtung (braucht Admin-Rechte in Zammad)
+  setupInfo(): Promise<SetupInfo>;
+  createGroup(name: string): Promise<void>;
+  createState(name: string, likeState: string): Promise<void>;
+  saveAttribute(def: AttributeDef, existingId?: number): Promise<void>;
+  executeMigrations(): Promise<void>;
+  /** Core Workflows (Abhängigkeiten zwischen Feldern) */
+  workflows(): Promise<{ id: number; name: string; active: boolean }[]>;
+  saveWorkflow(def: WorkflowDef, existingId?: number): Promise<void>;
+}
+
+/** Core Workflow für Tickets: Bedingung (Feld → Operator/Wert) und Wirkung (Feld → show/hide) */
+export interface WorkflowDef {
+  name: string;
+  priority: number;
+  condition: Record<string, { operator: 'is' | 'is set'; value?: string[] }>;
+  perform: Record<string, 'show' | 'hide'>;
+}
+
+export interface AttributeDef {
+  name: string;
+  display: string;
+  dataType: 'input' | 'textarea' | 'select' | 'multiselect' | 'boolean' | 'datetime' | 'date' | 'integer';
+  options?: Record<string, string>;
+  position?: number;
+}
+
+export interface SetupInfo {
+  groups: { id: number; name: string; active: boolean }[];
+  states: { id: number; name: string; active: boolean; stateTypeId: number | null }[];
+  attributes: { id: number; name: string; display: string; dataType: string; options: Record<string, string> }[];
 }

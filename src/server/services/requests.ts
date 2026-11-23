@@ -14,11 +14,12 @@ import { checkFiles, loadFile, removeRequestFiles, storeFile, type CheckedFile, 
 import { allowedGroups, connectorFor, findSystem, getSystem, type SystemRow } from './systems.ts';
 import { can } from './rbac.ts';
 import { getFeatures } from './features.ts';
-import { incidentTagsFor } from './itsm.ts';
+import { linkRequestToIncidents, serviceKeys } from './itsm.ts';
 import { releasedAttributes } from './metadata.ts';
 import type { FormRow, FormVersionRow } from './forms.ts';
 import { ConnectorError, type CustomerRef } from '../connectors/types.ts';
-import { approverFor, buildSummary, insertApproval, notifyRequested, type ApproverChoice } from './approvals.ts';
+import { announceApproval, approvalFields, approverFor, approvalInfo, type ApproverChoice } from './approvals.ts';
+import { getMapping } from './zammad-setup.ts';
 
 export interface TicketPayload {
   title: string;
@@ -28,6 +29,10 @@ export interface TicketPayload {
   fields: Record<string, unknown>;
   tags: string[];
   customer: { email: string; displayName: string };
+  /** Freigabe durch Vorgesetzte: Ticket entsteht im Status „wartet auf Freigabe“ */
+  approval?: { email: string; name: string | null; due?: string };
+  /** Schlüssel der betroffenen Services (offene Störungen dazu werden beim Zustellen verknüpft) */
+  services?: string[];
 }
 
 /**
@@ -109,9 +114,10 @@ export function buildTicket(
     bodyHtml: body,
     group,
     priority,
-    fields: zammadFields,
     // Der Tag „freigegeben“ ist reserviert: nur die Freigabe durch Vorgesetzte setzt ihn (siehe approvals.ts)
     tags: [...tags].filter((t) => t.toLowerCase() !== 'freigegeben'),
+    // Formular am Ticket (Attribut „Portal: Formular“) – daran erkennt das Portal z. B. die Regeln für die Freigabe
+    fields: { ...zammadFields, __form: form.id },
     customer: { email: user.email, displayName: user.displayName },
   };
 }
@@ -164,19 +170,18 @@ export async function submitRequest(
     if (mine.length) result.values[f.id] = mine.map((c) => ({ name: c.file.filename, size: c.file.data.length }));
   }
   const payload = buildTicket(target, form, def, result.values, user, id, route);
-  // Offene Störungen der Services dieses Formulars: Tag am Ticket (inc-0003), damit die IT sie in Zammad gesammelt findet.
+  if (approval) payload.approval = { email: approval.email, name: approval.name };
+  // Offene Störungen der Services dieses Formulars werden beim Zustellen mit dem Ticket verknüpft.
   // Nur im Ticketsystem des Formulars – Services gehören zu ihm.
-  if (target.id === sys.id) for (const tag of incidentTagsFor(app, sys.id, def.settings.services)) if (!payload.tags.includes(tag)) payload.tags.push(tag);
+  if (target.id === sys.id && def.settings.services?.length) payload.services = serviceKeys(app, sys.id, def.settings.services);
   const t = Date.now();
-  let approvalId: string | null = null;
   app.db.tx(() => {
     app.db.run(
       `INSERT INTO requests (id, user_id, system_id, form_id, form_version_id, title, payload, status, attempts, next_attempt_at, created_at, queued_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
       id, user.id, target.id, form.id, version.id, sealTitle(app.box, payload.title), app.box.encrypt('request', JSON.stringify(payload)),
-      approval ? 'awaiting_approval' : 'queued', t, t, approval ? null : t,
+      'queued', t, t, t,
     );
-    if (approval) approvalId = insertApproval(app, id, approval, buildSummary(def, result.values, user, form.name, target.name));
     for (const c of checked) {
       const fileId = uuid();
       app.db.run(
@@ -186,7 +191,6 @@ export async function submitRequest(
       storeFile(app, id, fileId, c.file.data);
     }
   });
-  if (approvalId) notifyRequested(app, approvalId);
   return { id, title: payload.title, approval, system: { id: target.id, name: target.name, routed: target.id !== sys.id } };
 }
 
@@ -285,9 +289,22 @@ async function deliver(app: App, row: RequestRow): Promise<void> {
     const existing = triedBefore ? await connector.findTicketForRequest(customer, row.id, payload.title, row.created_at) : null;
     if (!existing) app.db.run('UPDATE requests SET create_attempted_at = COALESCE(create_attempted_at, ?) WHERE id = ?', Date.now(), row.id);
     if (existing) log.warn('Anfrage war schon zugestellt – kein zweites Ticket', { request: row.id, ticket: existing.number });
+    const m = getMapping(app, sys);
+    const fields: Record<string, unknown> = { ...payload.fields };
+    const formId = fields.__form;
+    delete fields.__form;
+    if (typeof formId === 'string') fields[m.attrs.form] = formId;
+    const tags = [...payload.tags].filter((x) => x !== m.approval.approvedTag);
+    let state: string | undefined;
+    if (payload.approval) {
+      Object.assign(fields, approvalFields(m, { ...payload.approval, known: true, knownOnly: false, groups: null }, row.created_at, app.cfg.approval.expireDays));
+      if (payload.approval.due) fields[m.attrs.approvalDue] = payload.approval.due;
+      state = m.approval.state;
+      for (const x of m.approval.pendingTags) if (!tags.includes(x)) tags.push(x);
+    }
     const ticket = existing ?? await connector.createTicket({
       customer, title: payload.title, group: payload.group, priority: payload.priority,
-      bodyHtml: payload.bodyHtml, attachments, fields: payload.fields, tags: payload.tags,
+      bodyHtml: payload.bodyHtml, attachments, fields, tags, state,
     });
     const t = Date.now();
     app.db.tx(() => {
@@ -300,6 +317,10 @@ async function deliver(app: App, row: RequestRow): Promise<void> {
     // Anhänge liegen jetzt in Zammad – Zwischenablage sofort löschen (Datensparsamkeit)
     removeRequestFiles(app, row.id);
     log.info('Anfrage zugestellt', { request: row.id, system: sys.slug, ticket: ticket.number });
+    // Ab jetzt steht alles im Ticket: Titel im Portal neutralisieren, „Meine Anfragen“ liest live aus Zammad
+    app.db.run('UPDATE requests SET title = ? WHERE id = ?', PURGED_TITLE, row.id);
+    if (payload.approval && !existing) await announceApproval(app, sys, ticket, payload.title, payload.approval.email, payload.customer.displayName);
+    if (payload.services?.length) await linkRequestToIncidents(app, sys, ticket, payload.services);
   } catch (err) {
     const retryable = err instanceof ConnectorError ? err.retryable : false;
     const message = (err as Error).message.slice(0, 500);
@@ -337,11 +358,48 @@ export function retryRequest(app: App, id: string): boolean {
   return r.changes > 0;
 }
 
-export function requestsOfUser(app: App, userId: string, systemId?: string) {
-  return app.db.all<{ id: string; system_id: string; title: string; status: string; ticket_number: string | null; ticket_id: number | null; created_at: number; delivered_at: number | null }>(
+interface RequestListRow { id: string; system_id: string; title: string; status: string; ticket_number: string | null; ticket_id: number | null; created_at: number; delivered_at: number | null }
+
+/**
+ * „Meine Anfragen“: Zeilen aus der Zustellung (Outbox) plus Stand aus Zammad. Zugestellte Anfragen tragen
+ * Titel, Status und Freigabe aus dem Ticket (ein Suchaufruf je Ticketsystem).
+ */
+export async function requestsOfUser(app: App, user: AuthUser, systemId?: string) {
+  const rows = app.db.all<RequestListRow>(
     `SELECT id, system_id, title, status, ticket_number, ticket_id, created_at, delivered_at FROM requests
       WHERE user_id = ? ${systemId ? 'AND system_id = ?' : ''} ORDER BY created_at DESC LIMIT 100`,
-    ...(systemId ? [userId, systemId] : [userId]),
+    ...(systemId ? [user.id, systemId] : [user.id]),
   ).map((r) => ({ ...r, title: openTitle(app.box, r.title) }));
+  const live = new Map<string, Awaited<ReturnType<typeof liveTickets>>>();
+  for (const sid of new Set(rows.filter((r) => r.ticket_id).map((r) => r.system_id))) live.set(sid, await liveTickets(app, user, sid));
+  return rows.map((r) => {
+    const t = r.ticket_id ? live.get(r.system_id)?.get(r.ticket_id) : undefined;
+    if (!t) return { ...r, approval: null as ReturnType<typeof approvalInfo> };
+    const approval = approvalInfo(app, getSystem(app, r.system_id)!, t);
+    const status = approval?.status === 'pending' ? 'awaiting_approval'
+      : approval && ['rejected', 'withdrawn', 'expired', 'cancelled'].includes(approval.status) ? approval.status : r.status;
+    return { ...r, title: t.title, status, ticketState: t.state, ticketClosed: t.closed, approval };
+  });
 }
 
+async function liveTickets(app: App, user: AuthUser, systemId: string) {
+  const out = new Map<number, import('../connectors/types.ts').ZTicket>();
+  const sys = getSystem(app, systemId);
+  if (!sys || sys.status === 'inactive' || !user.email) return out;
+  try {
+    const customer = await customerFor(app, sys, user.id, user.email, user.displayName, false);
+    if (!customer) return out;
+    for (const t of await connectorFor(app, sys).searchTickets({ customer_id: customer.customerId }, 200)) out.set(t.id, t);
+  } catch (err) {
+    log.warn('Anfragen: Stand aus Zammad nicht lesbar', { system: sys.slug, error: (err as Error).message });
+  }
+  return out;
+}
+
+/** Noch nicht zugestellte Anfragen (Outbox) – für die Ticketliste, ohne Zammad zu fragen */
+export function pendingRequestsOfUser(app: App, userId: string, systemId: string) {
+  return app.db.all<RequestListRow>(
+    "SELECT id, system_id, title, status, ticket_number, ticket_id, created_at, delivered_at FROM requests WHERE user_id = ? AND system_id = ? AND status IN ('queued', 'sending', 'failed') ORDER BY created_at DESC LIMIT 50",
+    userId, systemId,
+  ).map((r) => ({ ...r, title: openTitle(app.box, r.title), approval: null }));
+}

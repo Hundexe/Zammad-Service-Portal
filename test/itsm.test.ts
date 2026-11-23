@@ -4,6 +4,9 @@ import assert from 'node:assert/strict';
 import { startPortal, Client, createSystem, createForm, createUser, ENTRA_USERS, type Portal } from './helpers.ts';
 import { startMockZammad, type MockZammad } from '../tools/mock-zammad.ts';
 import { deliverNext } from '../src/server/services/requests.ts';
+import { applySetup } from '../src/server/services/zammad-setup.ts';
+import { getSystem } from '../src/server/services/systems.ts';
+import { itsmHousekeeping } from '../src/server/services/itsm.ts';
 import { emptyDefinition } from '../src/server/services/forms.ts';
 import type { FormDefinition } from '../src/shared/form.ts';
 
@@ -67,6 +70,20 @@ test('Funktionen schalten nur mit „Globale Einstellungen ändern“, ungültig
   assert.equal(r.status, 200, r.text);
   assert.equal(r.json.features.approvals, true, 'nicht genannte Schalter bleiben');
   assert.ok(p.app.db.get("SELECT 1 FROM audit_log WHERE action = 'settings.features'"));
+  // Das Portal richtet Zammad ein: Gruppen, Attribute, Abhängigkeiten
+  const check = await su.post(`/api/admin/systems/${zentral}/zammad/check`);
+  assert.equal(check.status, 200, check.text);
+  assert.deepEqual(check.json.report.missing.groups.sort(), ['Probleme', 'Störungen', 'Wartungen']);
+  assert.ok(check.json.report.missing.attributes.some((a: any) => a.name === 'portal_art'));
+  // Überschneidung: vorhandenes „Standort“ wird als Ersatz für „Portal: Standorte“ vorgeschlagen
+  assert.ok(check.json.report.suggestions.some((x: any) => x.type === 'attr' && x.key === 'locations' && x.attribute === 'standort'), JSON.stringify(check.json.report.suggestions));
+  for (const id of [zentral, nord]) assert.equal((await applySetup(p.app, getSystem(p.app, id)!)).ready, true);
+  const wf = p.zammad.state.workflows.find((w: any) => w.name === 'Portal: Wartung')!;
+  assert.deepEqual(wf.condition_selected, { 'ticket.portal_art': { operator: 'is', value: ['wartung'] } });
+  assert.equal(wf.perform['ticket.portal_wartung_beginn'].operator, 'show');
+  const base = p.zammad.state.workflows.find((w: any) => w.name === 'Portal: Felder ausblenden')!;
+  assert.equal(base.perform['ticket.portal_wartung_beginn'].operator, 'hide');
+  assert.equal(base.perform['ticket.portal_art'], undefined, '„Portal: Art“ bleibt als Schalter sichtbar');
 });
 
 let vpn: string;
@@ -97,7 +114,12 @@ test('Große Störung: Status, Banner, „Ich bin auch betroffen“ und Benachri
   });
   assert.equal(r.status, 201, r.text);
   incidentId = r.json.incident.id;
-  assert.equal(r.json.incident.number, 'INC-0001');
+  const ticket = p.zammad.state.tickets.find((t) => `${zentral}.${t.id}` === incidentId)!;
+  assert.equal(r.json.incident.number, ticket.number, 'Störung = Ticket in Zammad');
+  assert.equal(ticket.portal_art, 'stoerung');
+  assert.equal(ticket.portal_grosse_stoerung, true);
+  assert.deepEqual(ticket.portal_standorte, ['zentrale']);
+  assert.equal(p.zammad.state.groups.find((g) => g.id === ticket.group_id)!.name, 'Störungen');
   assert.equal((await su.post(`/api/admin/systems/${zentral}/incidents`, { title: 'X', body: 'Y', impact: 'degraded', locations: ['Mond'] })).status, 422);
 
   const status = (await anna.get('/api/portal/status')).json;
@@ -113,17 +135,24 @@ test('Große Störung: Status, Banner, „Ich bin auch betroffen“ und Benachri
   assert.equal((await anna.post(`/api/portal/incidents/${incidentId}/affected`, { affected: true })).json.count, 1, 'doppelt zählt nicht');
   const detail = (await su.get(`/api/admin/systems/${zentral}/incidents/${incidentId}`)).json;
   assert.equal(detail.affected[0].email, ANNA.email);
+  // Eigenes Ticket für Anna, Kind der Störung
+  const child = p.zammad.state.tickets.find((t) => t.portal_stoerung === ticket.id)!;
+  assert.ok(child);
+  assert.ok(p.zammad.state.links.some((l) => l.source === ticket.id && l.target === child.id && l.type === 'parent'));
 
   assert.equal((await su.post(`/api/admin/systems/${zentral}/incidents/${incidentId}/updates`, { state: 'identified', body: 'Zertifikat abgelaufen, wird erneuert.' })).status, 200);
   const n = (await anna.get('/api/portal/notifications')).json;
   assert.ok(n.notifications.some((x: any) => x.kind === 'incident.update' && x.link === `/stoerungen/${incidentId}`), JSON.stringify(n));
   const pub = (await anna.get(`/api/portal/incidents/${incidentId}`)).json;
   assert.equal(pub.updates.length, 2);
+  assert.equal(pub.updates[0].state, 'identified');
   assert.equal(pub.updates[0].by, undefined, 'keine Namen der Bearbeiter im Portal');
   assert.equal(pub.incident.mine, true);
+  assert.equal(ticket.portal_phase, 'identified');
+  assert.ok(p.zammad.state.articles.some((x) => x.ticket_id === ticket.id && x.subject === 'Ursache gefunden' && !x.internal));
 });
 
-test('Formular mit Service: Hinweis auf die Störung, Ticket bekommt den Tag der Störung', async () => {
+test('Formular mit Service: Hinweis auf die Störung', async () => {
   formId = createForm(p.app, zentral, form([vpn]), 'vpn');
   const f = (await anna.get(`/api/portal/forms/${formId}`)).json;
   assert.equal(f.notices.incidents.length, 1);
@@ -132,9 +161,10 @@ test('Formular mit Service: Hinweis auf die Störung, Ticket bekommt den Tag der
   // Freigabe ist an: die Anfrage wartet – Tag steht trotzdem schon im Ticket-Inhalt
   assert.equal(r.status, 201, r.text);
   assert.ok(r.json.approval);
+  await deliverAll();
 });
 
-test('Funktion „Freigabe durch Vorgesetzte“ aus: Freigabefeld entfällt, Anfrage geht direkt; Tag inc-0001 im Ticket', async () => {
+test('Funktion „Freigabe durch Vorgesetzte“ aus: Freigabefeld entfällt; neues Ticket wird mit der offenen Störung verknüpft', async () => {
   await su.put('/api/admin/settings/features', { features: { approvals: false } });
   const f = (await anna.get(`/api/portal/forms/${formId}`)).json;
   assert.ok(!f.definition.fields.some((x: any) => x.type === 'approver'));
@@ -142,8 +172,9 @@ test('Funktion „Freigabe durch Vorgesetzte“ aus: Freigabefeld entfällt, Anf
   assert.equal(r.status, 201, r.text);
   assert.equal(r.json.approval, null);
   await deliverAll();
-  const body = p.zammad.state.requests.filter((x) => x.method === 'POST' && x.path === '/api/v1/tickets').at(-1)!.body;
-  assert.ok(String(body.tags).includes('inc-0001'), String(body.tags));
+  const created = p.zammad.state.tickets.find((t) => t.id === p.app.db.get<{ ticket_id: number }>('SELECT ticket_id FROM requests WHERE id = ?', r.json.id)!.ticket_id)!;
+  const inc = Number(incidentId.split('.')[1]);
+  assert.ok(p.zammad.state.links.some((l) => l.source === inc && l.target === created.id && l.type === 'normal'));
   await su.put('/api/admin/settings/features', { features: { approvals: true } });
 });
 
@@ -162,23 +193,34 @@ test('Wartung: vorab angekündigt, im Zeitfenster Status „Wartung“; Absagen'
   await su.post(`/api/admin/systems/${zentral}/maintenances/${running.json.maintenance.id}/cancel`);
   status = (await anna.get('/api/portal/status')).json;
   assert.equal(status.services.find((s: any) => s.id === m365).status, 'operational');
+  // Wartung in Zammad: Zeiten als Attribute, nach dem Ende schließt das Portal das Ticket
+  const t = p.zammad.state.tickets.find((x) => `${zentral}.${x.id}` === soon.json.maintenance.id)!;
+  assert.equal(t.portal_art, 'wartung');
+  assert.equal(Date.parse(String(t.portal_wartung_ende)), now + 7200_000);
+  t.portal_wartung_ende = new Date(now - 1000).toISOString();
+  t.portal_wartung_beginn = new Date(now - 5000).toISOString();
+  assert.equal((await itsmHousekeeping(p.app)).maintenancesClosed, 1);
+  assert.equal(p.zammad.state.states.find((x) => x.id === t.state_id)!.name, 'closed');
 });
 
-test('Problem: Ticket aus Zammad verknüpfen setzt den Tag dort, bekannter Fehler erscheint im Portal', async () => {
+test('Problem: Ticket aus Zammad verknüpfen (Verknüpfung und Attribut), bekannter Fehler erscheint im Portal', async () => {
   const pr = await su.post(`/api/admin/systems/${zentral}/problems`, { title: 'VPN-Zertifikat läuft unbemerkt ab', serviceId: vpn, rootCause: 'Keine Überwachung', workaround: 'Neu verbinden' });
   assert.equal(pr.status, 201, pr.text);
   const id = pr.json.problem.id;
-  assert.equal(pr.json.problem.number, 'PRB-0001');
-  const ticket = p.zammad.state.tickets.at(-1)!;
+  const pt = p.zammad.state.tickets.find((t) => `${zentral}.${t.id}` === id)!;
+  assert.equal(pr.json.problem.number, pt.number);
+  assert.equal(pt.portal_ursache, 'Keine Überwachung');
+  const ticket = p.zammad.state.tickets.find((t) => t.title === 'Drucker im 2. OG druckt nur leere Seiten')!;
   const link = await su.post(`/api/admin/systems/${zentral}/problems/${id}/tickets`, { number: ticket.number });
   assert.equal(link.status, 200, link.text);
-  assert.ok(ticket.tags.includes('prb-0001'));
+  assert.ok(p.zammad.state.links.some((l) => l.source === pt.id && l.target === ticket.id && l.type === 'normal'));
+  assert.equal(ticket.portal_problem, pt.id);
   assert.equal((await su.post(`/api/admin/systems/${zentral}/problems/${id}/tickets`, { number: '999999' })).status, 422);
   const detail = (await su.get(`/api/admin/systems/${zentral}/problems/${id}`)).json;
   assert.equal(detail.tickets[0].number, ticket.number);
   // Störung dem Problem zuordnen
   assert.equal((await su.put(`/api/admin/systems/${zentral}/incidents/${incidentId}`, { problemId: id })).status, 200);
-  assert.equal((await su.get(`/api/admin/systems/${zentral}/problems/${id}`)).json.problem.incidents[0].number, 'INC-0001');
+  assert.equal((await su.get(`/api/admin/systems/${zentral}/problems/${id}`)).json.problem.incidents[0].id, incidentId);
   // Noch nicht öffentlich
   assert.equal((await anna.get('/api/portal/status')).json.problems.length, 0);
   await su.put(`/api/admin/systems/${zentral}/problems/${id}`, { title: 'VPN-Zertifikat läuft unbemerkt ab', state: 'known_error', public: true, workaround: 'Neu verbinden' });
@@ -187,7 +229,8 @@ test('Problem: Ticket aus Zammad verknüpfen setzt den Tag dort, bekannter Fehle
   assert.equal(pub[0].workaround, 'Neu verbinden');
   assert.equal(pub[0].rootCause, undefined, 'Ursache bleibt intern');
   assert.equal((await su.del(`/api/admin/systems/${zentral}/problems/${id}/tickets/${ticket.id}`)).status, 200);
-  assert.ok(!ticket.tags.includes('prb-0001'));
+  assert.ok(!p.zammad.state.links.some((l) => l.source === pt.id && l.target === ticket.id));
+  assert.equal(ticket.portal_problem, null);
 });
 
 test('Behoben: Status zurück, Betroffene benachrichtigt, „betroffen“ nicht mehr möglich', async () => {
@@ -197,6 +240,25 @@ test('Behoben: Status zurück, Betroffene benachrichtigt, „betroffen“ nicht 
   assert.equal(status.incidents.find((i: any) => i.id === incidentId).state, 'resolved');
   assert.equal((await anna.post(`/api/portal/incidents/${incidentId}/affected`, { affected: true })).status, 409);
   assert.equal((await anna.get('/api/portal/status/banner')).json.major.length, 0);
+  // Annas Ticket ist mit geschlossen
+  const inc = Number(incidentId.split('.')[1]);
+  const child = p.zammad.state.tickets.find((t) => t.portal_stoerung === inc)!;
+  assert.equal(p.zammad.state.states.find((x) => x.id === child.state_id)!.name, 'closed');
+  assert.ok(p.zammad.state.articles.some((x) => x.ticket_id === child.id && x.subject === 'Störung behoben'));
+});
+
+test('In Zammad geschlossene Störung: der Worker schließt die Tickets der Betroffenen', async () => {
+  const r = await su.post(`/api/admin/systems/${zentral}/incidents`, { title: 'Mail langsam', body: 'Wir schauen.', impact: 'degraded', serviceIds: [m365] });
+  assert.equal((await anna.post(`/api/portal/incidents/${r.json.incident.id}/affected`, { affected: true })).json.count, 1);
+  const t = p.zammad.state.tickets.find((x) => `${zentral}.${x.id}` === r.json.incident.id)!;
+  t.state_id = p.zammad.state.states.find((x) => x.name === 'closed')!.id;
+  t.close_at = new Date().toISOString();
+  assert.equal((await itsmHousekeeping(p.app)).affectedClosed, 1);
+  assert.equal((await itsmHousekeeping(p.app)).affectedClosed, 0, 'nur einmal');
+  // „Nicht mehr betroffen“ schließt das eigene Ticket
+  const r2 = await su.post(`/api/admin/systems/${zentral}/incidents`, { title: 'WLAN', body: 'Prüfen', impact: 'degraded' });
+  assert.equal((await anna.post(`/api/portal/incidents/${r2.json.incident.id}/affected`, { affected: true })).json.count, 1);
+  assert.equal((await anna.post(`/api/portal/incidents/${r2.json.incident.id}/affected`, { affected: false })).json.count, 0);
 });
 
 test('Störungen anderer Ticketsysteme bleiben unsichtbar', async () => {

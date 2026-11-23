@@ -8,6 +8,13 @@
 // Import = „alles ersetzen“: Das Zielsystem hat danach genau die Ticketsysteme der Datei. Ticketsysteme mit gleichem
 // Kürzel behalten ihre interne ID (Rollen-Zuordnungen und alte Anfragen bleiben gültig), ihr Inhalt wird ersetzt.
 // Ticketsysteme, die nicht in der Datei stehen, werden gelöscht. Alles läuft in einer Transaktion: entweder ganz oder gar nicht.
+import { normalizeMapping, optionKey } from '../../shared/zammad-model.ts';
+
+/** Zammad-Zuordnung aus einer Exportdatei prüfen (fehlt sie: Standard) */
+function mappingOf(raw: unknown, where: string, errors: string[]): string {
+  if (raw === undefined || raw === null) return '{}';
+  try { return JSON.stringify(normalizeMapping(raw)); } catch (err) { errors.push(`${where}: Zammad-Zuordnung – ${(err as Error).message}`); return '{}'; }
+}
 import { createCipheriv, createDecipheriv, randomBytes, scrypt } from 'node:crypto';
 import type { App } from '../app.ts';
 import { parseJson, uuid } from '../db/db.ts';
@@ -101,6 +108,7 @@ export async function buildExport(app: App, password?: string): Promise<Json> {
       visibleGroups: parseJson<string[]>(s.visible_groups, []), requireApproval: s.require_approval === 1, showOrgTickets: s.show_org_tickets === 1,
       allowReplies: s.allow_replies === 1, closedStates: parseJson<string[]>(s.closed_states, []), portalTag: s.portal_tag, sort: s.sort,
       allowedGroups: parseJson<string[]>(s.allowed_groups, []), hideAgentNames: s.hide_agent_names === 1,
+      zammadMapping: (() => { try { return normalizeMapping(parseJson<unknown>(s.zammad_mapping ?? '{}', {})); } catch { return normalizeMapping({}); } })(),
       releasedAttributes: parseJson<unknown[]>(s.released_attributes, []),
       branding, forms,
       templates: app.db.all<{ kind: string; name: string; content: string }>('SELECT kind, name, content FROM templates WHERE system_id = ? ORDER BY kind, name', s.id),
@@ -363,6 +371,7 @@ export async function planImport(app: App, file: unknown, password?: string): Pr
         require_approval: flag('requireApproval', false), show_org_tickets: flag('showOrgTickets', false), allow_replies: flag('allowReplies', true),
         closed_states: JSON.stringify(closed.length ? closed : ['closed', 'merged', 'removed']), portal_tag: portalTag, sort,
         allowed_groups: JSON.stringify(allowed), hide_agent_names: flag('hideAgentNames', false),
+        zammad_mapping: mappingOf(s.zammadMapping, w, errors),
       },
       released: JSON.stringify(released), branding, forms, templates, overviews,
     });
@@ -422,9 +431,9 @@ export function applyImport(app: App, plan: ImportPlan, actor: Actor): ReturnTyp
         const token = s.token ? app.box.encrypt('system-token', s.token) : s.dropToken ? null : before.api_token;
         app.db.run(
           `UPDATE ticket_systems SET name = ?, base_url = ?, api_token = ?, default_group = ?, creation_mode = ?, status = ?, visible_groups = ?, require_approval = ?,
-            show_org_tickets = ?, allow_replies = ?, closed_states = ?, portal_tag = ?, sort = ?, allowed_groups = ?, hide_agent_names = ?, released_attributes = ?, updated_at = ? WHERE id = ?`,
+            show_org_tickets = ?, allow_replies = ?, closed_states = ?, portal_tag = ?, sort = ?, allowed_groups = ?, hide_agent_names = ?, zammad_mapping = ?, released_attributes = ?, updated_at = ? WHERE id = ?`,
           v.name, v.base_url, token, v.default_group, v.creation_mode, v.status, v.visible_groups, v.require_approval, v.show_org_tickets, v.allow_replies,
-          v.closed_states, v.portal_tag, v.sort, v.allowed_groups, v.hide_agent_names, s.released, t, id,
+          v.closed_states, v.portal_tag, v.sort, v.allowed_groups, v.hide_agent_names, v.zammad_mapping, s.released, t, id,
         );
         if (before.base_url !== v.base_url || s.token) {
           app.db.run('DELETE FROM zammad_customers WHERE system_id = ?', id);
@@ -437,10 +446,10 @@ export function applyImport(app: App, plan: ImportPlan, actor: Actor): ReturnTyp
         id = uuid();
         app.db.run(
           `INSERT INTO ticket_systems (id, slug, name, type, base_url, api_token, default_group, creation_mode, status, visible_groups, require_approval, show_org_tickets,
-             allow_replies, closed_states, portal_tag, sort, allowed_groups, hide_agent_names, released_attributes, created_at, updated_at)
-           VALUES (?, ?, ?, 'zammad', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             allow_replies, closed_states, portal_tag, sort, allowed_groups, hide_agent_names, zammad_mapping, released_attributes, created_at, updated_at)
+           VALUES (?, ?, ?, 'zammad', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           id, s.slug, v.name, v.base_url, s.token ? app.box.encrypt('system-token', s.token) : null, v.default_group, v.creation_mode, v.status, v.visible_groups,
-          v.require_approval, v.show_org_tickets, v.allow_replies, v.closed_states, v.portal_tag, v.sort, v.allowed_groups, v.hide_agent_names, s.released, t, t,
+          v.require_approval, v.show_org_tickets, v.allow_replies, v.closed_states, v.portal_tag, v.sort, v.allowed_groups, v.hide_agent_names, v.zammad_mapping, s.released, t, t,
         );
       }
       for (const b of s.branding) {
@@ -460,7 +469,10 @@ export function applyImport(app: App, plan: ImportPlan, actor: Actor): ReturnTyp
       for (const f of s.services) {
         if (svcIds.has(f.name.toLowerCase())) continue;
         const sid = uuid();
-        app.db.run('INSERT INTO services (id, system_id, name, description, sort, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)', sid, id, f.name, f.description, f.sort, t, t);
+        const base = optionKey(f.name).slice(0, 50);
+        let zkey = base;
+        for (let i = 2; app.db.get('SELECT 1 FROM services WHERE system_id = ? AND zkey = ?', id, zkey); i++) zkey = `${base}_${i}`;
+        app.db.run('INSERT INTO services (id, system_id, name, description, zkey, sort, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', sid, id, f.name, f.description, zkey, f.sort, t, t);
         svcIds.set(f.name.toLowerCase(), sid);
       }
       const withServices = (json: string) => {

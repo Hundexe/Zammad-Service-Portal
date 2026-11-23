@@ -5,6 +5,9 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { startPortal, Client, createSystem, createForm, createUser, ENTRA_USERS, type Portal } from './helpers.ts';
 import { deliverNext } from '../src/server/services/requests.ts';
+import { approvalHousekeeping } from '../src/server/services/approvals.ts';
+import { applySetup } from '../src/server/services/zammad-setup.ts';
+import { getSystem } from '../src/server/services/systems.ts';
 import { emptyDefinition } from '../src/server/services/forms.ts';
 import type { FormDefinition } from '../src/shared/form.ts';
 
@@ -44,6 +47,7 @@ before(async () => {
   admin = new Client(p.url);
   await admin.loginLocal('it-admin', 'Test-Passwort-123!');
   await login(ALEX.oid);
+  await applySetup(p.app, getSystem(p.app, systemId)!);
 });
 after(async () => { await p.close(); });
 
@@ -80,15 +84,19 @@ test('wartende Anfrage abbrechen – der Worker stellt sie nicht mehr zu', async
   assert.equal(p.zammad.state.tickets.length, before);
 });
 
-test('Anfrage, die auf eine Freigabe wartet, abbrechen: Freigabe endet, freigebende Person benachrichtigt', async () => {
+test('Anfrage mit Freigabe ist sofort in Zammad: nicht im Portal abbrechbar; in Zammad geschlossen beendet die Freigabe', async () => {
   const a = await login(ANNA.oid);
   const id = await ask(a, ALEX.email);
-  const ap = p.app.db.get<{ id: string }>('SELECT id FROM approvals WHERE request_id = ?', id)!;
-  assert.equal((await admin.post(`/api/admin/requests/${id}/cancel`, {})).status, 200);
-  assert.equal(p.app.db.get<{ status: string }>('SELECT status FROM approvals WHERE id = ?', ap.id)!.status, 'cancelled');
+  while (await deliverNext(p.app)) { /* zustellen */ }
+  assert.equal((await admin.post(`/api/admin/requests/${id}/cancel`, {})).status, 409);
+  const tid = p.app.db.get<{ ticket_id: number }>('SELECT ticket_id FROM requests WHERE id = ?', id)!.ticket_id;
+  const t = p.zammad.state.tickets.find((x) => x.id === tid)!;
+  t.state_id = p.zammad.state.states.find((s) => s.name === 'closed')!.id;
+  await approvalHousekeeping(p.app);
   const x = await login(ALEX.oid);
-  assert.equal((await x.post(`/api/portal/approvals/${ap.id}/approve`, {})).status, 409);
-  const d = await x.get(`/api/portal/approvals/${ap.id}`);
+  const ref = `${systemId}.${tid}`;
+  assert.equal((await x.post(`/api/portal/approvals/${ref}/approve`, {})).status, 409);
+  const d = await x.get(`/api/portal/approvals/${ref}`);
   assert.equal(d.json.approval.status, 'cancelled');
   assert.equal(d.json.summary, null);
   assert.ok((await x.get('/api/portal/notifications')).json.notifications.some((m: any) => m.kind === 'request.cancelled'));

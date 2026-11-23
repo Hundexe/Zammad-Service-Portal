@@ -57,6 +57,7 @@ export function sidebar(path: string): HTMLElement {
     sysSelect ?? (current ? h('p', { class: 'nav-system' }, current.name) : null),
     sid ? h('ul', null,
       item(`/admin/systeme/${sid}`, 'Verbindung', can('system.manage', sid)),
+      item(`/admin/systeme/${sid}/zammad`, 'Zammad-Zuordnung', can('system.manage', sid)),
       item(`/admin/systeme/${sid}/objekte`, 'Zammad-Objekte', can('attribute.release', sid)),
       item(`/admin/systeme/${sid}/formulare`, 'Formulare', can('form.edit', sid) || can('form.publish', sid) || can('form.approve', sid)),
       item(`/admin/systeme/${sid}/vorlagen`, 'Vorlagen', can('template.edit', sid)),

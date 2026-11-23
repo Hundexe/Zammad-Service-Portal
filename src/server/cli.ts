@@ -11,6 +11,8 @@
 //   status [--json] [--max-queue-minutes N]   Zustand für Überwachung (Exit-Code 2 bei Problemen)
 //   scanner:test                    Virenscanner mit EICAR-Testdatei prüfen
 //   audit:verify
+//   zammad:setup [--system KÜRZEL] [--apply]   Zammad prüfen bzw. einrichten (Gruppen, Status, Attribute, Abhängigkeiten)
+//   zammad:migrate [--dry-run]      Störungen, Wartungen und Probleme aus 1.x nach Zammad übernehmen
 //   secret:generate
 //   healthcheck
 import { randomBytes } from 'node:crypto';
@@ -225,6 +227,41 @@ async function main(): Promise<void> {
       return;
     case 'migrate':
       await withApp(() => console.log('Datenbank ist aktuell.'));
+      return;
+    case 'zammad:setup':
+      await withApp(async (app) => {
+        const { listSystems } = await import('./services/systems.ts');
+        const { applySetup, checkSetup } = await import('./services/zammad-setup.ts');
+        const only = arg('system');
+        for (const sys of listSystems(app).filter((s) => s.status !== 'inactive' && (!only || s.slug === only))) {
+          const r = flag('apply') ? await applySetup(app, sys) : await checkSetup(app, sys);
+          console.log(`${sys.name} (${sys.slug}): ${r.ready ? 'passt' : r.error ? `nicht prüfbar – ${r.error}` : 'unvollständig'}`);
+          if ('created' in r) for (const x of (r as { created: string[] }).created) console.log(`  angelegt: ${x}`);
+          for (const g of r.missing.groups) console.log(`  fehlt: Gruppe „${g}“`);
+          for (const st of r.missing.states) console.log(`  fehlt: Status „${st}“`);
+          for (const a of r.missing.attributes) console.log(`  fehlt: Attribut „${a.display}“ (${a.name})`);
+          for (const o of r.missing.options) console.log(`  fehlt: Auswahlwerte ${o.values.join(', ')} in ${o.attribute}`);
+          for (const w of r.workflows) console.log(`  fehlt: Abhängigkeit „${w}“`);
+          for (const p of r.problems) console.log(`  Hinweis: ${p}`);
+          for (const s of r.suggestions) console.log(s.type === 'attr' ? `  Vorschlag: vorhandenes Attribut „${s.display}“ (${s.attribute}) statt „${s.portalDisplay}“` : `  Vorschlag: ${s.kind} zusätzlich ${s.attribute} = ${s.valueLabel}`);
+          if (!r.ready) process.exitCode = 2;
+        }
+        if (!flag('apply')) console.log('Mit --apply legt das Portal Fehlendes an (API-Benutzer braucht Admin-Rechte in Zammad).');
+      });
+      return;
+    case 'zammad:migrate':
+      await withApp(async (app) => {
+        const { planMigration, runMigration } = await import('./services/zammad-migrate.ts');
+        const plan = await planMigration(app);
+        if (!plan.length) { console.log('Nichts zu übernehmen.'); return; }
+        for (const p of plan) console.log(`${p.system}: ${p.incidents} Störungen, ${p.maintenances} Wartungen, ${p.problems} Probleme${p.ready ? '' : ` – ${p.issues.join(' ')}`}`);
+        if (flag('dry-run')) { console.log('Probelauf – nichts geändert.'); return; }
+        for (const r of await runMigration(app)) {
+          console.log(`${r.system}: übernommen ${r.incidents} Störungen, ${r.maintenances} Wartungen, ${r.problems} Probleme`);
+          for (const e of r.errors) console.log(`  Fehler: ${e}`);
+          if (r.errors.length) process.exitCode = 2;
+        }
+      });
       return;
     default:
       console.error(`Unbekannter Befehl: ${command}`);

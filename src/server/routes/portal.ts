@@ -8,13 +8,13 @@ import { parseJson } from '../db/db.ts';
 import { getSystem, listSystems, publishedBranding, systemVisibleTo, connectorFor, type SystemRow } from '../services/systems.ts';
 import { formVisibleTo, getForm, publishedVersion, resolveDefinition, type FormRow } from '../services/forms.ts';
 import { getMetadata } from '../services/metadata.ts';
-import { customerFor, localEmailTaken, requestsOfUser, submitRequest } from '../services/requests.ts';
+import { customerFor, localEmailTaken, pendingRequestsOfUser, requestsOfUser, submitRequest } from '../services/requests.ts';
 import { checkFiles, type IncomingFile } from '../services/files.ts';
 import { ConnectorError, type TicketSummary } from '../connectors/types.ts';
 import type { FormDefinition } from '../../shared/form.ts';
 import { textToHtml } from '../../shared/template.ts';
 import { audit } from '../services/audit.ts';
-import { approvalDetail, approvalFile, approvalsOfRequests, decide, listForApprover, openCountForApprover, reassign, withdraw } from '../services/approvals.ts';
+import { approvalDetail, approvalFile, decide, listForApprover, openCountForApprover, reassign, withdraw } from '../services/approvals.ts';
 import { listNotifications, markRead, markReadByLink, unreadCount } from '../services/notifications.ts';
 import { log } from '../log.ts';
 import { getFeatures } from '../services/features.ts';
@@ -134,7 +134,7 @@ export function registerPortalRoutes(router: Router, app: App): void {
       form: { id: form.id, name: form.name, description: form.description, version: version.version },
       system: { id: sys.id, name: sys.name, status: sys.status },
       // Bekannte Störungen und Wartungen der Services dieses Formulars („Ich bin auch betroffen“ statt Ticket)
-      notices: formNotices(app, ctx.user!, sys.id, def.settings.services),
+      notices: await formNotices(app, ctx.user!, sys.id, def.settings.services),
       definition: { fields, settings: { successText: def.settings.successText ?? '' } },
     };
   });
@@ -167,32 +167,32 @@ export function registerPortalRoutes(router: Router, app: App): void {
 
   const actorOf = (ctx: AppCtx) => ({ id: ctx.user!.id, name: ctx.user!.displayName, ip: ctx.ip });
 
-  router.get('/api/portal/requests', user, (ctx: AppCtx) => {
+  router.get('/api/portal/requests', user, async (ctx: AppCtx) => {
     const names = new Map(listSystems(app).map((s) => [s.id, s.name]));
-    const list = requestsOfUser(app, ctx.user!.id);
-    const approvals = approvalsOfRequests(app, list.map((r) => r.id));
-    return { requests: list.map((r) => ({ ...r, systemName: names.get(r.system_id) ?? '', approval: approvals.get(r.id) ?? null })) };
+    const list = await requestsOfUser(app, ctx.user!);
+    return { requests: list.map((r) => ({ ...r, systemName: names.get(r.system_id) ?? '' })) };
   });
 
-  router.post('/api/portal/requests/:requestId/withdraw', user, (ctx: AppCtx) => {
-    withdraw(app, ctx.user!, actorOf(ctx), ctx.params.requestId);
+  router.post('/api/portal/requests/:requestId/withdraw', user, async (ctx: AppCtx) => {
+    await withdraw(app, ctx.user!, actorOf(ctx), ctx.params.requestId);
     ticketCache.clear();
     return { ok: true };
   });
 
-  router.post('/api/portal/requests/:requestId/approver', user, (ctx: AppCtx) => {
-    const c = reassign(app, ctx.user!, actorOf(ctx), ctx.params.requestId, (ctx.body as { email?: unknown })?.email);
+  router.post('/api/portal/requests/:requestId/approver', user, async (ctx: AppCtx) => {
+    const c = await reassign(app, ctx.user!, actorOf(ctx), ctx.params.requestId, (ctx.body as { email?: unknown })?.email);
     return { ok: true, approval: { email: c.email, name: c.name, known: c.known } };
   });
 
   // ---------------------------------------------------------------- Freigaben durch Vorgesetzte
-  router.get('/api/portal/approvals', user, (ctx: AppCtx) => {
+  router.get('/api/portal/approvals', user, async (ctx: AppCtx) => {
     const which = ctx.query.get('status') === 'done' ? 'done' : 'open';
-    return { approvals: listForApprover(app, ctx.user!, which), open: openCountForApprover(app, ctx.user!) };
+    const approvals = await listForApprover(app, ctx.user!, which);
+    return { approvals, open: which === 'open' ? approvals.length : await openCountForApprover(app, ctx.user!) };
   });
 
-  router.get('/api/portal/approvals/:approvalId', user, (ctx: AppCtx) => {
-    const d = approvalDetail(app, ctx.user!, ctx.params.approvalId);
+  router.get('/api/portal/approvals/:approvalId', user, async (ctx: AppCtx) => {
+    const d = await approvalDetail(app, ctx.user!, ctx.params.approvalId);
     markReadByLink(app, ctx.user!, `/freigaben/${d.approval.id}`);
     return d;
   });
@@ -200,8 +200,8 @@ export function registerPortalRoutes(router: Router, app: App): void {
   router.post('/api/portal/approvals/:approvalId/approve', user, (ctx: AppCtx) => decide(app, ctx.user!, actorOf(ctx), ctx.params.approvalId, 'approve', (ctx.body as { comment?: unknown })?.comment));
   router.post('/api/portal/approvals/:approvalId/reject', user, (ctx: AppCtx) => decide(app, ctx.user!, actorOf(ctx), ctx.params.approvalId, 'reject', (ctx.body as { comment?: unknown })?.comment));
 
-  router.get('/api/portal/approvals/:approvalId/files/:fileId', user, (ctx: AppCtx) => {
-    const file = approvalFile(app, ctx.user!, ctx.params.approvalId, ctx.params.fileId);
+  router.get('/api/portal/approvals/:approvalId/files/:fileId', user, async (ctx: AppCtx) => {
+    const file = await approvalFile(app, ctx.user!, ctx.params.approvalId, ctx.params.fileId);
     sendDownload(ctx, file.filename, file.data);
   });
 
@@ -226,11 +226,11 @@ export function registerPortalRoutes(router: Router, app: App): void {
   });
 
   // ---------------------------------------------------------------- Benachrichtigungen
-  router.get('/api/portal/notifications', user, (ctx: AppCtx) => ({
-    notifications: listNotifications(app, ctx.user!), unread: unreadCount(app, ctx.user!), approvalsOpen: openCountForApprover(app, ctx.user!),
+  router.get('/api/portal/notifications', user, async (ctx: AppCtx) => ({
+    notifications: listNotifications(app, ctx.user!), unread: unreadCount(app, ctx.user!), approvalsOpen: await openCountForApprover(app, ctx.user!),
   }));
 
-  router.get('/api/portal/notifications/count', user, (ctx: AppCtx) => ({ unread: unreadCount(app, ctx.user!), approvalsOpen: openCountForApprover(app, ctx.user!) }));
+  router.get('/api/portal/notifications/count', user, async (ctx: AppCtx) => ({ unread: unreadCount(app, ctx.user!), approvalsOpen: await openCountForApprover(app, ctx.user!) }));
 
   router.post('/api/portal/notifications/read', user, (ctx: AppCtx) => {
     const b = ctx.body as { ids?: unknown };
@@ -316,7 +316,7 @@ export function registerPortalRoutes(router: Router, app: App): void {
     const keyMap: Record<string, keyof TicketSummary> = { created_at: 'createdAt', updated_at: 'updatedAt' };
     const k = keyMap[key] ?? key;
     filtered.sort((a, b) => String(a[k] ?? '').localeCompare(String(b[k] ?? ''), 'de', { numeric: true }) * (ov.sortDir === 'asc' ? 1 : -1));
-    const pending = requestsOfUser(app, ctx.user!.id, sys.id).filter((r) => ['awaiting_approval', 'queued', 'sending', 'failed'].includes(r.status));
+    const pending = pendingRequestsOfUser(app, ctx.user!.id, sys.id);
     return { overview: ov, overviews, tickets: filtered, pending, unavailable };
   });
 

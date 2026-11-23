@@ -83,14 +83,16 @@ async function intunePanel(): Promise<HTMLElement> {
 
 // ------------------------------------------------------------------------------------------ Daten
 
-interface Sys { id: string; name: string; canStatus: boolean; canProblems: boolean }
-interface Svc { id: string; systemId: string; name: string; description: string; manualStatus: ServiceStatus | null; manualNote: string; sort: number; status: ServiceStatus; note: string }
-interface AdminIncident extends PublicIncident { problemId: string | null; zammadTicket: string | null; tag: string }
+interface Sys { id: string; name: string; canStatus: boolean; canProblems: boolean; locations: { value: string; label: string }[] }
+interface Svc { id: string; systemId: string; name: string; description: string; key: string | null; sort: number; status: ServiceStatus; note: string }
+interface AdminIncident extends PublicIncident { problemId: string | null; public: boolean }
 interface AdminProblem {
-  id: string; number: string; tag: string; systemId: string; systemName: string; title: string; state: ProblemState; serviceId: string | null;
-  description: string; rootCause: string; workaround: string; public: boolean; owner: string; updatedAt: number; createdAt: number; tickets: number;
+  id: string; number: string; systemId: string; systemName: string; title: string; state: ProblemState; serviceId: string | null;
+  description: string; rootCause: string; workaround: string; public: boolean; updatedAt: number; createdAt: number;
   incidents: { id: string; number: string; title: string; state: string }[];
 }
+/** Standorte eines Ticketsystems (Werte aus Zammad bzw. unter Funktionen gepflegt) – Auswahl über den Anzeigenamen */
+const locationOptions = (d: Data, systemId: string) => (d.systems.find((s) => s.id === systemId)?.locations ?? []).map((l) => ({ value: l.label, label: l.label }));
 interface Data { features: Features; systems: Sys[]; services: Svc[]; incidents: AdminIncident[]; maintenances: (PublicMaintenance & { cancelled: boolean })[]; problems: AdminProblem[] }
 
 const IMPACT_LABEL: Record<string, string> = { degraded: 'Eingeschränkt', partial_outage: 'Teilausfall', major_outage: 'Ausfall' };
@@ -111,27 +113,30 @@ async function incidentDialog(d: Data, existing?: AdminIncident): Promise<boolea
   const systems = d.systems.filter((s) => s.canStatus);
   const v = {
     systemId: existing?.systemId ?? systems[0]?.id ?? '', title: existing?.title ?? '', body: '', impact: existing?.impact ?? 'degraded', major: existing?.major ?? false,
-    serviceIds: existing?.services ?? [], locations: existing?.locations ?? [], startedAt: toLocal(existing?.startedAt ?? Date.now()), zammadTicket: existing?.zammadTicket ?? '',
+    serviceIds: existing?.services ?? [], locations: existing?.locations ?? [], startedAt: toLocal(existing?.startedAt ?? Date.now()),
   };
+  const locHost = h('div');
+  const drawLoc = () => { const o = locationOptions(d, v.systemId); mount(locHost, o.length ? h('div', null, h('p', { class: 'label' }, 'Standorte'), multiCheck(o, v.locations, (x) => { v.locations = x; }, '')) : null); };
+  drawLoc();
   const svcHost = h('div');
   const drawSvc = () => mount(svcHost, multiCheck(d.services.filter((s) => s.systemId === v.systemId).map((s) => ({ value: s.id, label: s.name })), v.serviceIds, (x) => { v.serviceIds = x; }, 'Für dieses Ticketsystem gibt es noch keine Services (Reiter „Services“).'));
   drawSvc();
   const msg = h('div');
   const body = h('div', { class: 'stack' }, msg,
-    !existing && systems.length > 1 ? fieldWrap(select(v.systemId, systems.map((s) => ({ value: s.id, label: s.name })), (x) => { v.systemId = x; v.serviceIds = []; drawSvc(); }), { label: 'Ticketsystem' }) : null,
-    fieldWrap(input(v.title, (x) => { v.title = x; }, { maxlength: 200, placeholder: 'z. B. SAP nicht erreichbar' }), { label: 'Titel', required: true }),
+    !existing && systems.length > 1 ? fieldWrap(select(v.systemId, systems.map((s) => ({ value: s.id, label: s.name })), (x) => { v.systemId = x; v.serviceIds = []; v.locations = []; drawSvc(); drawLoc(); }), { label: 'Ticketsystem' }) : null,
+    fieldWrap(input(v.title, (x) => { v.title = x; }, { maxlength: 200, placeholder: 'z. B. Fachanwendung nicht erreichbar' }), { label: 'Titel', required: true }),
     !existing ? fieldWrap(textarea(v.body, (x) => { v.body = x; }, { rows: 3, placeholder: 'Was ist los, was sollen die Mitarbeitenden tun?' }), { label: 'Erste Meldung', required: true, help: 'Erscheint im Portal. Weitere Updates schreiben Sie in der Störung.' }) : null,
     h('div', { class: 'grid-2' },
       fieldWrap(select(v.impact, INCIDENT_IMPACTS.map((x) => ({ value: x, label: IMPACT_LABEL[x] })), (x) => { v.impact = x as typeof v.impact; }), { label: 'Auswirkung' }),
       fieldWrap(input(v.startedAt, (x) => { v.startedAt = x; }, { type: 'datetime-local' }), { label: 'Beginn' })),
     checkbox(v.major, 'Große Störung: Banner auf allen Seiten des Portals', (x) => { v.major = x; }),
     h('p', { class: 'label' }, 'Betroffene Services'), svcHost,
-    d.features.locations.length ? h('div', null, h('p', { class: 'label' }, 'Standorte'), multiCheck(d.features.locations.map((l) => ({ value: l, label: l })), v.locations, (x) => { v.locations = x; }, '')) : null,
-    fieldWrap(input(v.zammadTicket, (x) => { v.zammadTicket = x; }, { inputmode: 'numeric', placeholder: 'optional' }), { label: 'Führendes Ticket in Zammad (Nummer)', help: 'Das Ticket bekommt in Zammad den Tag der Störung. Neue Tickets zu betroffenen Services bekommen ihn automatisch.' }));
-  const r = await dialog(existing ? `${existing.number} bearbeiten` : 'Störung melden', body, (close) => [
+    locHost,
+    !existing ? h('p', { class: 'small muted' }, 'Die Störung wird ein Ticket in Zammad. Neue Tickets zu betroffenen Services verknüpft das Portal automatisch damit.') : null);
+  const r = await dialog(existing ? `#${existing.number} bearbeiten` : 'Störung melden', body, (close) => [
     button('Abbrechen', () => close(false), { kind: 'ghost' }),
     button(existing ? 'Speichern' : 'Veröffentlichen', async () => {
-      const payload = { title: v.title, body: v.body, impact: v.impact, major: v.major, serviceIds: v.serviceIds, locations: v.locations, startedAt: fromLocal(v.startedAt), zammadTicket: v.zammadTicket || null };
+      const payload = { title: v.title, body: v.body, impact: v.impact, major: v.major, serviceIds: v.serviceIds, locations: v.locations, startedAt: fromLocal(v.startedAt) };
       try {
         if (existing) await put(`/api/admin/systems/${existing.systemId}/incidents/${existing.id}`, payload);
         else await post(`/api/admin/systems/${v.systemId}/incidents`, payload);
@@ -149,16 +154,20 @@ async function maintenanceDialog(d: Data, existing?: PublicMaintenance): Promise
   const svcHost = h('div');
   const drawSvc = () => mount(svcHost, multiCheck(d.services.filter((s) => s.systemId === v.systemId).map((s) => ({ value: s.id, label: s.name })), v.serviceIds, (x) => { v.serviceIds = x; }, 'Für dieses Ticketsystem gibt es noch keine Services.'));
   drawSvc();
+  const locHost = h('div');
+  const drawLoc = () => { const o = locationOptions(d, v.systemId); mount(locHost, o.length ? h('div', null, h('p', { class: 'label' }, 'Standorte'), multiCheck(o, v.locations, (x) => { v.locations = x; }, '')) : null); };
+  drawLoc();
   const msg = h('div');
   const r = await dialog(existing ? 'Wartung bearbeiten' : 'Wartung planen', h('div', { class: 'stack' }, msg,
-    !existing && systems.length > 1 ? fieldWrap(select(v.systemId, systems.map((s) => ({ value: s.id, label: s.name })), (x) => { v.systemId = x; v.serviceIds = []; drawSvc(); }), { label: 'Ticketsystem' }) : null,
+    !existing && systems.length > 1 ? fieldWrap(select(v.systemId, systems.map((s) => ({ value: s.id, label: s.name })), (x) => { v.systemId = x; v.serviceIds = []; v.locations = []; drawSvc(); drawLoc(); }), { label: 'Ticketsystem' }) : null,
     fieldWrap(input(v.title, (x) => { v.title = x; }, { maxlength: 200, placeholder: 'z. B. Update des Mailservers' }), { label: 'Titel', required: true }),
     fieldWrap(textarea(v.body, (x) => { v.body = x; }, { rows: 3 }), { label: 'Beschreibung', help: 'Was ist während der Wartung eingeschränkt?' }),
     h('div', { class: 'grid-2' },
       fieldWrap(input(v.startsAt, (x) => { v.startsAt = x; }, { type: 'datetime-local' }), { label: 'Beginn', required: true }),
       fieldWrap(input(v.endsAt, (x) => { v.endsAt = x; }, { type: 'datetime-local' }), { label: 'Ende', required: true })),
     h('p', { class: 'label' }, 'Betroffene Services'), svcHost,
-    d.features.locations.length ? h('div', null, h('p', { class: 'label' }, 'Standorte'), multiCheck(d.features.locations.map((l) => ({ value: l, label: l })), v.locations, (x) => { v.locations = x; }, '')) : null),
+    locHost,
+    h('p', { class: 'small muted' }, 'Die Wartung wird ein Ticket in Zammad mit Beginn und Ende als Felder. Nach dem Ende schließt das Portal es.')),
   (close) => [
     button('Abbrechen', () => close(false), { kind: 'ghost' }),
     button('Speichern', async () => {
@@ -175,20 +184,18 @@ async function maintenanceDialog(d: Data, existing?: PublicMaintenance): Promise
 
 async function serviceDialog(d: Data, existing?: Svc, systemId?: string): Promise<boolean> {
   const systems = d.systems.filter((s) => s.canStatus);
-  const v = { systemId: existing?.systemId ?? systemId ?? systems[0]?.id ?? '', name: existing?.name ?? '', description: existing?.description ?? '', manualStatus: existing?.manualStatus ?? '', manualNote: existing?.manualNote ?? '', sort: existing?.sort ?? 0 };
+  const v = { systemId: existing?.systemId ?? systemId ?? systems[0]?.id ?? '', name: existing?.name ?? '', description: existing?.description ?? '', sort: existing?.sort ?? 0 };
   const msg = h('div');
   const r = await dialog(existing ? `${existing.name} bearbeiten` : 'Service anlegen', h('div', { class: 'stack' }, msg,
     !existing && systems.length > 1 ? fieldWrap(select(v.systemId, systems.map((s) => ({ value: s.id, label: s.name })), (x) => { v.systemId = x; }), { label: 'Ticketsystem' }) : null,
     fieldWrap(input(v.name, (x) => { v.name = x; }, { maxlength: 120, placeholder: 'z. B. Microsoft 365' }), { label: 'Name', required: true }),
     fieldWrap(input(v.description, (x) => { v.description = x; }, { maxlength: 1000, placeholder: 'z. B. E-Mail, Teams, OneDrive' }), { label: 'Kurzbeschreibung' }),
-    h('div', { class: 'grid-2' },
-      fieldWrap(select(v.manualStatus, (['maintenance', 'degraded', 'partial_outage', 'major_outage'] as const).map((x) => ({ value: x, label: SERVICE_STATUS_LABEL[x] })), (x) => { v.manualStatus = x; }, { empty: 'Automatisch (aus Störungen und Wartungen)' }), { label: 'Zustand von Hand', help: 'Gilt zusätzlich, der schlimmere Zustand gewinnt.' }),
-      fieldWrap(input(String(v.sort), (x) => { v.sort = Number(x) || 0; }, { type: 'number' }), { label: 'Reihenfolge' })),
-    fieldWrap(input(v.manualNote, (x) => { v.manualNote = x; }, { maxlength: 500 }), { label: 'Hinweis zum Zustand', help: 'Nur bei Zustand von Hand, erscheint im Portal.' })),
+    fieldWrap(input(String(v.sort), (x) => { v.sort = Number(x) || 0; }, { type: 'number' }), { label: 'Reihenfolge' }),
+    h('p', { class: 'small muted' }, 'Jeder Service ist ein Auswahlwert im Zammad-Feld „Portal: Services“ – das Portal trägt ihn dort ein.')),
   (close) => [
     button('Abbrechen', () => close(false), { kind: 'ghost' }),
     button('Speichern', async () => {
-      const payload = { name: v.name, description: v.description, manualStatus: v.manualStatus || null, manualNote: v.manualNote, sort: v.sort };
+      const payload = { name: v.name, description: v.description, sort: v.sort };
       try {
         if (existing) await put(`/api/admin/systems/${existing.systemId}/services/${existing.id}`, payload);
         else await post(`/api/admin/systems/${v.systemId}/services`, payload);
@@ -255,7 +262,7 @@ export async function itsmAdminPage(_p: Record<string, string>, q: URLSearchPara
     if (tab === 'stoerungen') {
       const list = inSys(d.incidents);
       const cols = [
-        { label: 'Nr.', render: (i: AdminIncident) => h('span', { class: 'num' }, i.number) },
+        { label: 'Ticket', render: (i: AdminIncident) => h('span', { class: 'num' }, `#${i.number}`) },
         { label: 'Störung', render: (i: AdminIncident) => h('span', null, h('strong', null, i.title), i.major ? h('span', { class: 'inc-major' }, 'Groß') : null, i.services.length ? h('span', { class: 'muted small block' }, svcNames(i.services)) : null) },
         ...(multi ? [{ label: 'Ticketsystem', render: (i: AdminIncident) => i.systemName }] : []),
         { label: 'Auswirkung', render: (i: AdminIncident) => (i.state === 'resolved' ? statusPill('operational', 'Behoben') : statusPill(i.impact)) },
@@ -295,16 +302,17 @@ export async function itsmAdminPage(_p: Record<string, string>, q: URLSearchPara
       const groups = d.systems.filter((s) => s.canStatus && (!sys || s.id === sys));
       body = h('div', { class: 'stack' },
         h('div', { class: 'row' }, button('Service anlegen', async () => { if (await serviceDialog(d, undefined, sys || undefined)) { toast('Angelegt'); await reload(); } }, { kind: 'primary', icon: 'plus' })),
-        h('p', { class: 'muted small' }, 'Der Zustand ergibt sich aus offenen Störungen und laufenden Wartungen; von Hand gesetzte Zustände gelten zusätzlich. Formulare lassen sich Services zuordnen (Formular → Ticket).'),
+        h('p', { class: 'muted small' }, 'Der Zustand ergibt sich aus offenen Störungen und laufenden Wartungen in Zammad. Formulare lassen sich Services zuordnen (Formular → Ticket).'),
         ...groups.map((g) => h('section', { class: 'panel' },
           multi ? h('h2', null, g.name) : null,
           table(d.services.filter((s) => s.systemId === g.id), [
             { label: 'Service', render: (s) => h('span', null, h('strong', null, s.name), s.description ? h('span', { class: 'muted small block' }, s.description) : null) },
-            { label: 'Zustand', render: (s) => h('span', null, statusPill(s.status), s.manualStatus ? h('span', { class: 'muted small block' }, `von Hand${s.manualNote ? `: ${s.manualNote}` : ''}`) : null) },
+            { label: 'Zustand', render: (s) => statusPill(s.status) },
+            { label: 'Wert in Zammad', render: (s) => h('code', null, s.key ?? '') },
             { label: '', render: (s) => h('span', { class: 'row' },
               button('Bearbeiten', async () => { if (await serviceDialog(d, s)) { toast('Gespeichert'); await reload(); } }, { kind: 'ghost' }),
               button('Löschen', async () => {
-                if (!await confirmDialog('Service löschen?', `„${s.name}“ wird aus Störungen, Wartungen und Formularen entfernt.`, 'Löschen', true)) return;
+                if (!await confirmDialog('Service löschen?', `„${s.name}“ verschwindet aus dem Portal und aus Formularen. Der Auswahlwert in Zammad bleibt für bestehende Tickets.`, 'Löschen', true)) return;
                 await del(`/api/admin/systems/${s.systemId}/services/${s.id}`); toast('Gelöscht'); await reload();
               }, { kind: 'ghost', icon: 'trash' })) },
           ], { empty: 'Noch keine Services. Typisch: Microsoft 365, VPN, Netzwerk, Drucker, Fachanwendungen.' }))));
@@ -313,14 +321,12 @@ export async function itsmAdminPage(_p: Record<string, string>, q: URLSearchPara
       body = h('div', { class: 'stack' },
         h('div', { class: 'row' }, button('Problem anlegen', async () => { const r = await problemDialog(d); if (r) navigate(`/admin/status/problem/${r}`); }, { kind: 'primary', icon: 'plus' })),
         table(list, [
-          { label: 'Nr.', render: (p) => h('span', { class: 'num' }, p.number) },
+          { label: 'Ticket', render: (p) => h('span', { class: 'num' }, `#${p.number}`) },
           { label: 'Problem', render: (p) => h('span', null, h('strong', null, p.title), p.serviceId ? h('span', { class: 'muted small block' }, names.get(p.serviceId) ?? '') : null) },
           ...(multi ? [{ label: 'Ticketsystem', render: (p: AdminProblem) => p.systemName }] : []),
           { label: 'Stand', render: (p) => badge(PROBLEM_STATE_LABEL[p.state], p.state === 'known_error' ? 'warn' : p.state === 'resolved' || p.state === 'closed' ? 'ok' : 'info') },
           { label: 'Im Portal', render: (p) => (p.public ? badge('sichtbar', 'ok') : '–') },
-          { label: 'Tickets', class: 'num', render: (p) => String(p.tickets) },
           { label: 'Störungen', class: 'num', render: (p) => String(p.incidents.length) },
-          { label: 'Verantwortlich', render: (p) => p.owner || '–' },
         ], { onRow: (p) => navigate(`/admin/status/problem/${p.systemId}/${p.id}`), empty: 'Keine Probleme erfasst.' }));
     }
 
@@ -343,7 +349,7 @@ export async function incidentAdminPage(p: Record<string, string>): Promise<Chil
   const base = `/api/admin/systems/${p.systemId}/incidents/${p.incidentId}`;
   const host = h('div');
   const draw = async () => {
-    let r: { incident: AdminIncident & { createdBy: string }; updates: { id: string; state: IncidentState; body: string; at: number; by: string }[]; affected: { name: string; email: string | null; department: string | null; at: number }[] };
+    let r: { incident: AdminIncident; updates: { id: string; state: IncidentState; body: string; at: number; by: string }[]; affected: { name: string; email: string | null; department: string | null; at: number }[] };
     let d: Data;
     try { [r, d] = await Promise.all([get<typeof r>(base), get<Data>('/api/admin/itsm')]); } catch (err) { mount(host, notice('error', errorText(err))); return; }
     const i = r.incident;
@@ -353,12 +359,12 @@ export async function incidentAdminPage(p: Record<string, string>): Promise<Chil
     const problems = d.problems.filter((x) => x.systemId === i.systemId);
     mount(host,
       h('nav', { class: 'crumbs' }, link('/admin/status?reiter=stoerungen', icon('back', 14), 'Störungen')),
-      pageHead(`${i.number}: ${i.title}`, h('span', { class: 'row' }, i.state === 'resolved' ? statusPill('operational', 'Behoben') : statusPill(i.impact), i.major ? h('span', { class: 'inc-major' }, 'Große Störung') : null, h('span', { class: 'muted' }, `${i.systemName}, seit ${fmtDate(i.startedAt)}`)), [
+      pageHead(`#${i.number}: ${i.title}`, h('span', { class: 'row' }, i.state === 'resolved' ? statusPill('operational', 'Behoben') : statusPill(i.impact), i.major ? h('span', { class: 'inc-major' }, 'Große Störung') : null, h('span', { class: 'muted' }, `${i.systemName}, seit ${fmtDate(i.startedAt)}`)), [
         button('Bearbeiten', async () => { if (await incidentDialog(d, i)) { toast('Gespeichert'); await draw(); } }),
         link(`/stoerungen/${i.id}`, icon('eye', 16), 'Im Portal'),
-        button('Löschen', async () => {
-          if (!await confirmDialog('Störung löschen?', 'Nur für Fehleinträge. Verlauf und Betroffene werden gelöscht, das Audit-Log behält den Vorgang.', 'Löschen', true)) return;
-          await del(base); toast('Gelöscht'); navigate('/admin/status?reiter=stoerungen');
+        button('Aus dem Portal nehmen', async () => {
+          if (!await confirmDialog('Aus dem Portal nehmen?', 'Für Fehleinträge: Die Störung verschwindet aus dem Portal, das Ticket in Zammad wird geschlossen und bleibt mit Verlauf erhalten.', 'Entfernen', true)) return;
+          await del(base); toast('Entfernt'); navigate('/admin/status?reiter=stoerungen');
         }, { kind: 'danger' }),
       ]),
       msg,
@@ -382,9 +388,8 @@ export async function incidentAdminPage(p: Record<string, string>): Promise<Chil
             h('dl', { class: 'inc-facts' },
               h('div', null, h('dt', null, 'Services'), h('dd', null, i.services.map((s) => names.get(s)).filter(Boolean).join(', ') || '–')),
               h('div', null, h('dt', null, 'Standorte'), h('dd', null, i.locations.join(', ') || '–')),
-              h('div', null, h('dt', null, 'Zammad'), h('dd', null, i.zammadTicket ? `Ticket ${i.zammadTicket}, ` : '', 'Tag ', h('code', null, i.tag))),
-              h('div', null, h('dt', null, 'Gemeldet von'), h('dd', null, i.createdBy || '–'))),
-            d.features.problems && problems.length ? fieldWrap(select(i.problemId ?? '', problems.map((x) => ({ value: x.id, label: `${x.number}: ${x.title}` })), async (x) => {
+              h('div', null, h('dt', null, 'Zammad'), h('dd', null, `Ticket #${i.number}`, i.public ? '' : ' (nicht im Portal sichtbar)'))),
+            d.features.problems && problems.length ? fieldWrap(select(i.problemId ?? '', problems.map((x) => ({ value: x.id, label: `#${x.number}: ${x.title}` })), async (x) => {
               try { await put(base, { problemId: x || null }); toast('Gespeichert'); } catch (err) { toast(errorText(err), 'error'); }
             }, { empty: 'kein Problem zugeordnet' }), { label: 'Problem' }) : null),
           h('section', { class: 'panel' },
@@ -406,20 +411,20 @@ export async function problemAdminPage(p: Record<string, string>): Promise<Child
   const base = `/api/admin/systems/${p.systemId}/problems/${p.problemId}`;
   const host = h('div');
   const draw = async () => {
-    let r: { problem: AdminProblem & { createdBy: string }; tickets: { id: number; number: string; title: string; state: string | null; closed: boolean | null; unavailable?: boolean }[] };
+    let r: { problem: AdminProblem; tickets: { id: number; number: string; title: string; state: string | null; closed: boolean | null; unavailable?: boolean }[] };
     let services: { id: string; name: string }[];
     try { [r, services] = await Promise.all([get<typeof r>(base), get<{ services: { id: string; name: string }[] }>(`/api/admin/systems/${p.systemId}/services`).then((x) => x.services)]); }
     catch (err) { mount(host, notice('error', errorText(err))); return; }
     const pr = r.problem;
-    const v = { title: pr.title, state: pr.state, serviceId: pr.serviceId ?? '', owner: pr.owner, description: pr.description, rootCause: pr.rootCause, workaround: pr.workaround, public: pr.public };
+    const v = { title: pr.title, state: pr.state, serviceId: pr.serviceId ?? '', description: pr.description, rootCause: pr.rootCause, workaround: pr.workaround, public: pr.public };
     const msg = h('div');
     let ticketNo = '';
     mount(host,
       h('nav', { class: 'crumbs' }, link('/admin/status?reiter=probleme', icon('back', 14), 'Probleme')),
-      pageHead(`${pr.number}: ${pr.title}`, `${pr.systemName}, angelegt ${fmtDate(pr.createdAt)}${pr.createdBy ? ` von ${pr.createdBy}` : ''}`, [
-        button('Löschen', async () => {
-          if (!await confirmDialog('Problem löschen?', 'Verknüpfungen zu Störungen werden gelöst. Tags in Zammad bleiben.', 'Löschen', true)) return;
-          await del(base); toast('Gelöscht'); navigate('/admin/status?reiter=probleme');
+      pageHead(`#${pr.number}: ${pr.title}`, `${pr.systemName}, angelegt ${fmtDate(pr.createdAt)}`, [
+        button('Aus dem Portal nehmen', async () => {
+          if (!await confirmDialog('Aus dem Portal nehmen?', 'Das Problem verschwindet aus dem Portal, das Ticket in Zammad wird geschlossen und bleibt erhalten.', 'Entfernen', true)) return;
+          await del(base); toast('Entfernt'); navigate('/admin/status?reiter=probleme');
         }, { kind: 'danger' }),
       ]),
       msg,
@@ -430,7 +435,6 @@ export async function problemAdminPage(p: Record<string, string>): Promise<Child
           h('div', { class: 'grid-2' },
             fieldWrap(select(v.state, PROBLEM_STATES.map((x) => ({ value: x, label: PROBLEM_STATE_LABEL[x] })), (x) => { v.state = x as ProblemState; }), { label: 'Stand' }),
             fieldWrap(select(v.serviceId, services.map((s) => ({ value: s.id, label: s.name })), (x) => { v.serviceId = x; }, { empty: '–' }), { label: 'Service' })),
-          fieldWrap(input(v.owner, (x) => { v.owner = x; }, { maxlength: 120, placeholder: 'Name oder Team' }), { label: 'Verantwortlich' }),
           fieldWrap(textarea(v.description, (x) => { v.description = x; }, { rows: 3 }), { label: 'Beschreibung' }),
           fieldWrap(textarea(v.rootCause, (x) => { v.rootCause = x; }, { rows: 3 }), { label: 'Ursache (Root Cause)', help: 'Bleibt intern.' }),
           fieldWrap(textarea(v.workaround, (x) => { v.workaround = x; }, { rows: 3 }), { label: 'Workaround', help: 'Was die Mitarbeitenden in der Zwischenzeit tun können.' }),
@@ -441,7 +445,7 @@ export async function problemAdminPage(p: Record<string, string>): Promise<Child
         h('div', { class: 'stack' },
           h('section', { class: 'panel stack' },
             h('h2', null, `Tickets in Zammad (${r.tickets.length})`),
-            h('p', { class: 'muted small' }, 'Verknüpfte Tickets bekommen in Zammad den Tag ', h('code', null, pr.tag), '. Die Liste zeigt den aktuellen Stand aus Zammad.'),
+            h('p', { class: 'muted small' }, 'Verknüpfte Tickets bekommen in Zammad eine Verknüpfung zum Problem und das Feld „Portal: bekanntes Problem“. Verantwortlich ist der Besitzer des Problem-Tickets in Zammad.'),
             r.tickets.length ? table(r.tickets, [
               { label: 'Nr.', render: (t) => h('span', { class: 'num' }, `#${t.number}`) },
               { label: 'Titel', render: (t) => t.unavailable ? h('span', { class: 'muted' }, 'Zammad nicht erreichbar') : t.title },
@@ -453,11 +457,11 @@ export async function problemAdminPage(p: Record<string, string>): Promise<Child
             h('div', { class: 'row' },
               input('', (x) => { ticketNo = x; }, { inputmode: 'numeric', placeholder: 'Ticketnummer', 'aria-label': 'Ticketnummer' }),
               button('Verknüpfen', async () => {
-                try { await post(`${base}/tickets`, { number: ticketNo }); toast('Verknüpft – Tag in Zammad gesetzt'); await draw(); } catch (err) { mount(msg, notice('error', errorText(err))); }
+                try { await post(`${base}/tickets`, { number: ticketNo }); toast('In Zammad verknüpft'); await draw(); } catch (err) { mount(msg, notice('error', errorText(err))); }
               }, { icon: 'link' }))),
           h('section', { class: 'panel' },
             h('h2', null, `Störungen (${pr.incidents.length})`),
-            pr.incidents.length ? h('ul', { class: 'plain-list' }, ...pr.incidents.map((i) => h('li', null, link(`/admin/status/stoerung/${pr.systemId}/${i.id}`, `${i.number}: ${i.title}`), ' ', i.state === 'resolved' ? badge('behoben', 'ok') : badge('offen', 'warn'))))
+            pr.incidents.length ? h('ul', { class: 'plain-list' }, ...pr.incidents.map((i) => h('li', null, link(`/admin/status/stoerung/${pr.systemId}/${i.id}`, `#${i.number}: ${i.title}`), ' ', i.state === 'resolved' ? badge('behoben', 'ok') : badge('offen', 'warn'))))
               : h('p', { class: 'muted' }, 'Störungen ordnen Sie in der Störung selbst diesem Problem zu.')))));
   };
   await draw();

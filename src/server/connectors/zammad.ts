@@ -4,6 +4,7 @@
 import {
   ConnectorError, type ZammadAttribute, type ArticleSummary, type Attachment, type Connector, type CreateTicketInput,
   type CustomerRef, type SystemMetadata, type TicketSummary, type TicketSystemConfig,
+  type AgentArticle, type AttributeDef, type LinkType, type NewAgentTicket, type NewArticle, type SearchCondition, type SetupInfo, type WorkflowDef, type ZTicket,
 } from './types.ts';
 import { isProtectedZammadField } from '../../shared/form.ts';
 import { log } from '../log.ts';
@@ -225,7 +226,8 @@ export class ZammadConnector implements Connector {
   }
 
   async createTicket(input: CreateTicketInput): Promise<{ id: number; number: string }> {
-    const onBehalf = this.sys.creationMode === 'on_behalf_of';
+    // Mit Status (z. B. „wartet auf Freigabe“) legt der API-Benutzer an – Kunden dürfen keinen Status setzen
+    const onBehalf = this.sys.creationMode === 'on_behalf_of' && !input.state;
     const body: Record<string, unknown> = {
       ...safeTicketFields(input.fields),
       title: input.title,
@@ -242,6 +244,7 @@ export class ZammadConnector implements Connector {
       },
     };
     if (input.priority) body.priority = input.priority;
+    if (input.state) body.state = input.state;
     if (input.tags.length) body.tags = input.tags.join(',');
     const t = await this.call('POST', '/api/v1/tickets', { body, onBehalfOf: onBehalf ? this.behalf(input.customer) : undefined });
     if (!t?.id) throw new ConnectorError('Zammad hat kein Ticket zurückgegeben', true);
@@ -465,6 +468,214 @@ export class ZammadConnector implements Connector {
       if (detail?.articles[0]?.body.includes(requestId)) return { id: t.id, number: t.number };
     }
     return null;
+  }
+
+  // ================================================================ Zammad als einzige Datenquelle (ab 2.0)
+
+  private full(t: Json): ZTicket {
+    const s = this.summary(t);
+    const tags = Array.isArray(t.tags) ? t.tags.map(String) : undefined;
+    return { ...s, fields: { ...t }, closeAt: t.close_at ? String(t.close_at) : null, ...(tags ? { tags } : {}) };
+  }
+
+  async getTicketFull(ticketId: number): Promise<ZTicket | null> {
+    if (!Number.isSafeInteger(ticketId) || ticketId <= 0) return null;
+    const t = await this.call('GET', `/api/v1/tickets/${ticketId}?expand=true`);
+    return t && t.id !== undefined ? this.full(t) : null;
+  }
+
+  async searchTickets(conditions: Record<string, SearchCondition>, limit = 200): Promise<ZTicket[]> {
+    const q = new URLSearchParams({ sort_by: 'updated_at', order_by: 'desc', limit: String(Math.min(Math.max(limit, 1), 200)), expand: 'true' });
+    for (const [k, raw] of Object.entries(conditions)) {
+      if (!/^[a-z][a-z0-9_.]{0,60}$/.test(k)) throw new ConnectorError(`Ungültige Bedingung ${k}`, false);
+      const c = typeof raw === 'object' ? raw : { operator: 'is' as const, value: raw };
+      q.set(`condition[ticket.${k}][operator]`, c.operator);
+      if (Array.isArray(c.value)) c.value.forEach((v) => q.append(`condition[ticket.${k}][value][]`, String(v)));
+      else q.set(`condition[ticket.${k}][value]`, String(c.value));
+    }
+    return ZammadConnector.ticketList(await this.call('GET', `/api/v1/tickets/search?${q}`)).map((t) => this.full(t))
+      .filter((t) => Number.isSafeInteger(t.id));
+  }
+
+  private selfCache: number | null = null;
+  async selfId(): Promise<number> {
+    if (this.selfCache) return this.selfCache;
+    const me = await this.call('GET', '/api/v1/users/me');
+    if (!me?.id) throw new ConnectorError('API-Benutzer nicht ermittelbar', true);
+    this.selfCache = Number(me.id);
+    return this.selfCache;
+  }
+
+  async tags(ticketId: number): Promise<string[]> {
+    const r = await this.call('GET', `/api/v1/tags?object=Ticket&o_id=${ticketId}`);
+    return Array.isArray(r?.tags) ? r.tags.map(String) : [];
+  }
+
+  async updateTicket(ticketId: number, changes: { title?: string; state?: string; group?: string; fields?: Record<string, unknown> }): Promise<ZTicket> {
+    const body: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(changes.fields ?? {})) if (/^[a-z][a-z0-9_]{0,60}$/.test(k) && !SYSTEM_ATTRIBUTES.includes(k)) body[k] = v;
+    if (changes.title !== undefined) body.title = changes.title;
+    if (changes.state !== undefined) body.state = changes.state;
+    if (changes.group !== undefined) body.group = changes.group;
+    const t = await this.call('PUT', `/api/v1/tickets/${ticketId}?expand=true`, { body });
+    if (!t?.id) throw new ConnectorError(`Ticket ${ticketId} nicht gefunden`, false, 404);
+    return this.full(t);
+  }
+
+  private articleBody(a: NewArticle): Record<string, unknown> {
+    return {
+      body: a.body,
+      content_type: a.contentType ?? 'text/html',
+      type: a.type ?? 'note',
+      internal: a.internal ?? false,
+      sender: a.sender ?? (a.asCustomer ? 'Customer' : 'Agent'),
+      ...(a.subject ? { subject: a.subject } : {}),
+      ...(a.type === 'email' && a.to ? { to: a.to } : {}),
+      attachments: (a.attachments ?? []).map((x) => ({ filename: x.filename, data: x.data.toString('base64'), 'mime-type': x.mime })),
+    };
+  }
+
+  async createAgentTicket(input: NewAgentTicket): Promise<ZTicket> {
+    const body: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(input.fields ?? {})) if (/^[a-z][a-z0-9_]{0,60}$/.test(k) && !SYSTEM_ATTRIBUTES.includes(k)) body[k] = v;
+    Object.assign(body, { title: input.title, group: input.group, customer_id: input.customerId, article: { subject: input.article.subject ?? input.title, ...this.articleBody(input.article) } });
+    if (input.state) body.state = input.state;
+    if (input.tags?.length) body.tags = input.tags.join(',');
+    const t = await this.call('POST', '/api/v1/tickets?expand=true', {
+      body, onBehalfOf: input.article.asCustomer ? this.behalf(input.article.asCustomer) : undefined,
+    });
+    if (!t?.id) throw new ConnectorError('Zammad hat kein Ticket zurückgegeben', true);
+    return this.full(t);
+  }
+
+  async addArticle(ticketId: number, article: NewArticle): Promise<number> {
+    const r = await this.call('POST', '/api/v1/ticket_articles', {
+      body: { ticket_id: ticketId, ...this.articleBody(article) },
+      onBehalfOf: article.asCustomer ? this.behalf(article.asCustomer) : undefined,
+    });
+    if (!r?.id) throw new ConnectorError('Zammad hat den Artikel nicht angelegt', true);
+    return Number(r.id);
+  }
+
+  async agentArticles(ticketId: number): Promise<AgentArticle[]> {
+    const arts = ((await this.call('GET', `/api/v1/ticket_articles/by_ticket/${ticketId}?expand=true`)) ?? []) as Json[];
+    return (Array.isArray(arts) ? arts : []).map((a) => ({
+      id: Number(a.id),
+      from: String(a.from ?? ''),
+      sender: String(a.sender ?? ''),
+      createdAt: String(a.created_at ?? ''),
+      contentType: String(a.content_type ?? 'text/plain'),
+      body: String(a.body ?? ''),
+      internal: a.internal === true || a.internal === 'true',
+      type: String(a.type ?? ''),
+      subject: String(a.subject ?? ''),
+      attachments: (Array.isArray(a.attachments) ? a.attachments : []).map((f: Json) => ({
+        id: Number(f.id), filename: String(f.filename ?? 'datei'), size: Number(f.size ?? 0),
+        mime: String(f.preferences?.['Content-Type'] ?? f.preferences?.['Mime-Type'] ?? 'application/octet-stream'),
+      })),
+    })).sort((a, b) => a.id - b.id);
+  }
+
+  async agentAttachment(ticketId: number, articleId: number, attachmentId: number) {
+    const article = (await this.agentArticles(ticketId)).find((a) => a.id === articleId);
+    const file = article?.attachments.find((f) => f.id === attachmentId);
+    if (!article || !file) return null;
+    const r = await this.call('GET', `/api/v1/ticket_attachment/${ticketId}/${articleId}/${attachmentId}`, { raw: true });
+    return r ? { data: r.buf as Buffer, mime: file.mime, filename: file.filename } : null;
+  }
+
+  async links(ticketId: number): Promise<{ type: LinkType; ticketId: number }[]> {
+    const r = await this.call('GET', `/api/v1/links?link_object=Ticket&link_object_value=${ticketId}`);
+    const list = Array.isArray(r?.links) ? r.links : [];
+    return list.filter((l: Json) => l.link_object === 'Ticket' && ['normal', 'parent', 'child'].includes(l.link_type))
+      .map((l: Json) => ({ type: l.link_type as LinkType, ticketId: Number(l.link_object_value) }))
+      .filter((l: { ticketId: number }) => Number.isSafeInteger(l.ticketId));
+  }
+
+  async addLink(parentNumber: string, childId: number, type: 'parent' | 'normal' = 'parent'): Promise<void> {
+    await this.call('POST', '/api/v1/links/add', { body: {
+      link_type: type, link_object_target: 'Ticket', link_object_target_value: childId, link_object_source: 'Ticket', link_object_source_number: parentNumber,
+    } });
+  }
+
+  async removeLink(parentId: number, childId: number, type: 'parent' | 'normal' = 'parent'): Promise<void> {
+    await this.call('DELETE', '/api/v1/links/remove', { body: {
+      link_type: type, link_object_source: 'Ticket', link_object_source_value: parentId, link_object_target: 'Ticket', link_object_target_value: childId,
+    } });
+  }
+
+  async setupInfo(): Promise<SetupInfo> {
+    const [groups, states, attrs] = await Promise.all([
+      this.call('GET', '/api/v1/groups?per_page=500'),
+      this.call('GET', '/api/v1/ticket_states?per_page=500'),
+      this.call('GET', '/api/v1/object_manager_attributes'),
+    ]);
+    return {
+      groups: (groups ?? []).map((g: Json) => ({ id: Number(g.id), name: String(g.name), active: g.active !== false })),
+      states: (states ?? []).map((s: Json) => ({ id: Number(s.id), name: String(s.name), active: s.active !== false, stateTypeId: s.state_type_id === undefined ? null : Number(s.state_type_id) })),
+      attributes: (attrs ?? []).filter((a: Json) => a.object === 'Ticket').map((a: Json) => ({
+        id: Number(a.id), name: String(a.name), display: String(a.display ?? a.name), dataType: String(a.data_type ?? ''),
+        options: a.data_option?.options && typeof a.data_option.options === 'object' && !Array.isArray(a.data_option.options)
+          ? Object.fromEntries(Object.entries(a.data_option.options).map(([k, v]) => [k, String(v)]))
+          : Object.fromEntries(flattenOptions(a.data_option?.options).map((o) => [o.value, o.label])),
+      })),
+    };
+  }
+
+  async createGroup(name: string): Promise<void> {
+    await this.call('POST', '/api/v1/groups', { body: { name, active: true, note: 'Angelegt vom Self-Service-Portal' } });
+  }
+
+  async createState(name: string, likeState: string): Promise<void> {
+    const states = (await this.call('GET', '/api/v1/ticket_states?per_page=500')) as Json[];
+    const like = (states ?? []).find((s) => s.name === likeState);
+    if (!like?.state_type_id) throw new ConnectorError(`Status „${likeState}“ fehlt in Zammad`, false);
+    await this.call('POST', '/api/v1/ticket_states', { body: { name, state_type_id: like.state_type_id, active: true, ignore_escalation: true, note: 'Angelegt vom Self-Service-Portal' } });
+  }
+
+  async saveAttribute(def: AttributeDef, existingId?: number): Promise<void> {
+    const opt: Record<string, unknown> = { null: true };
+    switch (def.dataType) {
+      case 'input': Object.assign(opt, { type: 'text', maxlength: 255 }); break;
+      case 'textarea': Object.assign(opt, { type: 'textarea', maxlength: 5000, rows: 4 }); break;
+      case 'select': Object.assign(opt, { options: def.options ?? {}, default: '', nulloption: true, multiple: false }); break;
+      case 'multiselect': Object.assign(opt, { options: def.options ?? {}, default: [] }); break;
+      case 'boolean': Object.assign(opt, { options: { true: 'Ja', false: 'Nein' }, default: false }); break;
+      case 'datetime': Object.assign(opt, { future: true, past: true, diff: null }); break;
+      case 'date': Object.assign(opt, { diff: null }); break;
+      case 'integer': Object.assign(opt, { min: 0, max: 2147483647 }); break;
+    }
+    const shown = { shown: true, required: false };
+    const body = {
+      object: 'Ticket', name: def.name, display: def.display, data_type: def.dataType, data_option: opt, active: true,
+      position: def.position ?? 1500,
+      screens: { create_middle: { 'ticket.agent': shown }, edit: { 'ticket.agent': shown } },
+    };
+    if (existingId) await this.call('PUT', `/api/v1/object_manager_attributes/${existingId}`, { body });
+    else await this.call('POST', '/api/v1/object_manager_attributes', { body });
+  }
+
+  async workflows(): Promise<{ id: number; name: string; active: boolean }[]> {
+    const list = await this.call('GET', '/api/v1/core_workflows?per_page=500');
+    return (Array.isArray(list) ? list : []).map((w: Json) => ({ id: Number(w.id), name: String(w.name ?? ''), active: w.active !== false }));
+  }
+
+  async saveWorkflow(def: WorkflowDef, existingId?: number): Promise<void> {
+    const field = (k: string) => `ticket.${k}`;
+    const body = {
+      name: def.name, object: 'Ticket', active: true, priority: def.priority, stop_after_match: false, changeable: false,
+      preferences: { screen: ['create_middle', 'edit'] },
+      condition_saved: {},
+      condition_selected: Object.fromEntries(Object.entries(def.condition).map(([k, c]) => [field(k), c.value ? { operator: c.operator, value: c.value } : { operator: c.operator }])),
+      perform: Object.fromEntries(Object.entries(def.perform).map(([k, op]) => [field(k), { operator: op, [op]: 'true' }])),
+      note: 'Angelegt und gepflegt vom Self-Service-Portal – Änderungen hier überschreibt „In Zammad einrichten“.',
+    };
+    if (existingId) await this.call('PUT', `/api/v1/core_workflows/${existingId}`, { body });
+    else await this.call('POST', '/api/v1/core_workflows', { body });
+  }
+
+  async executeMigrations(): Promise<void> {
+    await this.call('POST', '/api/v1/object_manager_attributes_execute_migrations', { body: {} });
   }
 
   async addReply(customer: CustomerRef, ticketId: number, bodyHtml: string, attachments: Attachment[]): Promise<void> {

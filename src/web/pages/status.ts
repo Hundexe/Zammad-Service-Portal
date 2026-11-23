@@ -70,7 +70,7 @@ export function incidentCard(inc: PublicIncident, serviceNames: Map<string, stri
     h('div', { class: 'inc-head' },
       inc.state === 'resolved' ? statusPill('operational', 'Behoben') : statusPill(inc.impact),
       inc.major && inc.state !== 'resolved' ? h('span', { class: 'inc-major' }, 'Große Störung') : null,
-      h('span', { class: 'inc-num' }, inc.number)),
+      h('span', { class: 'inc-num' }, `Ticket #${inc.number}`)),
     h('h3', { class: 'inc-title' }, link(`/stoerungen/${inc.id}`, inc.title)),
     h('p', { class: 'inc-meta' },
       opts.showSystem ? `${inc.systemName}, ` : '',
@@ -140,7 +140,7 @@ export async function statusPage(): Promise<Child> {
       h('h2', { id: 'h-prb' }, 'Bekannte Probleme'),
       h('p', { class: 'muted small' }, 'Fehler, die die IT kennt, mit einer Lösung für die Zwischenzeit.'),
       d.problems.length ? h('div', { class: 'prb-list' }, ...d.problems.map((p) => h('details', { class: 'prb' },
-        h('summary', null, h('span', { class: 'prb-title' }, p.title), h('span', { class: 'muted small' }, `${p.number}${multi ? `, ${p.systemName}` : ''}${p.serviceId && names.get(p.serviceId) ? `, ${names.get(p.serviceId)}` : ''}${p.state === 'resolved' ? ', gelöst' : ''}`)),
+        h('summary', null, h('span', { class: 'prb-title' }, p.title), h('span', { class: 'muted small' }, `Ticket #${p.number}${multi ? `, ${p.systemName}` : ''}${p.serviceId && names.get(p.serviceId) ? `, ${names.get(p.serviceId)}` : ''}${p.state === 'resolved' ? ', gelöst' : ''}`)),
         p.description ? h('p', null, p.description) : null,
         p.workaround ? h('div', { class: 'prb-workaround' }, h('strong', null, 'So geht es in der Zwischenzeit'), h('p', null, p.workaround)) : null))) : h('p', { class: 'muted' }, 'Keine bekannten Probleme.')) });
   }
@@ -167,7 +167,7 @@ export async function incidentPage(p: Record<string, string>): Promise<Child> {
     h('div', { class: 'inc-head' },
       i.state === 'resolved' ? statusPill('operational', 'Behoben') : statusPill(i.impact),
       i.major && i.state !== 'resolved' ? h('span', { class: 'inc-major' }, 'Große Störung') : null,
-      h('span', { class: 'inc-num' }, i.number)),
+      h('span', { class: 'inc-num' }, `Ticket #${i.number}`)),
     h('h1', null, i.title),
     h('dl', { class: 'inc-facts' },
       h('div', null, h('dt', null, 'Ticketsystem'), h('dd', null, i.systemName)),

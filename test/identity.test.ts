@@ -6,6 +6,9 @@ import { emptyDefinition } from '../src/server/services/forms.ts';
 import { vetEntraEmail } from '../src/server/services/users.ts';
 import { uuid } from '../src/server/db/db.ts';
 import type { FormDefinition } from '../src/shared/form.ts';
+import { deliverNext } from '../src/server/services/requests.ts';
+import { applySetup } from '../src/server/services/zammad-setup.ts';
+import { getSystem } from '../src/server/services/systems.ts';
 
 const [ANNA, BEN, ALEX] = ENTRA_USERS;
 let p: Portal;
@@ -30,7 +33,15 @@ async function login(oid: string): Promise<Client> {
   return c;
 }
 const ask = (c: Client, approver: string, form = formId) => c.post(`/api/portal/forms/${form}/submit`, { values: { programm: 'Visio', chef: approver } });
-const approvalId = (requestId: string) => p.app.db.get<{ id: string }>('SELECT id FROM approvals WHERE request_id = ?', requestId)!.id;
+/** Ab 2.0: Anfrage zustellen, Kennung der Freigabe = <Ticketsystem>.<Ticket-ID> */
+async function approvalId(requestId: string): Promise<string> {
+  while (await deliverNext(p.app)) { /* zustellen */ }
+  return `${systemId}.${p.app.db.get<{ ticket_id: number }>('SELECT ticket_id FROM requests WHERE id = ?', requestId)!.ticket_id}`;
+}
+async function ticketOf(requestId: string) {
+  const ref = await approvalId(requestId);
+  return p.zammad.state.tickets.find((t) => `${systemId}.${t.id}` === ref)!;
+}
 const emailOf = (oid: string) => p.app.db.get<{ email: string | null }>('SELECT email FROM users WHERE entra_oid = ?', oid)?.email;
 
 before(async () => {
@@ -38,6 +49,7 @@ before(async () => {
   systemId = createSystem(p.app, p.zammad.url);
   formId = createForm(p.app, systemId, approvalForm(), 'software');
   groupFormId = createForm(p.app, systemId, approvalForm(['grp-fuehrung']), 'hardware');
+  await applySetup(p.app, getSystem(p.app, systemId)!);
   await createUser(p.app, { username: 'super', role: 'Super-Admin' });
 });
 after(async () => { await p.close(); });
@@ -101,8 +113,9 @@ test('Lokale Konten können nicht freigeben, auch mit passender Adresse', async 
   const local = new Client(p.url);
   await local.loginLocal('zweitkonto', 'Test-Passwort-123!');
   assert.deepEqual((await local.get('/api/portal/approvals')).json.approvals, []);
-  assert.equal((await local.get(`/api/portal/approvals/${approvalId(r.json.id)}`)).status, 404);
-  assert.equal((await local.post(`/api/portal/approvals/${approvalId(r.json.id)}/approve`, {})).status, 404);
+  const ref = await approvalId(r.json.id);
+  assert.equal((await local.get(`/api/portal/approvals/${ref}`)).status, 404);
+  assert.equal((await local.post(`/api/portal/approvals/${ref}/approve`, {})).status, 404);
   assert.equal((await local.get('/api/portal/notifications/count')).json.unread, 0, 'keine Hinweise an die Adresse');
 });
 
@@ -118,7 +131,7 @@ test('Freigabe-Gruppen: nur Mitglieder dürfen freigeben (kein Zweitkonto)', asy
   const ok = await ask(anna, BEN.email, itForm);
   assert.equal(ok.status, 201, ok.text + ' ben=' + emailOf(BEN.oid));
   const ben = await login(BEN.oid);
-  assert.equal((await ben.get(`/api/portal/approvals/${approvalId(ok.json.id)}`)).status, 200);
+  assert.equal((await ben.get(`/api/portal/approvals/${await approvalId(ok.json.id)}`)).status, 200);
 });
 
 test('Freigebende Person wechseln: Frist läuft weiter, höchstens drei Wechsel', async () => {
@@ -126,13 +139,13 @@ test('Freigebende Person wechseln: Frist läuft weiter, höchstens drei Wechsel'
   const anna = await login(ANNA.oid);
   const r = await ask(anna, ALEX.email);
   assert.equal(r.status, 201, r.text);
-  const before = p.app.db.get<{ expires_at: number }>('SELECT expires_at FROM approvals WHERE id = ?', approvalId(r.json.id))!.expires_at;
+  const before = (await ticketOf(r.json.id)).portal_freigabe_bis;
   const targets = [BEN.email, ALEX.email, BEN.email];
   for (const email of targets) {
     const x = await anna.post(`/api/portal/requests/${r.json.id}/approver`, { email });
     assert.equal(x.status, 200, x.text);
   }
-  assert.equal(p.app.db.get<{ expires_at: number }>('SELECT expires_at FROM approvals WHERE id = ?', approvalId(r.json.id))!.expires_at, before, 'Frist unverändert');
+  assert.equal((await ticketOf(r.json.id)).portal_freigabe_bis, before, 'Frist unverändert');
   assert.equal((await anna.post(`/api/portal/requests/${r.json.id}/approver`, { email: ALEX.email })).status, 409, 'vierter Wechsel abgelehnt');
 });
 
