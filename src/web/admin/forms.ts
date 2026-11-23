@@ -376,7 +376,7 @@ export async function formEditorPage(p: Record<string, string>) {
       fieldWrap(textarea(f.help ?? '', (x) => upd(() => { f.help = x || undefined; }), { rows: 2 }), { label: f.type === 'info' ? 'Text' : 'Hilfetext' }),
     ];
     if (f.type === 'approver') {
-      items.push(notice('info', 'Die anfragende Person gibt hier ihre Vorgesetzte bzw. ihren Vorgesetzten an. Die Anfrage wartet im Portal, bis diese Person sie unter „Freigaben“ freigibt – erst dann landet sie im Ticketsystem. Bei Ablehnung oder ohne Entscheidung wird sie gelöscht.'),
+      items.push(notice('info', 'Die anfragende Person gibt hier ihre Vorgesetzte bzw. ihren Vorgesetzten an. Die Anfrage wird sofort ein Ticket im Status „wartet auf Freigabe“ und erst nach der Freigabe unter „Freigaben“ bearbeitet. Bei Ablehnung oder ohne Entscheidung wird das Ticket geschlossen.'),
         checkbox(f.knownOnly === true, 'Nur Personen, die sich schon im Portal angemeldet haben', (x) => upd(() => { f.knownOnly = x || undefined; }),
           'Schützt vor Tippfehlern und erfundenen Adressen. Wer sich noch nie angemeldet hat, kann dann nicht gewählt werden.'),
         showAdvanced(Boolean(f.approverGroups?.length)) ? fieldWrap(listInput(f.approverGroups ?? [], (x) => upd(() => { f.approverGroups = x.length ? x : undefined; })), {

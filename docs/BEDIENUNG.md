@@ -48,7 +48,7 @@ Manche Formulare – z. B. **Hardware anfordern** oder kostenpflichtige Software
 
    ![Formular mit Freigabe](screenshots/40-freigabe-formular.png)
 
-2. **Anfrage senden.** Die Anfrage geht jetzt **noch nicht** an die IT, sondern wartet im Portal. Die freigebende Person sieht sie unter **Freigaben** und an der Glocke.
+2. **Anfrage senden.** Die Anfrage wird sofort ein Ticket im Ticketsystem – im Status **wartet auf Freigabe**. Die IT bearbeitet sie erst nach der Freigabe. Die freigebende Person bekommt eine E-Mail und sieht die Anfrage unter **Freigaben** und an der Glocke.
 
    ![Wartet auf Freigabe](screenshots/41-freigabe-wartet.png)
 
@@ -59,24 +59,26 @@ Manche Formulare – z. B. **Hardware anfordern** oder kostenpflichtige Software
    ![Meine Anfragen](screenshots/44-freigabe-meine-anfragen.png)
 
 4. Nach der Entscheidung meldet sich die Glocke:
-   - **Freigegeben:** Die Anfrage geht automatisch an die IT. Im Ticket steht, wer wann freigegeben hat.
-   - **Abgelehnt:** Die Begründung steht in der Benachrichtigung und unter „Meine Anfragen“. Inhalt und Anhänge werden gelöscht, nichts geht an die IT.
-   - **Abgelaufen:** Ohne Entscheidung verfällt die Anfrage nach 14 Tagen (Einstellung der IT) und wird gelöscht. Bei Bedarf neu stellen.
+   - **Freigegeben:** Die IT bearbeitet das Ticket jetzt. Im Ticket steht, wer wann freigegeben hat.
+   - **Abgelehnt:** Die Begründung steht in der E-Mail, an der Glocke und im Ticket. Das Ticket wird geschlossen.
+   - **Abgelaufen:** Ohne Entscheidung schließt das Portal das Ticket nach 14 Tagen (Einstellung der IT). Bei Bedarf neu stellen.
+
+   Alles steht im Ticket – auch unter **Meine Tickets** und in Zammad.
 
 ### Freigaben erteilen (für Vorgesetzte)
 
-Wartet etwas auf Ihre Entscheidung, zeigt die Navigation **Freigaben** mit einer Zahl, und die Glocke meldet „Freigabe erbeten“. Nach drei Tagen kommt einmal eine Erinnerung.
+Wartet etwas auf Ihre Entscheidung, bekommen Sie eine E-Mail mit Link, die Navigation zeigt **Freigaben** mit einer Zahl, und die Glocke meldet „Freigabe erbeten“. Nach drei Tagen kommt einmal eine Erinnerung.
 
 ![Freigaben](screenshots/42-freigabe-liste.png)
 
-Ein Klick öffnet die Anfrage: wer sie gestellt hat, wohin sie geht, alle Angaben und Anhänge (Anhänge zum Herunterladen).
+Ein Klick öffnet die Anfrage: wer sie gestellt hat, Ticketsystem und Ticketnummer, alle Angaben und Anhänge (zum Herunterladen). Das Portal liest sie live aus dem Ticket.
 
 ![Freigabe entscheiden](screenshots/43-freigabe-entscheiden.png)
 
-- **Freigeben** – die Anfrage geht sofort an die IT. Ein Hinweis ist freiwillig (z. B. die Kostenstelle) und steht mit Ihrem Namen und der Uhrzeit im Ticket.
-- **Ablehnen** – nur mit kurzer Begründung. Die anfragende Person wird benachrichtigt, die Anfrage gelöscht.
+- **Freigeben** – die IT bearbeitet das Ticket jetzt. Ein Hinweis ist freiwillig (z. B. die Kostenstelle) und steht mit Ihrem Namen und der Uhrzeit im Ticket.
+- **Ablehnen** – nur mit kurzer Begründung. Das Ticket wird geschlossen, die anfragende Person benachrichtigt.
 
-Unter **Erledigt** stehen Ihre Entscheidungen. Den Inhalt zeigt das Portal danach nicht mehr an – er liegt dann im Ticket bzw. ist gelöscht.
+Unter **Erledigt** stehen Ihre Entscheidungen. Den Inhalt zeigt das Portal danach nicht mehr an – er steht im Ticket.
 
 ### Benachrichtigungen
 
@@ -84,7 +86,7 @@ Die Glocke oben rechts zeigt neue Nachrichten mit einer Zahl: **neue Antwort der
 
 ![Benachrichtigungen](screenshots/45-freigabe-benachrichtigungen.png)
 
-Das Portal verschickt keine E-Mails. Über die Eingangsbestätigung und Antworten der IT informiert per E-Mail wie bisher Zammad.
+Das Portal verschickt selbst keine E-Mails. E-Mails – Eingangsbestätigung, Antworten der IT, Freigaben – verschickt Zammad aus dem Ticket.
 
 Antworten der IT erkennt das Portal, indem es jede Minute in Zammad nach geänderten Tickets schaut (Einstellung `TICKET_WATCH_SECONDS`, 0 schaltet es ab). Benachrichtigt werden nur öffentliche Antworten von Bearbeitern – keine internen Notizen – und nur Personen, die das Portal kennt. Der API-Benutzer braucht dafür Leserechte (`ticket.agent`) auf die Gruppen der Tickets; ohne diese Rechte bleibt die Glocke für Antworten stumm.
 
@@ -105,11 +107,12 @@ Ist die Funktion eingeschaltet, steht oben im Menü **Status**. Die Status-Seite
 ![Status-Seite](website/img/status.jpg)
 
 - **Große Störungen** erscheinen zusätzlich als Banner oben auf jeder Seite des Portals.
-- **Ich bin auch betroffen:** Ein Klick statt eines eigenen Tickets. Wer sich meldet, bekommt jedes Update und die Behebung unter der Glocke. Die Meldung lässt sich zurücknehmen.
+- **Ich bin auch betroffen:** Ein Klick genügt – das Portal legt dafür ein eigenes Ticket an, verknüpft mit der Störung. Wer sich meldet, bekommt jedes Update unter der Glocke; ist die Störung behoben, wird das eigene Ticket mit geschlossen. Die Meldung lässt sich zurücknehmen.
 - **Services** zeigen ihren Zustand: In Betrieb, Eingeschränkt, Teilausfall, Ausfall oder Wartung.
 - **Geplante Wartungen** stehen vorab auf der Status-Seite; während der Wartung gibt es ein Banner.
 - **Bekannte Probleme** mit einer Lösung für die Zwischenzeit („So geht es in der Zwischenzeit“).
-- Gehört ein Formular zu einem Service mit Störung, zeigt das Formular den Hinweis gleich oben – mit „Ich bin auch betroffen“. Wer trotzdem eine Anfrage schickt, kann das tun; die IT sieht in Zammad, dass sie zur Störung gehört.
+- Gehört ein Formular zu einem Service mit Störung, zeigt das Formular den Hinweis gleich oben – mit „Ich bin auch betroffen“. Wer trotzdem eine Anfrage schickt, kann das tun; das Ticket wird in Zammad mit der Störung verknüpft.
+- Störungen, Wartungen und Probleme sind Tickets im Ticketsystem; die Status-Seite zeigt ihren Stand.
 
 <img src="website/img/start-stoerung.jpg" width="49%" alt="Banner bei einer großen Störung"> <img src="website/img/formular-hinweis.jpg" width="49%" alt="Hinweis auf die Störung im Formular">
 
@@ -179,6 +182,26 @@ Zeigt offene Aufgaben (z. B. Sicherheitshinweise zur Konfiguration), Zahlen zur 
 ![Verbindung](screenshots/11-admin-verbindung.png)
 
 ![Erlaubte Zammad-Gruppen](screenshots/11b-admin-erlaubte-gruppen.png)
+
+### Zammad-Zuordnung und Einrichtung
+
+Ab Version 2.0 liegen Freigaben, Störungen, Wartungen und Probleme in Zammad. Unter **Zammad-Zuordnung** steht, wie das Portal sie dort abbildet, und was in Zammad noch fehlt:
+
+- **Stand in Zammad:** fehlende Gruppen, Status, Felder, Auswahlwerte und Abhängigkeiten. **In Zammad einrichten** legt sie an (mit Bestätigung der Anmeldung). Gelöscht wird nie etwas.
+- **Vorhandene Felder nutzen?** Vorschläge aus eurem Zammad, z. B. ein vorhandenes „Standort“-Feld oder „Ticketart = Störung“ für Störungen. **Übernehmen** trägt sie ein.
+- **Freigaben:** Status während und nach der Freigabe, Tags, E-Mails aus Zammad.
+- **Störungen, Wartungen, Probleme:** je Art Gruppe, zusätzliche Werte (damit eure SLAs und Trigger greifen), Tags und **vorhandene Felder, die bei dieser Art ausgeblendet werden**.
+- **Attribute** (Ansicht „Erweitert“): jedes Portal-Feld auf ein vorhandenes umlenken.
+
+![Zammad-Zuordnung](website/img/zammad.jpg)
+
+Alles Weitere, auch die Rechte des API-Benutzers: [Zammad als einzige Datenquelle](ZAMMAD.md).
+
+### ITSM-Grundausstattung
+
+Für einen schnellen Start legt **ITSM-Grundausstattung** in Zammad an, was ein Service-Desk braucht: Ticketart, Priorität aus Auswirkung und Dringlichkeit (P1 bis P4), Status, SLAs mit Arbeitszeiten, automatische Nachrichten, automatisches Schließen, Eskalation und Übersichten. Teile wählen, Zeiten einstellen, Vorschau ansehen, anlegen. Vorhandenes bleibt unverändert. Beschreibung jedes Elements: [ITSM-Grundausstattung](ITSM-GRUNDAUSSTATTUNG.md).
+
+![ITSM-Grundausstattung: Vorschau](website/img/grundausstattung-vorschau.jpg)
 
 ### Zammad-Objekte freigeben
 
@@ -300,7 +323,7 @@ Unter **Funktionen** (Recht „Globale Einstellungen ändern“) wird jede Funkt
 | Störungen | aus | keine Störungen, kein Banner, keine Hinweise in Formularen |
 | Geplante Wartungen | aus | keine Wartungen |
 | Bekannte Probleme | aus | keine Probleme in Verwaltung und Portal |
-| Freigabe durch Vorgesetzte | an | das Freigabe-Feld entfällt, neue Anfragen gehen direkt an die IT; schon wartende Freigaben laufen weiter |
+| Freigabe durch Vorgesetzte | an | das Freigabe-Feld entfällt, neue Anfragen gehen ohne Freigabe an die IT; wartende Tickets laufen weiter |
 | Weiterleitung aus Formularen | an | jede Anfrage bleibt im Ticketsystem ihres Formulars |
 | Benachrichtigung bei Antworten | an | keine Nachricht unter der Glocke, wenn die IT in Zammad antwortet |
 | Als App installierbar | an | Edge und Chrome bieten keine Installation mehr an, kein Manifest, kein Service Worker |
@@ -315,16 +338,17 @@ Unter **Portal als App › Per Intune auf alle Geräte verteilen** steht der fer
 
 ### Status und Störungen verwalten
 
-**Status und Störungen** ist eine Seite für alle Ticketsysteme, in denen man das Recht „Services, Störungen und Wartungen verwalten“ bzw. „Probleme verwalten“ hat. Oben lässt sich auf ein Ticketsystem filtern. Zammad bleibt das führende System für Tickets.
+**Status und Störungen** ist eine Seite für alle Ticketsysteme, in denen man das Recht „Services, Störungen und Wartungen verwalten“ bzw. „Probleme verwalten“ hat. Oben lässt sich auf ein Ticketsystem filtern. Jede Störung, Wartung und jedes Problem ist ein **Ticket in Zammad** – angelegt hier oder direkt in Zammad (Feld „Portal: Art“ wählen und „Portal: im Portal anzeigen“ setzen).
 
-- **Störungen:** **Störung melden** mit Titel, erster Meldung, Auswirkung (eingeschränkt, Teilausfall, Ausfall), Beginn, betroffenen Services und Standorten. **Große Störung** zeigt ein Banner auf allen Seiten. Optional ein **führendes Ticket in Zammad** (Nummer): Es bekommt dort den Tag der Störung (`inc-0003`). In der Störung schreiben Sie **Updates** mit neuem Stand (wird untersucht, Ursache gefunden, behoben/wird beobachtet, behoben); alle, die sich als betroffen gemeldet haben, bekommen sie unter der Glocke. Die Liste der Betroffenen (Name, E-Mail, Abteilung) sehen nur Admins.
-- **Wartungen:** **Wartung planen** mit Zeitraum, Services und Standorten. Während des Zeitfensters stehen die Services auf „Wartung“. Absagen oder löschen jederzeit.
-- **Services:** Name, Kurzbeschreibung, Reihenfolge. Der Zustand ergibt sich aus offenen Störungen und laufenden Wartungen; zusätzlich lässt sich ein Zustand von Hand setzen (mit Hinweis), der schlimmere gewinnt.
-- **Probleme:** Nummer (`PRB-0001`), Stand (neu, in Analyse, bekannter Fehler, gelöst, geschlossen), Service, Verantwortlich, Beschreibung, Ursache (bleibt intern) und Workaround. **Als bekannten Fehler im Portal zeigen** macht Titel, Beschreibung und Workaround für alle sichtbar. **Tickets in Zammad** verknüpfen Sie über die Ticketnummer – das Ticket bekommt dort den Tag `prb-0001`, die Liste zeigt den aktuellen Stand aus Zammad. Störungen ordnen Sie in der Störung selbst einem Problem zu.
+- **Störungen:** **Störung melden** mit Titel, erster Meldung, Auswirkung (eingeschränkt, Teilausfall, Ausfall), Beginn, betroffenen Services und Standorten. **Große Störung** zeigt ein Banner auf allen Seiten. In der Störung schreiben Sie **Updates** mit neuem Stand (wird untersucht, Ursache gefunden, behoben/wird beobachtet, behoben) – sie stehen als öffentliche Notizen im Ticket; alle, die sich als betroffen gemeldet haben, bekommen sie unter der Glocke. **Behoben** schließt das Ticket und die Tickets der Betroffenen. Die Liste der Betroffenen (Name, E-Mail, Abteilung, Ticket) sehen nur Admins.
+- **Wartungen:** **Wartung planen** mit Zeitraum, Services und Standorten. Während des Zeitfensters stehen die Services auf „Wartung“; nach dem Ende schließt das Portal das Ticket. Absagen jederzeit.
+- **Services:** Name, Kurzbeschreibung, Reihenfolge. Der Zustand ergibt sich aus offenen Störungen und laufenden Wartungen. Jeder Service ist ein Auswahlwert im Zammad-Feld „Portal: Services“.
+- **Probleme:** Stand (neu, in Analyse, bekannter Fehler, gelöst, geschlossen), Service, Beschreibung, Ursache (bleibt intern) und Workaround. **Als bekannten Fehler im Portal zeigen** macht Titel, Beschreibung und Workaround für alle sichtbar. **Tickets in Zammad** verknüpfen Sie über die Ticketnummer – in Zammad entsteht eine Verknüpfung. Verantwortlich ist der Besitzer des Problem-Tickets. Störungen ordnen Sie in der Störung selbst einem Problem zu.
+- **Aus dem Portal nehmen** (für Fehleinträge) blendet aus und schließt das Ticket; in Zammad bleibt es mit Verlauf erhalten.
 
 <img src="website/img/admin-stoerung.jpg" width="49%" alt="Störung mit Updates und Betroffenen"> <img src="website/img/admin-problem.jpg" width="49%" alt="Problem mit Ursache und Workaround">
 
-**Formulare und Services:** Im Formular-Editor unter **Ticket** → **Betroffene Services** (wenn Störungen oder Wartungen eingeschaltet sind). Bei einer Störung dieser Services zeigt das Formular den Hinweis mit „Ich bin auch betroffen“; Tickets, die währenddessen aus dem Formular entstehen, bekommen in Zammad den Tag der Störung. In Exportdateien stehen die Services mit Namen.
+**Formulare und Services:** Im Formular-Editor unter **Ticket** → **Betroffene Services** (wenn Störungen oder Wartungen eingeschaltet sind). Bei einer Störung dieser Services zeigt das Formular den Hinweis mit „Ich bin auch betroffen“; Tickets, die währenddessen aus dem Formular entstehen, werden in Zammad mit der Störung verknüpft. In Exportdateien stehen die Services mit Namen.
 
 ### Rollen und Rechte
 

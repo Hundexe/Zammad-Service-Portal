@@ -14,7 +14,7 @@ export interface MockOptions { port?: number; token?: string; name?: string; cus
 export interface MockZammad {
   server: Server;
   url: string;
-  state: { users: User[]; tickets: Ticket[]; articles: Article[]; links: Link[]; workflows: any[]; groups: { id: number; name: string; active: boolean }[]; states: { id: number; name: string; active: boolean; state_type_id: number }[]; attributes: any[]; requests: { method: string; path: string; onBehalfOf?: string; body?: any }[] };
+  state: { users: User[]; tickets: Ticket[]; articles: Article[]; links: Link[]; workflows: any[]; admin: Record<string, any[]>; priorities: { id: number; name: string; active: boolean }[]; groups: { id: number; name: string; active: boolean }[]; states: { id: number; name: string; active: boolean; state_type_id: number }[]; attributes: any[]; requests: { method: string; path: string; onBehalfOf?: string; body?: any }[] };
   /** Wie ein Admin in Zammad: Gruppen, Status und Attribute fürs Portal schon vorhanden? (Standard: nein) */
   setAdmin: (on: boolean) => void;
   failNext: (n: number, status?: number) => void;
@@ -40,7 +40,7 @@ const STATES_INIT = [
 ];
 /** Status-Typen, die als „geschlossen“ zählen (closed, merged) */
 const CLOSED_TYPES = [5, 7];
-const PRIORITIES = [{ id: 1, name: '1 low', active: true }, { id: 2, name: '2 normal', active: true }, { id: 3, name: '3 high', active: true }];
+const PRIORITIES_INIT = [{ id: 1, name: '1 low', active: true }, { id: 2, name: '2 normal', active: true }, { id: 3, name: '3 high', active: true }];
 
 const ATTRIBUTES_INIT = [
   { id: 1, object: 'Ticket', name: 'number', display: '#', data_type: 'input', active: true, editable: false, data_option: {} },
@@ -76,9 +76,12 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
   ];
   const GROUPS = GROUPS_INIT.map((g) => ({ ...g }));
   const STATES = STATES_INIT.map((s) => ({ ...s }));
+  const PRIORITIES = PRIORITIES_INIT.map((x) => ({ ...x }));
   const ATTRIBUTES: any[] = ATTRIBUTES_INIT.map((a) => structuredClone(a));
   const links: Link[] = [];
   const workflows: any[] = [];
+  /** Weitere Verwaltungsobjekte (Grundausstattung): Prioritäten, Kalender, SLAs, Trigger, Automatisierungen, Übersichten */
+  const admin: Record<string, any[]> = { calendars: [], slas: [], triggers: [], jobs: [], overviews: [], roles: [{ id: 1, name: 'Admin' }, { id: 2, name: 'Agent' }, { id: 3, name: 'Customer' }] };
   let isAdmin = true;
   const tickets: Ticket[] = [];
   const articles: Article[] = [];
@@ -321,7 +324,7 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
       if (req.method === 'POST' && p === '/api/v1/ticket_states') {
         if (!isAdmin) return send(res, 403, { error: 'Not authorized (admin.object)' });
         if (STATES.some((s) => s.name === json.name)) return send(res, 422, { error: 'Name already exists' });
-        STATES.push({ id: Math.max(...STATES.map((s) => s.id)) + 1, name: String(json.name), active: true, state_type_id: Number(json.state_type_id) });
+        STATES.push({ id: Math.max(...STATES.map((s) => s.id)) + 1, name: String(json.name), active: true, state_type_id: Number(json.state_type_id), ignore_escalation: json.ignore_escalation === true } as typeof STATES[number]);
         return send(res, 201, STATES.at(-1));
       }
       let ma = /^\/api\/v1\/object_manager_attributes(?:\/(\d+))?$/.exec(p);
@@ -339,6 +342,22 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
         return send(res, req.method === 'POST' ? 201 : 200, ATTRIBUTES.at(-1));
       }
       void ma;
+      const ma2 = /^\/api\/v1\/(calendars|slas|triggers|jobs|overviews|roles)$/.exec(p);
+      if (ma2 && (req.method === 'GET' || req.method === 'POST')) {
+        if (!isAdmin) return send(res, 403, { error: `Not authorized (admin.${ma2[1]})` });
+        const list = admin[ma2[1]!]!;
+        if (req.method === 'GET') return send(res, 200, list);
+        if (!json.name || ma2[1] === 'roles') return send(res, 422, { error: 'invalid' });
+        if (list.some((x) => x.name === json.name)) return send(res, 422, { error: 'Name already exists' });
+        list.push({ id: list.length + 1, ...json });
+        return send(res, 201, list.at(-1));
+      }
+      if (req.method === 'POST' && p === '/api/v1/ticket_priorities') {
+        if (!isAdmin) return send(res, 403, { error: 'Not authorized' });
+        if (PRIORITIES.some((x) => x.name === json.name)) return send(res, 422, { error: 'Name already exists' });
+        PRIORITIES.push({ id: Math.max(...PRIORITIES.map((x) => x.id)) + 1, name: String(json.name), active: true });
+        return send(res, 201, PRIORITIES.at(-1));
+      }
       if (req.method === 'GET' && p === '/api/v1/core_workflows') {
         if (!isAdmin) return send(res, 403, { error: 'Not authorized (admin.core_workflow)' });
         return send(res, 200, workflows);
@@ -420,7 +439,7 @@ export async function startMockZammad(opts: MockOptions = {}): Promise<MockZamma
   if (!opts.quiet) console.log(`Zammad-Simulator „${opts.name ?? 'Zammad'}“ läuft auf ${url} (Token: ${token})`);
   return {
     server, url,
-    state: { users, tickets, articles, links, workflows, groups: GROUPS, states: STATES, attributes: ATTRIBUTES, requests },
+    state: { users, tickets, articles, links, workflows, admin, priorities: PRIORITIES, groups: GROUPS, states: STATES, attributes: ATTRIBUTES, requests },
     setAdmin: (on) => { isAdmin = on; },
     failNext: (n, status = 503) => { failCount = n; failStatus = status; },
     setLegacySearch: (on) => { legacySearch = on; },

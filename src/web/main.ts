@@ -14,6 +14,7 @@ import { approvalsNavLink, bell, refreshCounts, startPolling } from './lib/notif
 import { sidebar, loadAdminSystems, admin } from './admin/common.ts';
 import { objectsPage, systemEditPage, systemsListPage } from './admin/systems.ts';
 import { zammadPage } from './admin/zammad.ts';
+import { baselinePage } from './admin/baseline.ts';
 import { formEditorPage, formsListPage } from './admin/forms.ts';
 import { brandingPage, loginSettingsPage, overviewsPage, templatesPage } from './admin/content.ts';
 import { rolesPage, usersPage } from './admin/access.ts';
@@ -124,6 +125,7 @@ adminRoute('/admin/systeme', systemsListPage);
 adminRoute('/admin/systeme/:systemId', systemEditPage);
 adminRoute('/admin/systeme/:systemId/objekte', objectsPage);
 adminRoute('/admin/systeme/:systemId/zammad', zammadPage);
+adminRoute('/admin/systeme/:systemId/grundausstattung', baselinePage);
 adminRoute('/admin/systeme/:systemId/formulare', formsListPage);
 adminRoute('/admin/systeme/:systemId/formulare/:formId', formEditorPage);
 adminRoute('/admin/systeme/:systemId/vorlagen', templatesPage);

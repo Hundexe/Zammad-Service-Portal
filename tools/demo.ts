@@ -17,8 +17,12 @@ import { startWorker } from '../src/server/worker.ts';
 import { saveDraft, publishVersion, getForm, publishedVersion } from '../src/server/services/forms.ts';
 import { getSystem } from '../src/server/services/systems.ts';
 import { toAuthUser, upsertEntraUser } from '../src/server/services/users.ts';
-import { submitRequest } from '../src/server/services/requests.ts';
+import { deliverNext, submitRequest } from '../src/server/services/requests.ts';
 import { decide } from '../src/server/services/approvals.ts';
+import { addIncidentUpdate, createIncident, getIncident, saveMaintenance, saveProblem, saveService, setAffected, updateIncident } from '../src/server/services/itsm.ts';
+import { applySetup } from '../src/server/services/zammad-setup.ts';
+import type { UserRow } from '../src/server/services/users.ts';
+import type { MockZammad } from './mock-zammad.ts';
 import { DEFAULT_BRANDING, type Branding } from '../src/shared/branding.ts';
 import type { FormDefinition } from '../src/shared/form.ts';
 import { startMockZammad } from './mock-zammad.ts';
@@ -208,74 +212,89 @@ export async function seedDemo(app: App, urls: { zentral: string; nord: string }
   return { systems: { zentral, nord }, forms };
 }
 
-/**
- * Status-Seite: Funktionen an, Services, eine große und eine kleine Störung, eine behobene, Wartungen und ein bekanntes Problem.
- * Anna hat sich als betroffen gemeldet. Die Formulare „VPN-Zugang“ und „Störung melden“ hängen am Service VPN bzw. Netzwerk.
- */
-function seedStatus(app: App, systems: Record<string, string>, forms: Record<string, string>): void {
+/** Funktionen an, Services anlegen und Zammad einrichten (Gruppen, Status, Felder, Abhängigkeiten) – wie „In Zammad einrichten“. */
+async function prepareZammad(app: App, systems: Record<string, string>): Promise<Record<string, string>> {
   app.db.run("INSERT INTO settings (key, value) VALUES ('features', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     JSON.stringify({ status: true, incidents: true, maintenance: true, problems: true, locations: ['Zentrale', 'Standort Nord', 'Homeoffice'] }));
+  const svc = (systemId: string, name: string, description: string, sort: number) => saveService(app, systemId, { name, description, sort }).id;
+  const z = systems.zentral!, n = systems.nord!;
+  const ids = {
+    m365: svc(z, 'Microsoft 365', 'E-Mail, Teams, OneDrive', 1),
+    vpn: svc(z, 'VPN', 'Zugang von unterwegs und aus dem Homeoffice', 2),
+    net: svc(z, 'Netzwerk und WLAN', 'Kabel und WLAN an allen Standorten', 3),
+    erp: svc(z, 'Warenwirtschaft', 'Aufträge, Lager, Rechnungen', 4),
+    files: svc(z, 'Dateiserver', 'Netzlaufwerke der Abteilungen', 5),
+    print: svc(z, 'Drucker', 'Etagendrucker und Scanner', 6),
+    nordNet: svc(n, 'Netzwerk Nord', 'Kabel und WLAN am Standort Nord', 1),
+    nordPrint: svc(n, 'Drucker Nord', 'Etagendrucker am Standort Nord', 2),
+  };
+  for (const id of [z, n]) {
+    const r = await applySetup(app, getSystem(app, id)!);
+    if (!r.ready) throw new Error(`Demo: Zammad nicht eingerichtet: ${JSON.stringify(r.missing)}`);
+  }
+  return ids;
+}
+
+/** Zeitpunkte im simulierten Zammad nachträglich setzen, damit die Demo wie gewachsen aussieht */
+function backdate(z: MockZammad, ticketId: number, created: number, articleTimes: number[] = []): void {
+  const t = z.state.tickets.find((x) => x.id === ticketId);
+  if (t) { t.created_at = new Date(created).toISOString(); t.updated_at = new Date(articleTimes.at(-1) ?? created).toISOString(); }
+  z.state.articles.filter((a) => a.ticket_id === ticketId).forEach((a, i) => { if (articleTimes[i] !== undefined) a.created_at = new Date(articleTimes[i]!).toISOString(); });
+}
+
+/**
+ * Status-Seite: eine große und eine kleine Störung, eine behobene, Wartungen und ein bekanntes Problem – alles als Tickets
+ * im simulierten Zammad. Anna und weitere Personen haben sich als betroffen gemeldet. Die Formulare „VPN-Zugang“ und
+ * „Störung melden“ hängen am Service VPN bzw. Netzwerk.
+ */
+async function seedStatus(app: App, systems: Record<string, string>, forms: Record<string, string>, svc: Record<string, string>, zammad: { zentral: MockZammad; nord: MockZammad }): Promise<void> {
   const now = Date.now();
   const min = 60_000, hour = 3600_000, day = 86400_000;
-  const svc = (systemId: string, name: string, description: string, sort: number) => {
-    const id = uuid();
-    app.db.run('INSERT INTO services (id, system_id, name, description, sort, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)', id, systemId, name, description, sort, now, now);
-    return id;
+  const z = getSystem(app, systems.zentral!)!, n = getSystem(app, systems.nord!)!;
+  const alex = toAuthUser(app.db, app.db.get<UserRow>("SELECT * FROM users WHERE email = 'alex.berger@example.org' AND kind = 'entra'")!);
+  const problem = await saveProblem(app, z, alex, {
+    title: 'VPN trennt nach dem Ruhezustand die Verbindung', state: 'known_error', serviceId: svc.vpn, public: true,
+    description: 'Nach dem Aufwachen aus dem Ruhezustand verbindet sich der VPN-Client nicht automatisch neu.',
+    rootCause: 'Der Client erneuert das Zertifikat erst beim nächsten Start. Ein Update des Herstellers ist angekündigt.',
+    workaround: 'VPN-Client einmal beenden und neu starten (Symbol unten rechts, „Beenden“). Danach verbindet er sich wieder.',
+  });
+  backdate(zammad.zentral, problem.t.id, now - 9 * day, [now - 9 * day]);
+  const incident = async (o: { title: string; impact: string; major: boolean; started: number; services: string[]; locations: string[]; updates: [string, string, number][] }) => {
+    const [first, ...rest] = o.updates;
+    let inc = await createIncident(app, z, alex, { title: o.title, body: first![1], impact: o.impact, major: o.major, state: first![0], startedAt: o.started, serviceIds: o.services, locations: o.locations });
+    for (const [state, body, at] of rest) inc = await addIncidentUpdate(app, inc, alex, { state, body, ...(state === 'resolved' ? { resolvedAt: at } : {}) });
+    backdate(zammad.zentral, inc.t.id, o.started, o.updates.map((u) => u[2]));
+    return inc;
   };
-  const z = systems.zentral, n = systems.nord;
-  const m365 = svc(z, 'Microsoft 365', 'E-Mail, Teams, OneDrive', 1);
-  const vpn = svc(z, 'VPN', 'Zugang von unterwegs und aus dem Homeoffice', 2);
-  const net = svc(z, 'Netzwerk und WLAN', 'Kabel und WLAN an allen Standorten', 3);
-  const erp = svc(z, 'Warenwirtschaft', 'Aufträge, Lager, Rechnungen', 4);
-  svc(z, 'Dateiserver', 'Netzlaufwerke der Abteilungen', 5);
-  svc(z, 'Drucker', 'Etagendrucker und Scanner', 6);
-  const nordNet = svc(n, 'Netzwerk Nord', 'Kabel und WLAN am Standort Nord', 1);
-  svc(n, 'Drucker Nord', 'Etagendrucker am Standort Nord', 2);
-  const anna = app.db.get<{ id: string }>("SELECT id FROM users WHERE email = 'anna.becker@example.org'")?.id ?? null;
-  const admin = app.db.get<{ id: string }>("SELECT id FROM users WHERE username = 'admin'")?.id ?? null;
-  const problem = uuid();
-  app.db.run(`INSERT INTO problems (id, number, system_id, title, state, service_id, description, root_cause, workaround, public, owner, created_by, created_at, updated_at)
-    VALUES (?, 1, ?, ?, 'known_error', ?, ?, ?, ?, 1, 'Team Netzwerk', ?, ?, ?)`, problem, z, 'VPN trennt nach dem Ruhezustand die Verbindung', vpn,
-    'Nach dem Aufwachen aus dem Ruhezustand verbindet sich der VPN-Client nicht automatisch neu.',
-    'Der Client erneuert das Zertifikat erst beim nächsten Start. Ein Update des Herstellers ist angekündigt.',
-    'VPN-Client einmal beenden und neu starten (Symbol unten rechts, „Beenden“). Danach verbindet er sich wieder.', admin, now - 9 * day, now - 2 * day);
-  const incident = (o: { number: number; systemId: string; title: string; impact: string; major: boolean; state: string; started: number; resolved?: number; services: string[]; locations: string[]; updates: [string, string, number][]; problem?: string }) => {
-    const id = uuid();
-    app.db.run(`INSERT INTO incidents (id, number, system_id, title, impact, major, state, locations, started_at, resolved_at, problem_id, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, o.number, o.systemId, o.title, o.impact, o.major ? 1 : 0, o.state, JSON.stringify(o.locations), o.started, o.resolved ?? null, o.problem ?? null, admin, o.started, o.updates.at(-1)![2]);
-    for (const s of o.services) app.db.run('INSERT INTO incident_services (incident_id, service_id) VALUES (?, ?)', id, s);
-    for (const [state, body, at] of o.updates) app.db.run('INSERT INTO incident_updates (id, incident_id, state, body, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)', uuid(), id, state, body, admin, at);
-    return id;
-  };
-  const major = incident({ number: 3, systemId: z, title: 'VPN: Anmeldung schlägt fehl', impact: 'partial_outage', major: true, state: 'identified', started: now - 52 * min,
-    services: [vpn], locations: ['Homeoffice'], problem,
+  const major = await incident({ title: 'VPN: Anmeldung schlägt fehl', impact: 'partial_outage', major: true, started: now - 52 * min, services: [svc.vpn!], locations: ['Homeoffice'],
     updates: [['investigating', 'Viele können sich gerade nicht per VPN anmelden. Wir prüfen das.', now - 52 * min],
       ['identified', 'Ein Zertifikat auf dem VPN-Gateway ist abgelaufen. Das neue wird gerade verteilt, in etwa 30 Minuten sollte es wieder gehen. Im Büro ist alles erreichbar.', now - 18 * min]] });
-  incident({ number: 2, systemId: z, title: 'Teams: Verzögerungen bei Nachrichten', impact: 'degraded', major: false, state: 'monitoring', started: now - 3 * hour, services: [m365], locations: [],
+  await updateIncident(app, major, { problemId: problem.ref });
+  await incident({ title: 'Teams: Verzögerungen bei Nachrichten', impact: 'degraded', major: false, started: now - 3 * hour, services: [svc.m365!], locations: [],
     updates: [['investigating', 'Nachrichten in Teams kommen teils mit einigen Minuten Verspätung an. Ursache liegt bei Microsoft.', now - 3 * hour],
       ['monitoring', 'Microsoft hat eine Korrektur eingespielt. Wir beobachten die Lage.', now - 40 * min]] });
-  incident({ number: 1, systemId: z, title: 'Drucker im 2. OG offline', impact: 'partial_outage', major: false, state: 'resolved', started: now - 26 * hour, resolved: now - 22 * hour, services: [], locations: ['Zentrale'],
+  await incident({ title: 'Drucker im 2. OG offline', impact: 'partial_outage', major: false, started: now - 26 * hour, services: [], locations: ['Zentrale'],
     updates: [['investigating', 'Die Drucker im 2. OG sind nicht erreichbar.', now - 26 * hour], ['resolved', 'Ein Switch wurde getauscht, alle Drucker laufen wieder.', now - 22 * hour]] });
-  if (anna) app.db.run('INSERT INTO incident_affected (incident_id, user_id, created_at) VALUES (?, ?, ?)', major, anna, now - 30 * min);
-  // Weitere Betroffene ohne Konto im Portal geht nicht – die Zahl soll trotzdem realistisch wirken: Platzhalter-Konten
+  // Betroffene: Anna und weitere Personen – jede bekommt ein eigenes Ticket, verknüpft mit der Störung
+  const anna = app.db.get<UserRow>("SELECT * FROM users WHERE email = 'anna.becker@example.org' AND kind = 'entra'");
+  const people: UserRow[] = anna ? [anna] : [];
   for (const [i, name] of ['Ben Krause', 'Clara Wolf', 'David Roth', 'Eva Schulz', 'Felix Braun', 'Greta Lang', 'Hanna Vogel', 'Jonas Hahn', 'Lea Koch', 'Max Muster', 'Nina Frank'].entries()) {
     const id = uuid();
     app.db.run("INSERT INTO users (id, kind, entra_oid, tenant_id, email, display_name, department, created_at, last_login_at) VALUES (?, 'entra', ?, ?, ?, ?, 'Vertrieb', ?, ?)",
       id, `demo-${i}`, TENANT_A, `${name.toLowerCase().replace(' ', '.')}@example.org`, name, now - 30 * day, now - day);
-    app.db.run('INSERT INTO incident_affected (incident_id, user_id, created_at) VALUES (?, ?, ?)', major, id, now - (40 - i * 3) * min);
+    people.push(app.db.get<UserRow>('SELECT * FROM users WHERE id = ?', id)!);
   }
-  const maintenance = (systemId: string, title: string, body: string, start: number, end: number, services: string[], locations: string[]) => {
-    const id = uuid();
-    app.db.run('INSERT INTO maintenances (id, system_id, title, body, starts_at, ends_at, locations, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      id, systemId, title, body, start, end, JSON.stringify(locations), admin, now, now);
-    for (const s of services) app.db.run('INSERT INTO maintenance_services (maintenance_id, service_id) VALUES (?, ?)', id, s);
-  };
+  for (const [i, u] of people.entries()) {
+    await setAffected(app, (await getIncident(app, major.ref))!, toAuthUser(app.db, u), true);
+    const child = zammad.zentral.state.tickets.at(-1)!;
+    backdate(zammad.zentral, child.id, now - (40 - i * 3) * min, [now - (40 - i * 3) * min]);
+  }
   const tomorrow18 = new Date(now + day); tomorrow18.setHours(18, 0, 0, 0);
-  maintenance(z, 'Update der Warenwirtschaft', 'Die Warenwirtschaft ist in dieser Zeit nicht erreichbar. Bitte vorher speichern und abmelden.', tomorrow18.getTime(), tomorrow18.getTime() + 2 * hour, [erp], []);
+  await saveMaintenance(app, z, alex, { title: 'Update der Warenwirtschaft', body: 'Die Warenwirtschaft ist in dieser Zeit nicht erreichbar. Bitte vorher speichern und abmelden.', startsAt: tomorrow18.getTime(), endsAt: tomorrow18.getTime() + 2 * hour, serviceIds: [svc.erp!], locations: [] });
   const nextSat = new Date(now + ((6 - new Date(now).getDay() + 7) % 7 || 7) * day); nextSat.setHours(8, 0, 0, 0);
-  maintenance(n, 'Austausch der Netzwerktechnik', 'Am Standort Nord ist das Netzwerk zeitweise unterbrochen.', nextSat.getTime(), nextSat.getTime() + 4 * hour, [nordNet], ['Standort Nord']);
+  await saveMaintenance(app, n, alex, { title: 'Austausch der Netzwerktechnik', body: 'Am Standort Nord ist das Netzwerk zeitweise unterbrochen.', startsAt: nextSat.getTime(), endsAt: nextSat.getTime() + 4 * hour, serviceIds: [svc.nordNet!], locations: ['Standort Nord'] });
   // Formulare an Services hängen (veröffentlichte Version direkt ergänzen – nur in der Demo)
-  for (const [formId, services] of [[forms.vpn, [vpn]], [forms.stoerung, [net, m365, vpn]]] as const) {
+  for (const [formId, services] of [[forms.vpn!, [svc.vpn!]], [forms.stoerung!, [svc.net!, svc.m365!, svc.vpn!]]] as const) {
     const v = publishedVersion(app, formId)!;
     const def = JSON.parse(v.definition) as FormDefinition;
     def.settings.services = [...services];
@@ -283,7 +302,7 @@ function seedStatus(app: App, systems: Record<string, string>, forms: Record<str
   }
 }
 
-/** Beispiele für Freigaben durch Vorgesetzte: Anna bittet Alex (den Demo-Admin) um Freigabe und umgekehrt. */
+/** Beispiele für Freigaben durch Vorgesetzte: Anna bittet Alex (den Demo-Admin) um Freigabe und umgekehrt – als Tickets in Zammad. */
 async function seedApprovals(app: App, softwareFormId: string): Promise<void> {
   const anna = toAuthUser(app.db, upsertEntraUser(app.db, { oid: '7e5c1d40-0000-4000-8000-000000000002', tid: TENANT_A, name: 'Anna Becker', email: 'anna.becker@example.org', groups: ['grp-mitarbeiter'] }, { department: 'Vertrieb' }));
   const alex = toAuthUser(app.db, upsertEntraUser(app.db, { oid: '7e5c1d40-0000-4000-8000-000000000001', tid: TENANT_B, name: 'Alex Berger', email: 'alex.berger@example.org', groups: ['grp-mitarbeiter', 'grp-nord', 'it-admins'] }, { department: 'IT' }));
@@ -298,9 +317,10 @@ async function seedApprovals(app: App, softwareFormId: string): Promise<void> {
   const no = await ask(anna, 'Projektplanung Pro', 'Zeitpläne für zwei Kundenprojekte.', alex.email!);
   await ask(anna, 'PDF-Editor', 'Verträge bearbeiten und unterschreiben, ohne sie auszudrucken.', alex.email!);
   await ask(alex, 'Diagramm-Werkzeug', 'Netzwerkpläne zeichnen.', anna.email!);
-  const idOf = (requestId: string) => app.db.get<{ id: string }>('SELECT id FROM approvals WHERE request_id = ?', requestId)!.id;
-  decide(app, alex, actor(alex), idOf(ok.id), 'approve', 'Kostenstelle 4711');
-  decide(app, alex, actor(alex), idOf(no.id), 'reject', 'Bitte erst mit dem Projektbüro klären – dort gibt es schon Lizenzen.');
+  while (await deliverNext(app)) { /* Tickets in Zammad anlegen */ }
+  const refOf = (requestId: string) => `${sys.id}.${app.db.get<{ ticket_id: number }>('SELECT ticket_id FROM requests WHERE id = ?', requestId)!.ticket_id}`;
+  await decide(app, alex, actor(alex), refOf(ok.id), 'approve', 'Kostenstelle 4711');
+  await decide(app, alex, actor(alex), refOf(no.id), 'reject', 'Bitte erst mit dem Projektbüro klären – dort gibt es schon Lizenzen.');
 }
 
 export async function startDemo(opts: { port?: number; publicUrl?: string; host?: string; dataDir?: string; quiet?: boolean } = {}) {
@@ -334,8 +354,9 @@ export async function startDemo(opts: { port?: number; publicUrl?: string; host?
   });
   const app = createApp(cfg);
   const seeded = await seedDemo(app, { zentral: z1.url, nord: z2.url });
-  await seedApprovals(app, seeded.forms.software);
-  seedStatus(app, seeded.systems, seeded.forms);
+  const services = await prepareZammad(app, seeded.systems);
+  await seedApprovals(app, seeded.forms.software!);
+  await seedStatus(app, seeded.systems, seeded.forms, services, { zentral: z1, nord: z2 });
   app.db.run("UPDATE update_state SET current_version = ?, latest_version = '1.1.0', available = '[\"1.0.0\",\"1.1.0\"]', changelog = ?, checked_at = ?, updater_seen_at = ? WHERE id = 1",
     cfg.version, '1.1.0\n- Beispiel-Eintrag aus dem Changelog\n- Verbesserte Übersichten', Date.now() - 3600_000, Date.now());
   const { server } = createServer(app, { entra: new EntraClient(cfg) });

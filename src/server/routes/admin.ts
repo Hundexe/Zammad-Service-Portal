@@ -4,6 +4,8 @@ import type { App } from '../app.ts';
 import { openTitle } from '../services/request-title.ts';
 import { applySetup, checkSetup, getMapping, lastReport, saveMapping, setupWarnings, workflowDefs } from '../services/zammad-setup.ts';
 import { ATTR_SPECS, DEFAULT_MAPPING } from '../../shared/zammad-model.ts';
+import { applyBaseline, previewBaseline } from '../services/zammad-baseline.ts';
+import { BASELINE_PART_INFO, DEFAULT_BASELINE, normalizeBaseline } from '../../shared/zammad-baseline.ts';
 
 /** Zuordnung flach für das Audit-Log */
 const flat = (m: unknown, prefix = ''): Record<string, unknown> => Object.fromEntries(Object.entries(m as Record<string, unknown>).flatMap(([k, v]) =>
@@ -1153,6 +1155,31 @@ export function registerAdminRoutes(router: Router, app: App): void {
     }
     audit(app.db, actor(ctx), { action: 'system.zammad_setup', targetType: 'system', targetId: sys.id, systemId: sys.id, details: { angelegt: r.created } });
     return { report: r, created: r.created };
+  });
+
+  // ---------------------------------------------------------------- ITSM-Grundausstattung für Zammad
+  const baselineOf = (raw: unknown) => {
+    try { return normalizeBaseline(raw ?? { customerLink: app.cfg.publicUrl.startsWith('https://') ? app.cfg.publicUrl : '' }); } catch (err) { throw new HttpError(422, (err as Error).message, 'validation'); }
+  };
+  router.get('/api/admin/systems/:systemId/zammad/baseline', admin('system.manage'), () => ({
+    defaults: { ...DEFAULT_BASELINE, customerLink: app.cfg.publicUrl.startsWith('https://') ? app.cfg.publicUrl : '' }, parts: BASELINE_PART_INFO,
+  }));
+  router.post('/api/admin/systems/:systemId/zammad/baseline/preview', admin('system.manage'), async (ctx: AppCtx) => {
+    const sys = sysOr404(ctx.params.systemId);
+    const o = baselineOf((ctx.body as { options?: unknown })?.options);
+    try { return { items: await previewBaseline(app, sys, o) }; } catch (err) {
+      throw new HttpError(502, `Zammad lässt sich nicht lesen: ${(err as Error).message.slice(0, 300)}. Hat der API-Benutzer Admin-Rechte?`, 'zammad_error');
+    }
+  });
+  router.post('/api/admin/systems/:systemId/zammad/baseline/apply', admin('system.manage', { stepup: true }), async (ctx: AppCtx) => {
+    const sys = sysOr404(ctx.params.systemId);
+    const o = baselineOf((ctx.body as { options?: unknown })?.options);
+    let r;
+    try { r = await applyBaseline(app, sys, o); } catch (err) {
+      throw new HttpError(502, `Zammad hat abgelehnt: ${(err as Error).message.slice(0, 300)}. Hat der API-Benutzer Admin-Rechte?`, 'zammad_error');
+    }
+    audit(app.db, actor(ctx), { action: 'system.zammad_baseline', targetType: 'system', targetId: sys.id, systemId: sys.id, details: { angelegt: r.created, fehler: r.errors.length } });
+    return r;
   });
 
   // ---------------------------------------------------------------- Export und Import der Ticketsysteme

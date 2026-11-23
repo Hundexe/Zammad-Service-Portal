@@ -180,13 +180,18 @@ export interface Connector {
   // ---- Einrichtung (braucht Admin-Rechte in Zammad)
   setupInfo(): Promise<SetupInfo>;
   createGroup(name: string): Promise<void>;
-  createState(name: string, likeState: string): Promise<void>;
+  createState(name: string, likeState: string, opts?: { ignoreEscalation?: boolean }): Promise<void>;
+  /** Verwaltungsobjekte in Zammad (Grundausstattung): Liste bzw. Anlegen */
+  adminList(kind: AdminKind): Promise<{ id: number; name: string; [k: string]: unknown }[]>;
+  adminCreate(kind: AdminKind, body: Record<string, unknown>): Promise<{ id: number }>;
   saveAttribute(def: AttributeDef, existingId?: number): Promise<void>;
   executeMigrations(): Promise<void>;
   /** Core Workflows (Abhängigkeiten zwischen Feldern) */
   workflows(): Promise<{ id: number; name: string; active: boolean }[]>;
   saveWorkflow(def: WorkflowDef, existingId?: number): Promise<void>;
 }
+
+export type AdminKind = 'ticket_priorities' | 'calendars' | 'slas' | 'triggers' | 'jobs' | 'overviews' | 'roles' | 'ticket_states';
 
 /** Core Workflow für Tickets: Bedingung (Feld → Operator/Wert) und Wirkung (Feld → show/hide) */
 export interface WorkflowDef {

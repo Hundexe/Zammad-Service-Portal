@@ -1,5 +1,25 @@
 # Änderungen
 
+## 2.0.0 – 23.11.2026
+
+**Zammad ist die einzige Datenquelle.** Alles, was Mitarbeitende und IT im Portal sehen, liegt jetzt im Ticketsystem; das Portal ist die Oberfläche dafür. Ausführlich: [ZAMMAD.md](docs/ZAMMAD.md).
+
+- **Freigabe im Ticket:** Eine Anfrage mit Freigabe durch Vorgesetzte ist sofort ein Ticket im Status „wartet auf Freigabe“ (Felder „Portal: Freigabe“, „Freigabe durch“, „Freigabe bis“). Zammad schickt der freigebenden Person eine E-Mail mit Link ins Portal. Freigeben, Ablehnen, Zurückziehen, Wechsel der Person und Ablauf schreibt das Portal ins Ticket (Status, Felder, Tag, öffentliche Notiz, E-Mail an die anfragende Person). Die Berechtigung prüft das Portal bei jedem Aufruf live am Ticket. Schließt die IT ein wartendes Ticket in Zammad, gilt die Freigabe als abgebrochen
+- **Störungen, Wartungen und Probleme sind Tickets** mit dem Feld „Portal: Art“; Auswirkung, Phase, Services, Standorte und Zeiten sind Felder, Updates öffentliche Notizen. Anlegen im Portal oder direkt in Zammad
+- **„Ich bin auch betroffen“** legt ein Ticket der Person an, verknüpft als Kind der Störung. Behoben → das Portal schließt diese Tickets, auch wenn die Störung direkt in Zammad geschlossen wurde. Wartungen schließt das Portal nach ihrem Ende
+- Neue Tickets aus Formularen mit gestörten Services werden in Zammad mit der Störung verknüpft; Probleme verknüpfen Tickets über Zammad-Verknüpfungen (statt der Tags `inc-…` und `prb-…`)
+- **„Meine Anfragen“** liest Titel, Stand und Freigabe live aus Zammad; nach der Zustellung bleibt im Portal nur der Zeiger aufs Ticket
+- **Zammad-Zuordnung** je Ticketsystem: Status, Gruppen, Tags, zusätzliche Werte (z. B. eine vorhandene Ticketart, damit SLAs greifen), Felder auf vorhandene umlenken, E-Mails ein/aus. Vor dem Anlegen sucht das Portal nach Überschneidungen mit vorhandenen Feldern und schlägt sie vor
+- **Einrichtung durch das Portal:** „In Zammad einrichten“ legt Gruppen, den Status, die Felder (`portal_…`), fehlende Auswahlwerte und **Abhängigkeiten** (Core Workflows „Portal: …“) an – Portal-Felder erscheinen nur, wo sie gebraucht werden; je Art (Störung, Wartung, Problem) lassen sich vorhandene Felder ausblenden. Stündliche Prüfung mit Hinweis in der Übersicht, CLI `zammad:setup`
+- Neue Zeitfelder für Störungen (seit, behoben am); Wartungen mit Beginn und Ende als Felder
+- **ITSM-Grundausstattung** (neu, eigener Bereich): Ticketart, Priorität aus Auswirkung und Dringlichkeit (P1–P4, Matrix per Trigger), Status mit angehaltener SLA beim Warten, SLAs mit Arbeitszeiten-Kalender, automatische Nachrichten, automatisches Schließen mit Erinnerung, Eskalation in zwei Stufen, Übersichten. Mit Vorschau; Vorhandenes wird nie überschrieben, ähnliche Felder werden erkannt. Beschreibung: [ITSM-GRUNDAUSSTATTUNG.md](docs/ITSM-GRUNDAUSSTATTUNG.md), CLI `zammad:baseline`
+- **Umstieg:** Wartende Freigaben aus 1.x gehen beim Start automatisch als Ticket nach Zammad (Frist bleibt). Störungen, Wartungen und Probleme übernimmt `zammad:migrate` (mit `--dry-run`)
+- **Achtung, geänderte Voraussetzung:** Der API-Benutzer braucht in Zammad die Rolle **Admin** (Gruppen, Status, Felder, Core Workflows; für die Grundausstattung auch Trigger, SLAs, Übersichten). Nach der Einrichtung lässt sie sich zurücknehmen – [Rechte](docs/ZAMMAD.md#8-rechte-des-api-benutzers)
+- **Entfallen:** der von Hand gesetzte Zustand eines Service (dafür Störung oder Wartung anlegen), das Feld „Verantwortlich“ bei Problemen (dafür der Besitzer des Tickets), das „führende Ticket“ einer Störung (die Störung ist jetzt selbst ein Ticket). Die Kennung im Portal ist `<Ticketsystem>.<Ticket-ID>`
+- Abbrechen in der Verwaltung gilt nur noch für Anfragen, die noch nicht in Zammad sind
+- Export und Import enthalten die Zammad-Zuordnung
+- Neue und umgeschriebene Tests für Freigaben im Ticket, Störungen in Zammad, Einrichtung, Übernahme und Grundausstattung (364)
+
 ## 1.14.1 – 20.11.2026
 
 - **Laufzeit-Image auf distroless Debian 13:** Die Debian-12-Images von distroless bekommen keine Sicherheitsupdates mehr – der Image-Scan meldete deshalb Lücken in OpenSSL (u. a. CVE-2026-31789). Mit Debian 13 ist der Scan wieder sauber

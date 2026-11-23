@@ -12,6 +12,7 @@
 //   scanner:test                    Virenscanner mit EICAR-Testdatei prüfen
 //   audit:verify
 //   zammad:setup [--system KÜRZEL] [--apply]   Zammad prüfen bzw. einrichten (Gruppen, Status, Attribute, Abhängigkeiten)
+//   zammad:baseline [--system KÜRZEL] [--apply]   ITSM-Grundausstattung (Vorschau bzw. anlegen, Standardwerte)
 //   zammad:migrate [--dry-run]      Störungen, Wartungen und Probleme aus 1.x nach Zammad übernehmen
 //   secret:generate
 //   healthcheck
@@ -247,6 +248,27 @@ async function main(): Promise<void> {
           if (!r.ready) process.exitCode = 2;
         }
         if (!flag('apply')) console.log('Mit --apply legt das Portal Fehlendes an (API-Benutzer braucht Admin-Rechte in Zammad).');
+      });
+      return;
+    case 'zammad:baseline':
+      await withApp(async (app) => {
+        const { listSystems } = await import('./services/systems.ts');
+        const { applyBaseline, previewBaseline, itemLabel } = await import('./services/zammad-baseline.ts');
+        const { normalizeBaseline } = await import('../shared/zammad-baseline.ts');
+        const o = normalizeBaseline({ customerLink: app.cfg.publicUrl.startsWith('https://') ? app.cfg.publicUrl : '' });
+        const only = arg('system');
+        for (const sys of listSystems(app).filter((s) => s.status !== 'inactive' && (!only || s.slug === only))) {
+          console.log(`${sys.name} (${sys.slug}):`);
+          if (flag('apply')) {
+            const r = await applyBaseline(app, sys, o);
+            for (const x of r.created) console.log(`  angelegt: ${x}`);
+            for (const e of r.errors) console.log(`  Fehler: ${e}`);
+            if (r.errors.length) process.exitCode = 2;
+          } else {
+            for (const i of await previewBaseline(app, sys, o)) console.log(`  ${i.status.padEnd(12)} ${itemLabel(i)}${i.note ? ` – ${i.note}` : ''}`);
+          }
+        }
+        if (!flag('apply')) console.log('Mit --apply wird angelegt (Standardwerte; Zeiten lassen sich in der Verwaltung einstellen).');
       });
       return;
     case 'zammad:migrate':

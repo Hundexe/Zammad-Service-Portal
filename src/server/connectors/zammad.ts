@@ -4,7 +4,7 @@
 import {
   ConnectorError, type ZammadAttribute, type ArticleSummary, type Attachment, type Connector, type CreateTicketInput,
   type CustomerRef, type SystemMetadata, type TicketSummary, type TicketSystemConfig,
-  type AgentArticle, type AttributeDef, type LinkType, type NewAgentTicket, type NewArticle, type SearchCondition, type SetupInfo, type WorkflowDef, type ZTicket,
+  type AgentArticle, type AttributeDef, type LinkType, type NewAgentTicket, type NewArticle, type SearchCondition, type SetupInfo, type WorkflowDef, type AdminKind, type ZTicket,
 } from './types.ts';
 import { isProtectedZammadField } from '../../shared/form.ts';
 import { log } from '../log.ts';
@@ -626,11 +626,22 @@ export class ZammadConnector implements Connector {
     await this.call('POST', '/api/v1/groups', { body: { name, active: true, note: 'Angelegt vom Self-Service-Portal' } });
   }
 
-  async createState(name: string, likeState: string): Promise<void> {
+  async adminList(kind: AdminKind): Promise<{ id: number; name: string; [k: string]: unknown }[]> {
+    const r = await this.call('GET', `/api/v1/${kind}?per_page=500`);
+    return (Array.isArray(r) ? r : []).map((x: Json) => ({ ...x, id: Number(x.id), name: String(x.name ?? '') }));
+  }
+
+  async adminCreate(kind: AdminKind, body: Record<string, unknown>): Promise<{ id: number }> {
+    const r = await this.call('POST', `/api/v1/${kind}`, { body });
+    if (!r?.id) throw new ConnectorError(`Zammad hat ${kind} nicht angelegt`, false);
+    return { id: Number(r.id) };
+  }
+
+  async createState(name: string, likeState: string, opts: { ignoreEscalation?: boolean } = {}): Promise<void> {
     const states = (await this.call('GET', '/api/v1/ticket_states?per_page=500')) as Json[];
     const like = (states ?? []).find((s) => s.name === likeState);
     if (!like?.state_type_id) throw new ConnectorError(`Status „${likeState}“ fehlt in Zammad`, false);
-    await this.call('POST', '/api/v1/ticket_states', { body: { name, state_type_id: like.state_type_id, active: true, ignore_escalation: true, note: 'Angelegt vom Self-Service-Portal' } });
+    await this.call('POST', '/api/v1/ticket_states', { body: { name, state_type_id: like.state_type_id, active: true, ignore_escalation: opts.ignoreEscalation ?? true, note: 'Angelegt vom Self-Service-Portal' } });
   }
 
   async saveAttribute(def: AttributeDef, existingId?: number): Promise<void> {

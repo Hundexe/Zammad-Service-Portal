@@ -114,6 +114,10 @@ export async function createDemoBackend(): Promise<DemoBackend> {
     }
 
     // ---------------------------------------------------------------- Ändernde Aufrufe (nur in diesem Tab)
+    // Aufgezeichnete Prüfungen ohne Wirkung (z. B. Zammad prüfen, Vorschau der Grundausstattung)
+    const rec = recorded(requestKey(m, p));
+    if (rec) return { status: rec.status, data: rec.data };
+    if (/\/zammad\/(apply|baseline\/apply)$/.test(p) || (m === 'PUT' && /\/zammad$/.test(p))) return fail(409, 'In der Demo wird Zammad nicht verändert.', 'demo');
     const submit = /^\/api\/portal\/forms\/([^/]+)\/submit$/.exec(p);
     if (submit) {
       const form = recorded(requestKey('GET', `/api/portal/forms/${submit[1]}`))?.data as Json;

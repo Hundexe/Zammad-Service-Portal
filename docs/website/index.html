@@ -228,7 +228,7 @@
     </div>
     <div class="stage" id="video">
       <div class="player">
-        <video controls playsinline preload="metadata" poster="video/poster.jpg" aria-label="Video-Einführung in das Self-Service-Portal, 3 Minuten 18 Sekunden">
+        <video controls playsinline preload="metadata" poster="video/poster.jpg" aria-label="Video-Einführung in das Self-Service-Portal, 3 Minuten 22 Sekunden">
           <source src="video/service-portal-demo.mp4" type="video/mp4">
           <track kind="captions" src="video/service-portal-demo.de.vtt" srclang="de" label="Deutsch" default>
         </video>
@@ -240,7 +240,7 @@
 <main>
   <div class="wrap">
     <div class="video-note">
-      <span>Einführung in 3:18, mit Sprecher und Untertiteln.</span>
+      <span>Einführung in 3:22, mit Sprecher und Untertiteln.</span>
       <a href="video/service-portal-demo.mp4" download>Video herunterladen (MP4)</a>
       <a href="video/service-portal-demo.srt" download>Untertitel (SRT)</a>
     </div>
@@ -271,7 +271,7 @@
           <span class="step-no" aria-hidden="true">2</span>
           <div class="step-text">
             <h3>Freigabe durch die Führungskraft</h3>
-            <p>Kostet etwas Geld, fragt das Formular nach der Person, die freigibt. Die Anfrage wartet im Portal und geht erst nach der Freigabe an die IT – mit Vermerk im Ticket.</p>
+            <p>Kostet etwas Geld, fragt das Formular nach der Person, die freigibt. Die Anfrage ist sofort ein Ticket, wartet dort auf die Entscheidung und wird erst danach bearbeitet – mit E-Mail, Frist und Vermerk im Ticket.</p>
             <ul>
               <li>Auch nur unter Bedingungen, z. B. bei kostenpflichtiger Software</li>
               <li>Freigeben oder ablehnen mit Begründung, Erinnerung und Frist</li>
@@ -393,7 +393,7 @@
         <div>
           <h3>Was die IT damit macht</h3>
           <p>Störungen sind in Sekunden gemeldet, Updates gehen automatisch an alle Betroffenen. Die IT sieht, wer betroffen ist, und kann Störungen einem Problem zuordnen – mit Ursache, Workaround und verknüpften Tickets.</p>
-          <p class="rule">Zammad bleibt das führende System. Tickets zu einer Störung oder einem Problem bekommen dort einen Tag wie inc‑0003 oder prb‑0001, neue Tickets während einer Störung automatisch.</p>
+          <p class="rule">Alles liegt im Ticketsystem: Störungen, Wartungen und Probleme sind Tickets in Zammad, „Ich bin auch betroffen“ legt ein verknüpftes Ticket an, neue Tickets während einer Störung werden automatisch damit verknüpft.</p>
           <p>Jede dieser Funktionen lässt sich in der Verwaltung einzeln ein- und ausschalten.</p>
         </div>
         <div class="route-flow">
@@ -410,6 +410,37 @@
             <figcaption><b>Funktionen</b> einzeln schaltbar</figcaption>
           </figure>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------ Zammad -->
+  <section id="zammad">
+    <div class="wrap">
+      <div class="head">
+        <span class="new">Neu in 2.0</span>
+        <h2>Alles im Ticketsystem – das Portal ist die Oberfläche</h2>
+        <p>Freigaben, Störungen, Wartungen und bekannte Probleme liegen als Tickets in Zammad. Was die IT dort ändert, sehen die Mitarbeitenden sofort im Portal – und umgekehrt.</p>
+      </div>
+      <dl class="incident-list">
+        <div><dt>Freigabe im Ticket</dt><dd>Die Anfrage ist sofort ein Ticket im Status „wartet auf Freigabe“. Die Entscheidung im Portal schreibt Status, Vermerk und Tag ins Ticket; die E-Mails verschickt Zammad.</dd></div>
+        <div><dt>Passt zur eigenen Struktur</dt><dd>Je Ticketsystem einstellbar: Gruppen, Status, Felder, Tags und zusätzliche Werte, damit vorhandene SLAs und Trigger greifen. Das Portal schlägt vorhandene Felder vor, statt doppelte anzulegen.</dd></div>
+        <div><dt>Einrichtung per Klick</dt><dd>Das Portal legt in Zammad an, was fehlt – Gruppen, Status, Felder und Abhängigkeiten, die Felder nur zeigen, wo sie gebraucht werden. Gelöscht wird nie etwas.</dd></div>
+        <div><dt>ITSM-Grundausstattung</dt><dd>Für den schnellen Start: Ticketart, Priorität aus Auswirkung und Dringlichkeit, SLAs mit Arbeitszeiten, automatische Nachrichten, automatisches Schließen, Eskalation und Übersichten – mit Vorschau.</dd></div>
+      </dl>
+      <div class="incident-row">
+        <figure>
+          <button class="shot-btn" type="button"><img class="shot" src="img/zammad.jpg" width="2160" height="1350" loading="lazy" alt="Zammad-Zuordnung mit Stand in Zammad und Einstellungen für Freigaben"></button>
+          <figcaption><b>Zammad-Zuordnung</b> mit Prüfung und Einrichtung per Klick</figcaption>
+        </figure>
+        <figure>
+          <button class="shot-btn" type="button"><img class="shot" src="img/zammad-arten.jpg" width="2160" height="1350" loading="lazy" alt="Einstellungen je Art: Gruppe, Tags, zusätzliche Werte, auszublendende Felder"></button>
+          <figcaption><b>Je Art</b> Gruppe, Werte und ausgeblendete Felder</figcaption>
+        </figure>
+        <figure>
+          <button class="shot-btn" type="button"><img class="shot" src="img/grundausstattung-vorschau.jpg" width="2160" height="1350" loading="lazy" alt="Vorschau der ITSM-Grundausstattung mit allen Elementen"></button>
+          <figcaption><b>Grundausstattung</b> mit Vorschau</figcaption>
+        </figure>
       </div>
     </div>
   </section>

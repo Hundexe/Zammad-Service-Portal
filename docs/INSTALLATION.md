@@ -126,25 +126,21 @@ Die ausführliche Anleitung mit allen Klicks, Rechten, zwei Tenants, Zertifikat 
 
 Pro Zammad-Instanz (für den Test erst das Test-Zammad):
 
-1. **Rolle anlegen** (Einstellungen → Rollen → Neu), z. B. `Self-Service-Portal API`, mit den Rechten:
-   - `admin.user` – Kunden suchen/anlegen und Tickets **im Namen des Kunden** (`X-On-Behalf-Of`) anlegen und lesen
-   - `admin.object` – Ticket-Attribute aus dem Objekt-Manager lesen (für die Freigabe im Portal)
-   - `ticket.agent` mit Zugriff **Anlegen + Lesen + Ändern** auf alle Gruppen, in die das Portal Tickets legt
-2. **Benutzer anlegen**, z. B. `service-portal@firma.intern`, nur mit dieser Rolle. Für ihn ein langes, zufälliges Passwort setzen und nirgends verwenden.
-3. Als dieser Benutzer anmelden: **Profil → Token-Zugriff → Neuer persönlicher Token**, Name `Self-Service-Portal`, Rechte `admin.user`, `admin.object`, `ticket.agent`. Den Token notieren – er wird später in der Admin-Oberfläche eingetragen und dort verschlüsselt gespeichert.
-   **Welche Rechte braucht welche Betriebsart?** (Einstellung „Tickets anlegen“ am Ticketsystem)
+1. **Benutzer anlegen**, z. B. `service-portal@…` (eigene Adresse eurer Domain), mit den Rollen **Admin** und **Agent**. Agent mit Zugriff **Anlegen + Lesen + Ändern** auf alle Gruppen, in die das Portal Tickets legt (auch die Gruppen für Störungen, Wartungen und Probleme). Ein langes, zufälliges Passwort setzen und nirgends verwenden.
+   Warum Admin: Ab Version 2.0 richtet das Portal Zammad selbst ein (Gruppen, den Status „wartet auf Freigabe“, Felder, Abhängigkeiten) und schreibt Freigaben, Störungen und Wartungen ins Ticket. Welche Rechte wofür gebraucht werden und wie man sie nach der Einrichtung einschränkt: [ZAMMAD.md, Abschnitt 8](ZAMMAD.md#8-rechte-des-api-benutzers).
+2. Als dieser Benutzer anmelden: **Profil → Token-Zugriff → Neuer persönlicher Token**, Name `Self-Service-Portal`, Rechte `admin` und `ticket.agent`. Den Token notieren – er wird später in der Admin-Oberfläche eingetragen und dort verschlüsselt gespeichert.
+3. Nach dem Eintragen im Portal: **Verwaltung → Ticketsysteme → Zammad-Zuordnung → In Zammad einrichten**. Optional für einen schnellen Start: **ITSM-Grundausstattung** ([Beschreibung](ITSM-GRUNDAUSSTATTUNG.md)).
+
+   **Betriebsart „Tickets anlegen“** (Einstellung am Ticketsystem):
 
    | | Im Namen des Kunden (`on_behalf_of`, Standard) | Als Portal-Benutzer mit Kundenfeld (`customer_field`) |
    | --- | --- | --- |
-   | Rechte des API-Benutzers | `admin.user`, `ticket.agent` (nur Portal-Gruppen), optional `admin.object` | `ticket.agent` (nur Portal-Gruppen), optional `admin.object` |
-   | Warum | Zammad erlaubt `X-On-Behalf-Of` nur mit `admin.user` | Kunden suchen und anlegen geht mit Agentenrechten |
    | Wer prüft, welche Tickets ein Kunde sieht | **Zammad** (Kundensicht) **und** das Portal | nur das Portal (Kunden-ID, Organisation, interne Notizen werden herausgefiltert – getestet) |
    | Ticket-Ersteller in Zammad | der Kunde | der API-Benutzer |
-   | Risiko bei gestohlenem Token | Benutzerverwaltung in Zammad | Lesen/Ändern der Tickets in den Portal-Gruppen |
 
-   Empfehlung: `on_behalf_of`, weil Zammad dann selbst eine zweite Prüfung macht. Wer `admin.user` nicht vergeben möchte, nimmt `customer_field`. In beiden Fällen: eigener Benutzer, nur die Gruppen, in die das Portal Tickets legt (in der Verwaltung unter **Erlaubte Zammad-Gruppen** dieselbe Liste eintragen), keine Organisationen außer den nötigen, Token jährlich erneuern, Rechte bei jedem Zammad-Update prüfen. `admin.object` braucht es nur zum Lesen der Ticket-Attribute; nach der Freigabe kann es wieder entfernt werden (bis zur nächsten Änderung).
+   Empfehlung: `on_behalf_of`, weil Zammad dann selbst eine zweite Prüfung macht. Anfragen mit Freigabe und Tickets von Betroffenen einer Störung legt das Portal immer als API-Benutzer an (Kunden dürfen keinen Status und keine Portal-Felder setzen); Absender der ersten Nachricht bleibt der Kunde. In jedem Fall: eigener Benutzer, nur die nötigen Gruppen (in der Verwaltung unter **Erlaubte Zammad-Gruppen** dieselbe Liste eintragen), Token jährlich erneuern, Rechte bei jedem Zammad-Update prüfen. Für die E-Mails zu Freigaben braucht die Gruppe eine Absenderadresse.
 
-4. **Eingangsbestätigung per Trigger** (Zammad verschickt alle Mails, das Portal keine):
+4. **Eingangsbestätigung per Trigger** (entfällt mit der ITSM-Grundausstattung) (Zammad verschickt alle Mails, das Portal keine):
    Einstellungen → Trigger → Neu
    - Bedingung: *Aktion* ist *erstellt* **und** *Tags* enthält einen von `service-portal`
    - Aktion: *E-Mail* an *Kunde*, Betreff z. B. `Ihre Anfrage #{ticket.number}: #{ticket.title}`

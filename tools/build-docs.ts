@@ -13,6 +13,8 @@ export const DOCS: { file: string; page: string; name: string; hint: string }[] 
   { file: 'INSTALLATION.md', page: 'installation', name: 'Installation', hint: 'Schritt für Schritt' },
   { file: 'ENTRA.md', page: 'microsoft-anmeldung', name: 'Microsoft-Anmeldung', hint: 'App, Rechte, Gruppen' },
   { file: 'BEDIENUNG.md', page: 'bedienung', name: 'Bedienung', hint: 'Portal und Verwaltung' },
+  { file: 'ZAMMAD.md', page: 'zammad', name: 'Zammad als Datenquelle', hint: 'Zuordnung, Einrichtung, Umstieg' },
+  { file: 'ITSM-GRUNDAUSSTATTUNG.md', page: 'itsm-grundausstattung', name: 'ITSM-Grundausstattung', hint: 'Startkonfiguration für Zammad' },
   { file: 'APP.md', page: 'app', name: 'Portal als App', hint: 'Installieren, per Intune verteilen' },
   { file: 'BETRIEB.md', page: 'betrieb', name: 'Betrieb', hint: 'Sicherung, Monitoring, Härtung' },
   { file: 'UPDATES.md', page: 'updates', name: 'Updates', hint: 'Releases, Rollback' },

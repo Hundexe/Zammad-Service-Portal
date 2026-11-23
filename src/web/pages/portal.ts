@@ -138,7 +138,7 @@ export async function formPage(p: Record<string, string>) {
           h('div', { class: 'success-mark wait', attrs: { 'aria-hidden': 'true' } }, icon('shield', 28)),
           h('h1', null, 'Wartet auf Freigabe'),
           h('p', null, 'Ihre Anfrage ist eingegangen.'),
-          h('p', { class: 'muted' }, `„${r.title}“ geht erst an ${dest.name}, wenn ${who} sie freigegeben hat. Sie werden hier im Portal benachrichtigt.`),
+          h('p', { class: 'muted' }, `„${r.title}“ ist als Ticket bei ${dest.name} und wird bearbeitet, sobald ${who} sie freigegeben hat. ${who} bekommt eine E-Mail; Sie werden über die Entscheidung benachrichtigt.`),
           !r.approval.known ? notice('warn', `${r.approval.email} hat sich noch nie im Portal angemeldet. Bitte geben Sie der Person Bescheid – sie findet die Anfrage nach der Anmeldung unter „Freigaben“.`) : null,
           h('div', { class: 'row' }, link('/anfragen', 'Zu meinen Anfragen'), link(`/s/${data.system.id}`, 'Weitere Anfrage stellen'))));
         window.scrollTo({ top: 0 });
@@ -314,7 +314,7 @@ export async function requestsPage() {
     const waiting = r.requests.filter((x) => x.status === 'awaiting_approval').length;
     mount(host,
       pageHead('Meine Anfragen', 'Alles, was Sie über das Portal gesendet haben'),
-      waiting ? notice('info', waiting === 1 ? 'Eine Anfrage wartet noch auf eine Freigabe. Sie geht erst danach an die IT.' : `${waiting} Anfragen warten noch auf eine Freigabe. Sie gehen erst danach an die IT.`) : null,
+      waiting ? notice('info', waiting === 1 ? 'Eine Anfrage wartet noch auf eine Freigabe. Das Ticket ist schon da – die IT bearbeitet es nach der Freigabe.' : `${waiting} Anfragen warten noch auf eine Freigabe. Die Tickets sind schon da – die IT bearbeitet sie nach der Freigabe.`) : null,
       table(r.requests, [
         { label: 'Gesendet', render: (x) => fmtDate(x.created_at) },
         { label: 'Betreff', class: 'grow', render: (x) => x.ticket_id ? link(`/s/${x.system_id}/tickets/${x.ticket_id}`, x.title) : x.title },

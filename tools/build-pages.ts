@@ -80,6 +80,18 @@ try {
       await collect();
     }
   }
+  // Prüfungen ohne Wirkung zusätzlich aufzeichnen (POST): Zammad prüfen, Vorschau der Grundausstattung
+  const csrf = await page.evaluate(() => fetch('/api/me').then((r) => r.json()).then((j) => j.csrf as string));
+  for (const sid of Object.values(demo.seeded.systems as Record<string, string>)) {
+    const defaults = await page.evaluate((u: string) => fetch(u).then((r) => r.json()), `/api/admin/systems/${sid}/zammad/baseline`);
+    for (const [path, body] of [[`/api/admin/systems/${sid}/zammad/check`, {}], [`/api/admin/systems/${sid}/zammad/baseline/preview`, { options: defaults.defaults }]] as const) {
+      const r = await page.evaluate(async ([u, b, t]: [string, unknown, string]) => {
+        const res = await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': t }, body: JSON.stringify(b) });
+        return { status: res.status, data: await res.json() };
+      }, [path, body, csrf] as [string, unknown, string]);
+      responses[requestKey('POST', path)] = r;
+    }
+  }
   console.log(`${visited} Seiten besucht, ${Object.keys(responses).length} Antworten aufgezeichnet`);
 } finally {
   await browser.close();

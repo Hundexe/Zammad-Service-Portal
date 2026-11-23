@@ -59,27 +59,26 @@ Benutzer          Portal (app)                       Worker                     
 - Ist Zammad nicht erreichbar oder im Wartungsmodus, bleibt die Anfrage in der Warteschlange. Der Worker versucht es mit wachsenden Abständen erneut (30 s … 1 h, bis zu 20 Versuche).
 - Nach der Zustellung werden Formularinhalt und Anhänge sofort aus dem Portal gelöscht. Titel und Ticketnummer bleiben für „Meine Anfragen“; nach einem Jahr wird auch das gelöscht.
 
-### Mit Freigabe durch Vorgesetzte
+### Mit Freigabe durch Vorgesetzte (ab 2.0 im Ticket)
 
-Enthält das Formular ein sichtbares Feld „Freigabe durch Vorgesetzte(n)“, schiebt sich ein Schritt dazwischen:
+Enthält das Formular ein sichtbares Feld „Freigabe durch Vorgesetzte(n)“, entsteht das Ticket trotzdem sofort – nur in einem eigenen Status:
 
 ```
-Anfragende Person        Portal                                   Freigebende Person        Worker → Zammad
-   │ Formular + Adresse ─▶│ prüfen wie oben, Ticket fertig bauen,     │                          │
-   │                      │ verschlüsselt speichern                   │                          │
-   │                      │ Status awaiting_approval ─ Benachrichtigung ▶ Glocke, „Freigaben“    │
-   │◀ „Wartet auf Freigabe“│                                          │                          │
-   │                      │◀──────────────────────── Freigeben ───────│                          │
-   │                      │ Vermerk + Tag „freigegeben“ ins Ticket,   │                          │
-   │                      │ Status queued ───────────────────────────────────────────────────────▶│ zustellen wie oben
-   │◀─ Benachrichtigung ──│                                           │                          │
-   │                      │◀──────────────────────── Ablehnen ────────│  (Begründung Pflicht)    │
-   │◀─ Benachrichtigung ──│ Status rejected, Inhalt + Anhänge löschen │                          │
+Anfragende Person        Portal / Worker                          Zammad                      Freigebende Person
+   │ Formular + Adresse ─▶│ prüfen wie oben, Outbox                │                              │
+   │                      │ Ticket anlegen (als API-Benutzer) ────▶│ „wartet auf Freigabe“        │
+   │                      │                                        │ portal_freigabe = ausstehend │
+   │                      │ E-Mail-Artikel an die Adresse ────────▶│──── E-Mail mit Link ────────▶│
+   │                      │ Hinweis an der Glocke ───────────────────────────────────────────────▶│
+   │                      │◀──────────── Freigeben / Ablehnen im Portal (live am Ticket geprüft) ─│
+   │                      │ Attribute, Status, Tag, Notiz ────────▶│ „new“ bzw. „closed“          │
+   │◀ E-Mail und Glocke ──│ E-Mail-Artikel an die anfragende Person▶│                              │
 ```
 
-- Zustände von `requests`: `awaiting_approval` → `queued` → `sending` → `delivered` / `failed`, oder `awaiting_approval` → `rejected` / `withdrawn` (anfragende Person zieht zurück) / `expired` (Frist `APPROVAL_EXPIRE_DAYS`). Aus `failed`, `queued` und `awaiting_approval` kann die Verwaltung eine Anfrage abbrechen (`cancelled`). Der Worker fasst nur `queued` an.
-- Der Worker prüft stündlich die Fristen: einmalige Erinnerung nach `APPROVAL_REMIND_DAYS`, Ablauf nach `APPROVAL_EXPIRE_DAYS`.
-- Benachrichtigungen (`src/server/services/notifications.ts`) landen in der Tabelle `notifications` und erscheinen an der Glocke. Ziel ist ein Konto oder – für Personen, die sich vielleicht noch nie angemeldet haben – eine E-Mail-Adresse. Weitere Kanäle hängen sich über `registerChannel()` an; heute gibt es nur den Posteingang im Portal.
+- `requests` ist nur noch die Outbox: `queued` → `sending` → `delivered` / `failed` (Abbruch durch die Verwaltung: `cancelled`). Nach der Zustellung wird auch der Titel im Portal neutralisiert; „Meine Anfragen“ liest Titel, Status und Freigabe live aus Zammad (eine Suche je Ticketsystem).
+- Der Worker prüft alle fünf Minuten die wartenden Freigaben in Zammad: einmalige Erinnerung nach `APPROVAL_REMIND_DAYS`, Ablauf nach `APPROVAL_EXPIRE_DAYS`, in Zammad geschlossene Tickets gelten als abgebrochen.
+- Benachrichtigungen (`src/server/services/notifications.ts`) landen in der Tabelle `notifications` und erscheinen an der Glocke. Ziel ist ein Konto oder eine E-Mail-Adresse. E-Mails verschickt Zammad aus dem Ticket.
+- Die Abbildung in Zammad (Feldnamen, Status, Gruppen, Tags) ist je Ticketsystem einstellbar: [ZAMMAD.md](ZAMMAD.md).
 
 ## Zammad-Anbindung
 
@@ -94,6 +93,13 @@ Anfragende Person        Portal                                   Freigebende Pe
 | Ticketverlauf | `GET /api/v1/tickets/{id}`, `ticket_articles/by_ticket/{id}` | `X-On-Behalf-Of` |
 | Anhang | `GET /api/v1/ticket_attachment/{t}/{a}/{id}` | `X-On-Behalf-Of` |
 | Antwort | `POST /api/v1/ticket_articles` | `X-On-Behalf-Of` |
+| Freigaben, Störungen, Wartungen, Probleme lesen | `GET /api/v1/tickets/search?condition[ticket.portal_…]…` (ohne Suchbegriff, direkt in der Datenbank) | |
+| Ticket des API-Benutzers anlegen bzw. ändern | `POST /api/v1/tickets` (mit Status), `PUT /api/v1/tickets/{id}` (Status, Attribute) | |
+| Notizen und E-Mails | `POST /api/v1/ticket_articles` (`type: note` bzw. `email`) | |
+| Tags | `POST /api/v1/tags/add`, `DELETE /api/v1/tags/remove`, `GET /api/v1/tags` | |
+| Verknüpfungen | `GET /api/v1/links`, `POST /api/v1/links/add`, `DELETE /api/v1/links/remove` | |
+| Einrichtung | `POST /api/v1/groups`, `ticket_states`, `object_manager_attributes` (+ `…_execute_migrations`), `core_workflows` | |
+| ITSM-Grundausstattung | `ticket_priorities`, `calendars`, `slas`, `triggers`, `jobs`, `overviews`, `roles` | |
 
 Mit `X-On-Behalf-Of` handelt Zammad als der Kunde selbst. Zammad entscheidet also, welche Tickets er sehen darf; das Portal zeigt davon nur eigene Tickets (bzw. die der eigenen Organisation). Das ist wichtig, wenn ein Kunde in Zammad zugleich Agent ist: Was er dort als Agent sieht, erscheint im Portal nicht. Interne Notizen werden doppelt ausgefiltert. Alle Aufrufe laufen über einen fetch mit SSRF-Schutz (`src/server/net/guarded-fetch.ts`): die aufgelöste IP wird bei jedem Verbindungsaufbau geprüft, Weiterleitungen werden nicht verfolgt. Nur freigegebene Attribute und erlaubte Gruppen gelangen ins Ticket (Details: [SICHERHEIT.md](SICHERHEIT.md#zammad-was-das-portal-setzen-darf)). HTML aus Zammad wird im Portal nie als HTML angezeigt, sondern serverseitig in Text umgewandelt.
 
@@ -140,7 +146,7 @@ deploy/            Docker Compose, Caddy, Installationsskript
 
 ## Status und Störungen
 
-Zammad bleibt das führende System für Tickets. Das Portal ergänzt eine Schicht davor: Services, Störungen, Wartungen und Probleme liegen im Portal (je Ticketsystem), Tickets nur in Zammad. Die Verbindung entsteht über **Tags**: Das führende Ticket einer Störung und Tickets, die während einer Störung aus einem zugeordneten Formular entstehen, tragen `inc-0003`; mit einem Problem verknüpfte Tickets `prb-0001`. Der Zustand eines Services ergibt sich bei jedem Abruf aus offenen Störungen, laufenden Wartungen und einem optionalen Zustand von Hand (der schlimmste gewinnt). „Ich bin auch betroffen“ speichert nur die Zuordnung Person ↔ Störung; Updates gehen als Benachrichtigung an diese Personen. Alle Funktionen sind über `settings.features` schaltbar (`src/shared/itsm.ts`, `src/server/services/itsm.ts`, `src/server/routes/itsm.ts`).
+Ab 2.0 sind Störungen, Wartungen und Probleme Tickets in Zammad, erkennbar am Attribut „Portal: Art“ (`src/server/services/itsm.ts`). Was im Portal steht, sind Attribute des Tickets; Updates sind öffentliche Notizen mit der Phase als Betreff. „Ich bin auch betroffen“ legt ein Ticket der Person an (Attribut „Portal: betroffen von Störung“, Zammad-Verknüpfung als Kind). Probleme verknüpfen Tickets über Zammad-Verknüpfungen und „Portal: bekanntes Problem“. Im Portal liegen nur noch die Services (Name, Beschreibung, Schlüssel = Auswahlwert in „Portal: Services“). Die Status-Seite liest Zammad mit 30 Sekunden Zwischenspeicher je Ticketsystem und Art; bei Ausfall gilt der letzte Stand. Der Worker schließt alle fünf Minuten Tickets der Betroffenen behobener Störungen (auch wenn sie in Zammad geschlossen wurden) und beendete Wartungen; erledigte Schritte merkt er sich in `zammad_done`. Die Einrichtung in Zammad (Gruppen, Status, Felder, Auswahlwerte, Core Workflows) übernimmt `src/server/services/zammad-setup.ts`, die ITSM-Grundausstattung `src/server/services/zammad-baseline.ts`.
 
 ## Portal als App
 
@@ -152,21 +158,19 @@ Das Portal ist eine Progressive Web App. `GET /api/app/manifest` liefert das Web
 | --- | --- |
 | `users` | Entra- und lokale Konten; Passwort-Hash (scrypt), TOTP-Geheimnis (verschlüsselt) |
 | `sessions` | nur SHA-256-Hash der Sitzungs-ID, CSRF-Token, Zustand, Anmeldezeit |
-| `ticket_systems` | Zammad-Instanzen; API-Token verschlüsselt; freigegebene Attribute |
+| `ticket_systems` | Zammad-Instanzen; API-Token verschlüsselt; freigegebene Attribute; Zammad-Zuordnung (JSON) |
 | `system_metadata` | Zwischenspeicher der Zammad-Stammdaten (15 Min.) |
 | `forms`, `form_versions` | Formulare und ihre Versionen (Entwurf, Freigabe, veröffentlicht, archiviert) |
 | `templates`, `overviews` | Textbausteine und Ticket-Übersichten je System |
 | `branding_versions`, `assets` | Stil, Farben und Texte versioniert, Logos |
 | `roles`, `role_assignments` | Rollen und deren Zuordnung zu Benutzern, Gruppen oder allen |
-| `requests`, `request_files` | Outbox (Inhalt verschlüsselt, Dateien verschlüsselt auf der Platte) |
-| `approvals` | Freigabe je Anfrage: Adresse der freigebenden Person, Status, Frist; Ansicht für die freigebende Person und Hinweis verschlüsselt |
+| `requests`, `request_files` | Outbox (Inhalt verschlüsselt, Dateien verschlüsselt auf der Platte); nach der Zustellung nur noch Zeiger aufs Ticket |
 | `notifications` | Benachrichtigungen im Portal (an Konto oder E-Mail-Adresse), gelesen-Zeitpunkt; Löschung nach 90 Tagen |
 | `zammad_customers` | Zuordnung Benutzer → Kunden-ID je System |
 | `settings` | u. a. `features`: eingeschaltete Funktionen und Standorte |
-| `services` | IT-Services je System, optional Zustand von Hand |
-| `incidents`, `incident_services`, `incident_updates`, `incident_affected` | Störungen (Nummer, Auswirkung, Stand, Zeitraum, führendes Zammad-Ticket), Updates und wer sich als betroffen gemeldet hat |
-| `maintenances`, `maintenance_services` | geplante Wartungen |
-| `problems`, `problem_tickets` | Probleme mit Ursache und Workaround; verknüpfte Zammad-Tickets (in Zammad zusätzlich als Tag `prb-…`) |
+| `services` | IT-Services je System mit Schlüssel (`zkey`) für Zammad |
+| `zammad_done` | erledigte Schritte in Zammad (Tickets der Betroffenen geschlossen, Erinnerung verschickt) |
+| `approvals`, `incidents`, `incident_*`, `maintenances`, `maintenance_services`, `problems`, `problem_tickets` | Daten aus 1.x, nur noch für die Übernahme nach Zammad (`zammad:migrate`); `legacy_migrated` merkt sich, was übernommen ist |
 | `audit_log` | nur anhängbar, Hash-Kette |
 | `update_state`, `update_jobs` | Update-Status und Aufträge an den Updater |
 
