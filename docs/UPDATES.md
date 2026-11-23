@@ -5,6 +5,8 @@ Neue Versionen werden als **signierte Git-Tags** (`vX.Y.Z`, siehe **Releases**) 
 
 > **Installation ohne Docker** (`deploy/native/install.sh`): Ab 1.8.0 gibt es den Update-Dienst auch dort – siehe [Installation ohne Docker](#installation-ohne-docker). Alternativ weiterhin den Installationsbefehl erneut ausführen.
 
+> **Voraussetzung: signierte Release-Tags.** Der Update-Dienst installiert nur Versionen, die als signierter Tag `vX.Y.Z` im Repository liegen (`git verify-tag` gegen `allowed_signers`). Gibt es im Repository keine solchen Tags, zeigt die Verwaltung keine neue Version an und der Update-Dienst tut nichts – das ist so gewollt. Dann entweder Releases wie unten beschrieben mit `tools/release.sh` signieren und den Tag pushen, oder bis dahin manuell aktualisieren ([unten](#manuell-aktualisieren-ohne-updater)).
+
 ## So läuft ein Update aus der Oberfläche
 
 1. Der Updater prüft alle 6 Stunden (oder nach **Jetzt nach Updates suchen**) die Tags im Repository.

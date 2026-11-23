@@ -75,8 +75,8 @@ Die Standardwerte funktionieren ohne Anpassung. Wer schon eine eingespielte Zamm
 | Einstellung | Standard | Hinweis |
 | --- | --- | --- |
 | Status, solange die Freigabe aussteht | wartet auf Freigabe | in SLA-Bedingungen nicht aufnehmen, dann läuft die SLA erst nach der Freigabe |
-| Status nach der Freigabe | new | ab hier bearbeitet die Fachgruppe |
-| Status nach Ablehnung, Rückzug, Ablauf | closed | |
+| Status nach der Freigabe | automatisch (Typ „neu“) | ab hier bearbeitet die Fachgruppe |
+| Status nach Ablehnung, Rückzug, Ablauf | automatisch (Typ „geschlossen“) | |
 | Tag nach der Freigabe | freigegeben | leer = kein Tag |
 | Tags, solange die Freigabe aussteht | – | z. B. ein Tag, den eure Eskalation ausnimmt; nach der Entscheidung entfernt |
 | E-Mail an die freigebende Person | an | Zammad schickt sie aus dem Ticket, mit Link ins Portal |
@@ -93,13 +93,52 @@ Die Standardwerte funktionieren ohne Anpassung. Wer schon eine eingespielte Zamm
 
 Dazu: Tags an Tickets der Betroffenen, Tickets der Betroffenen beim Beheben schließen (Standard: an), Abhängigkeiten pflegen (Standard: an).
 
-**Attribute** (Ansicht „Erweitert“): Jedes Feld des Portals lässt sich auf ein vorhandenes Feld umlenken. Typ und Bedeutung sollten passen. Ist ein Mehrfachauswahl-Feld (Standorte, Services) auf eine Einfachauswahl umgelenkt, schreibt das Portal den ersten Wert.
+**Felder** – aufgebaut wie der Objekt-Manager in Zammad (Anzeige, Name, Typ, Verwendet für, Stand):
+
+- **Anzeige** (immer): der Name, den Agenten in Zammad sehen. Leer = Standard („Portal: …“). Das Portal zieht geänderte Bezeichnungen bei „In Zammad einrichten“ nach – bei eigenen Feldern immer, bei umgelenkten nur, wenn hier ausdrücklich ein Name steht.
+- **Name** (Ansicht „Erweitert“): Jedes Feld des Portals lässt sich auf ein vorhandenes Feld umlenken. Typ und Bedeutung sollten passen. Ist ein Mehrfachauswahl-Feld (Standorte, Services) auf eine Einfachauswahl umgelenkt, schreibt das Portal den ersten Wert.
+
+**Bezeichnungen der Arten:** Störung, Wartung und Problem lassen sich umbenennen (z. B. „Ausfall“). Das ändert nur den angezeigten Wert im Feld „Art“, der gespeicherte Schlüssel bleibt – vorhandene Tickets passen weiter.
+
+**Was in welcher Ansicht steht:**
+
+| Einfach | Erweitert (zusätzlich) |
+| --- | --- |
+| Anzeige-Namen der Felder, Bezeichnungen der Arten, Gruppen und Tags je Art, Tags und E-Mails bei Freigaben, Betroffene schließen, Übersichten (an/aus, Namen, je Formular) | technische Namen und Umlenken auf vorhandene Felder, Status je Rolle (Abschnitt 2a), Status während der Freigabe, zusätzliche Werte beim Anlegen, Felder je Art ausblenden, Abhängigkeiten an/aus und ihre Vorsilbe, Übersichten insgesamt an/aus |
 
 Die Zuordnung steht in der Exportdatei des Ticketsystems und wird beim Import mit übernommen.
 
+### 2a. Status: nie über feste Namen
+
+Viele Installationen benennen die Status um („1 Neu“, „2 In Arbeit“, „9 Erledigt“). Das Portal setzt deshalb jeden Status über seine **Rolle**:
+
+| Rolle | wofür | automatisch |
+| --- | --- | --- |
+| Neue Tickets | Störung, Wartung, Problem und „Ich bin auch betroffen“ anlegen; nach der Freigabe | aktiver Status vom Typ *new*, bei mehreren der mit „Standard beim Anlegen“ |
+| Wieder geöffnet / in Bearbeitung | Störung oder Problem wieder öffnen | Typ *open*, bei mehreren der mit „Standard bei Folgenachricht“; nie der Freigabe-Status |
+| Geschlossen | beheben, schließen, absagen, „nicht mehr betroffen“, Ablehnung | Typ *closed* |
+
+In der Ansicht „Erweitert“ lässt sich je Rolle ein bestimmter Status wählen. Gibt es den gewählten Namen in Zammad nicht (mehr), nimmt das Portal den automatischen und zeigt einen Hinweis. Gibt es zu einer Rolle gar keinen aktiven Status des Typs, meldet die Prüfung das als Problem.
+
+„Erledigt“ im Portal (z. B. in „Meine Anfragen“) gilt für die Status aus „Zammad-Status, die als erledigt gelten“ (Verbindung, Erweitert) **und** für jeden Zammad-Status vom Typ geschlossen, zusammengeführt oder entfernt. Diese Liste setzt das Portal nie als Status.
+
+### 2b. Übersichten in Zammad
+
+Für Agenten legt das Portal eigene Übersichten an (Rolle Agent) und hält sie aktuell:
+
+| Übersicht | zeigt |
+| --- | --- |
+| Wartet auf Freigabe | Anfragen, über die noch nicht entschieden ist |
+| Störungen | offene Störungen |
+| Wartungen | geplante und laufende Wartungen |
+| Probleme | offene Probleme und bekannte Fehler |
+| je Formular (frei wählbar) | alle offenen Tickets aus diesem Formular – auch die, die noch auf Freigabe warten, z. B. „Software-Anfragen“ |
+
+„Offen“ heißt: jeder Status, der nicht vom Typ geschlossen, zusammengeführt oder entfernt ist. Namen und an/aus stehen in der Zammad-Zuordnung. Das Portal erkennt seine Übersichten am Verweis (`portal_…`) – umbenennen legt keine zweite an. Übersichten für Störungen usw. erscheinen nur, wenn die Funktion im Portal eingeschaltet ist.
+
 ## 3. Abhängigkeiten: Felder nur zeigen, wo sie gebraucht werden
 
-Damit Agenten in Zammad nicht überall Portal-Felder sehen, legt das Portal Core Workflows an (**Einstellungen → System → Core Workflows**, Name „Portal: …“). Sie gelten beim Anlegen und Bearbeiten von Tickets:
+Damit Agenten in Zammad nicht überall Portal-Felder sehen, legt das Portal Core Workflows an (**Einstellungen → System → Core Workflows**, Name „Portal: …“; die Vorsilbe ist einstellbar). Sie gelten beim Anlegen und Bearbeiten von Tickets:
 
 | Abhängigkeit | Bedingung | Wirkung |
 | --- | --- | --- |
@@ -111,7 +150,16 @@ Damit Agenten in Zammad nicht überall Portal-Felder sehen, legt das Portal Core
 | Portal: Wartung | Portal: Art = Wartung | Beginn, Ende, Services, Standorte, im Portal anzeigen zeigen; gewählte Felder ausblenden |
 | Portal: Problem | Portal: Art = Problem | Problem-Status, Workaround, Ursache, Services, im Portal anzeigen zeigen; gewählte Felder ausblenden |
 
-Status, Gruppe, Besitzer und Priorität blendet das Portal nie aus. **In Zammad einrichten** schreibt die Abhängigkeiten jedes Mal neu – eigene Änderungen daran gehen dabei verloren; eigene Regeln bitte als eigene Core Workflows mit anderem Namen anlegen.
+Status, Gruppe, Besitzer und Priorität blendet das Portal nie aus. **In Zammad einrichten** schreibt die Abhängigkeiten jedes Mal neu – eigene Änderungen daran gehen dabei verloren; eigene Regeln bitte als eigene Core Workflows mit anderem Namen anlegen. Das Portal erkennt seine Workflows an einer Kennung in der Notiz (`[portal:…]`), auch wenn sie in Zammad umbenannt wurden. „In Zammad einrichten“ lässt sich beliebig oft ausführen.
+
+**Gesperrte Abhängigkeiten aus Version 2.0.0.** Zammad zeigt über die API nur Core Workflows, die als änderbar markiert sind. Version 2.0.0 hat ihre Workflows ohne diese Markierung angelegt – Zammad meldet dann beim erneuten Anlegen „Name has already been taken“, ändern lassen sie sich nicht. Das Portal merkt sich solche Namen, zählt sie als vorhanden und zeigt einen Hinweis. Einmalig auf dem Zammad-Server freigeben, danach pflegt das Portal sie wieder:
+
+```bash
+# Paket-Installation
+zammad run rails r "CoreWorkflow.where(changeable: false).where('note LIKE ? OR name LIKE ?', '%Self-Service-Portal%', 'Portal: %').update_all(changeable: true)"
+# Docker (Name des Rails-Containers anpassen)
+docker compose exec zammad-railsserver rails r "CoreWorkflow.where(changeable: false).where('note LIKE ? OR name LIKE ?', '%Self-Service-Portal%', 'Portal: %').update_all(changeable: true)"
+```
 
 ## 4. Freigaben im Ticket
 

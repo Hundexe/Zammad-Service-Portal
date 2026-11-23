@@ -176,9 +176,9 @@ Alle weiteren Einstellungen (Kontosperre, 2FA-Pflicht, Sitzungszeiten, Passwortl
 
 **Ohne DNS-Eintrag:** Mit der IP als Hostname stellt die interne CA von Caddy ein Zertifikat für die IP aus; der Browser warnt, bis das Stammzertifikat verteilt ist. Für die Microsoft-Anmeldung braucht es später einen richtigen Hostnamen.
 
-**Zertifikat:** Das Portal ist nur intern erreichbar, daher gibt es kein Let's Encrypt. Zwei Möglichkeiten, eingestellt in `deploy/caddy/tls.caddy`:
+**Zertifikat:** Das Portal ist nur intern erreichbar, daher gibt es kein Let's Encrypt. Zwei Möglichkeiten, eingestellt in `deploy/.env`:
 
-- **Firmen-CA (empfohlen):** Zertifikat für `serviceportal.firma.intern` von eurer internen CA ausstellen lassen. `portal.crt` (inkl. Zwischenzertifikaten) und `portal.key` nach `deploy/certs/` legen, in `tls.caddy` die Zeile `tls /certs/portal.crt /certs/portal.key` aktivieren und `tls internal` auskommentieren.
+- **Firmen-CA (empfohlen):** Zertifikat für `serviceportal.firma.intern` von eurer internen CA ausstellen lassen. `portal.crt` (inkl. Zwischenzertifikaten) und `portal.key` nach `deploy/certs/` legen und in `deploy/.env` eintragen: `TLS_CERT_FILE=/certs/portal.crt` und `TLS_KEY_FILE=/certs/portal.key` (Pfade im Container). `deploy/caddy/tls.caddy` bitte nicht ändern – Updates überschreiben die Datei.
 - **Interne CA von Caddy:** funktioniert ohne Zutun. Das Stammzertifikat muss dann per GPO an die Clients verteilt werden (Ablageort siehe [Betrieb](BETRIEB.md#zertifikat-der-internen-caddy-ca-verteilen)).
 
 ## 7. Installieren und ersten Admin anlegen
@@ -288,13 +288,17 @@ Nach jeder Änderung an `.env`: `docker compose up -d`.
 | Dienste | `zammad-service-portal` (Web) und `zammad-service-portal-worker` (Zustellung), Benutzer `zsp`, gehärtete systemd-Units |
 | Update-Dienst | `zammad-service-portal-updater` (root, kein offener Port) – Updates aus **Verwaltung → Updates**, nur signierte Release-Tags; abschalten mit `UPDATER_ENABLED=false` in `portal.env` |
 | Reverse Proxy | Caddy aus dem offiziellen Paket-Repository, Konfiguration `/etc/caddy/zammad-service-portal.caddy` |
-| Virenscanner | `clamav-daemon` (optional), lauscht nur auf 127.0.0.1:3310 |
+| Virenscanner | `clamav-daemon` (optional), lauscht nur auf 127.0.0.1:3310 (bei Socket-Aktivierung über systemd zusätzlich am Socket eingetragen); Zustand in **Verwaltung → Übersicht** und mit `service-portal-cli scanner:test` |
 | Konsolenstatus | Status direkt auf der Server-Konsole vor `login:` – Dienste, Erreichbarkeit von Zammad, wartende und fehlgeschlagene Anfragen, IP-Adresse; jede Minute aktualisiert (`zammad-service-portal-issue.timer`), abschalten mit `CONSOLE_STATUS=false` in `portal.env` und `install.sh` erneut ausführen |
 | Kommandozeile | `service-portal-cli` statt `docker compose exec app … cli.ts` |
 
 Alle Dienste sind aktiviert und starten nach einem Neustart des Servers von selbst; stürzt einer ab, startet systemd ihn nach wenigen Sekunden neu.
 
 Die App lauscht nur auf `127.0.0.1:3000`; von außen erreichbar ist nur Caddy. Eine vorhandene Caddy-Konfiguration bleibt erhalten, das Portal wird dann per `import` ergänzt.
+
+**Eigenes Zertifikat:** in `/etc/zammad-service-portal/portal.env` `TLS_CERT_FILE` und `TLS_KEY_FILE` eintragen (Pfade auf dem Server, für den Benutzer `caddy` lesbar) und das Installationsskript erneut ausführen. Eine von Hand in `/etc/caddy/zammad-service-portal.caddy` eingetragene `tls`-Zeile übernimmt das Skript ebenfalls, statt sie auf `tls internal` zurückzusetzen.
+
+**Erneut ausführen** legt kein weiteres Admin-Konto an, wenn es schon ein lokales Super-Admin-Konto gibt. Nie benutzte Admin-Konten ohne Zwei-Faktor-Anmeldung meldet die Verwaltungsübersicht.
 
 ```bash
 systemctl status zammad-service-portal                # läuft es?

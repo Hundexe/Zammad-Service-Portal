@@ -104,7 +104,7 @@ Die Adresse für Stufe 2 muss ein Benutzer in Zammad sein. Ohne Adresse entfäll
 
 ### Übersichten
 
-Für die Rolle Agent: **Neu und in Bearbeitung**, **Meine offenen Tickets**, **Warten**, **Gelöst**, **Eskaliert**, **Offene Störungen** (Ticketart = Störung) und – wenn die Freigaben des Portals eingerichtet sind – **Wartet auf Freigabe**.
+Für die Rolle Agent: **Neu und in Bearbeitung**, **Meine offenen Tickets**, **Warten**, **Gelöst**, **Eskaliert**, **Offene Störungen** (Ticketart = Störung). „Wartet auf Freigabe“ sowie die Übersichten für Störungen, Wartungen, Probleme und einzelne Formulare legt die Zammad-Einrichtung des Portals an ([ZAMMAD.md, 2b](ZAMMAD.md#2b-übersichten-in-zammad)).
 
 ## Zusammenspiel mit dem Portal
 

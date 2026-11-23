@@ -92,7 +92,7 @@ $P secret:generate                            # neuen 32-Byte-Schlüssel ausgebe
 
 ## Sicherung
 
-> **Sicherung oder Export?** Die Sicherung (unten) enthält die ganze Datenbank und braucht zum Wiederherstellen denselben `SECRET_KEY`. Der **Export** in der Verwaltung (Export und Import) überträgt nur die Ticketsysteme mit ihren Einstellungen in ein *anderes* Portal mit eigenem Schlüssel – z. B. vom Test- ins Produktivsystem. Er ersetzt keine Sicherung.
+> **Sicherung oder Export?** Die Sicherung (unten) enthält die ganze Datenbank und braucht zum Wiederherstellen denselben `SECRET_KEY`. Der **Export** in der Verwaltung (Export und Import) überträgt nur die Ticketsysteme mit ihren Einstellungen in ein *anderes* Portal mit eigenem Schlüssel – z. B. vom Test- ins Produktivsystem. Er ersetzt keine Sicherung. Beim Import ist **Zusammenführen** der Standard: Ticketsysteme aus der Datei werden angelegt bzw. (gleiches Kürzel) ersetzt, alle anderen bleiben. Nur **Alles ersetzen** löscht Ticketsysteme, die nicht in der Datei stehen – die Vorschau zeigt sie als „wird gelöscht: …“, und das Löschen muss eigens bestätigt werden. Auf der Kommandozeile: `cli.ts import DATEI` (fragt nach; `--alles-ersetzen`, `--yes`; Export-Passwort in `IMPORT_PASSWORD`).
 
 Zu sichern sind **drei Dinge**:
 

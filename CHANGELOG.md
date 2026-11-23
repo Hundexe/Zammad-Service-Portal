@@ -1,5 +1,20 @@
 # Änderungen
 
+## 2.1.0 – 23.11.2026
+
+Korrekturen aus dem ersten Einsatz mit einer gewachsenen Zammad-Installation, dazu anpassbare Bezeichnungen und eigene Übersichten in Zammad.
+
+- **Abhängigkeiten (Core Workflows) zuverlässig:** Zammad zeigt über die API nur Workflows, die als änderbar markiert sind – 2.0.0 hat sie ohne diese Markierung angelegt. Folge: Die Prüfung meldete nie „passt“, und „In Zammad einrichten“ brach mit „Name has already been taken“ ab. Neue Workflows werden änderbar angelegt und an einer Kennung in der Notiz erkannt (auch nach Umbenennen). Gesperrte aus 2.0.0 zählen als vorhanden, mit Hinweis und dem Befehl zum einmaligen Freigeben ([ZAMMAD.md, 3](docs/ZAMMAD.md#3-abhängigkeiten-felder-nur-zeigen-wo-sie-gebraucht-werden)). „In Zammad einrichten“ lässt sich beliebig oft ausführen
+- **Umbenannte Status:** Das Portal setzt Status nie mehr über feste Namen wie `new`, `open` oder `closed`, sondern je Rolle (neu, in Bearbeitung, geschlossen): eingestellter Status oder automatisch der aktive Status vom passenden Typ. Betrifft Freigaben, Störungen, „Ich bin auch betroffen“, Wartungen, Probleme und die Übernahme aus 1.x. „Erledigt“ erkennt das Portal zusätzlich am Status-Typ. Die irreführende Meldung „Status „open“ gibt es nicht“ entfällt
+- **Import führt zusammen:** Standard ist jetzt „Zusammenführen“ – andere Ticketsysteme bleiben. Nur „Alles ersetzen“ löscht, was nicht in der Datei steht; die Vorschau nennt es („wird gelöscht: …“), das Löschen wird eigens bestätigt. Neu: `cli.ts import DATEI` mit Rückfrage
+- **TLS bleibt:** Das Installationsskript ohne Docker setzt das Zertifikat nicht mehr auf `tls internal` zurück; eigenes Zertifikat über `TLS_CERT_FILE`/`TLS_KEY_FILE` in `portal.env`. Docker: dieselben Einträge in `deploy/.env` statt Änderungen an `deploy/caddy/tls.caddy` (die Updates überschreiben)
+- **Bezeichnungen anpassbar:** Anzeige-Namen der Felder in Zammad, Bezeichnungen der Arten (z. B. „Ausfall“ statt „Störung“) und die Vorsilbe der Abhängigkeiten. Die Seite „Zammad-Zuordnung“ ist aufgebaut wie der Objekt-Manager (Anzeige, Name, Typ, Verwendet für, Stand); technische Namen, Status und Abhängigkeiten stehen in der Ansicht „Erweitert“
+- **Übersichten in Zammad:** Wartet auf Freigabe, Störungen, Wartungen, Probleme sowie je Formular (z. B. alle Software-Anfragen, auch die noch nicht freigegebenen). Namen frei wählbar, „offen“ nach Status-Typ. Die ITSM-Grundausstattung legt „Wartet auf Freigabe“ nicht mehr selbst an
+- **Virenscanner:** Zustand in der Verwaltungsübersicht (arbeitet, nicht erreichbar, erkennt nichts, nicht eingerichtet). Die Installation ohne Docker trägt den TCP-Port 3310 auch am systemd-Socket von ClamAV ein und prüft ihn
+- Erneutes Ausführen der Installation legt kein weiteres Admin-Konto an, wenn es schon eins gibt; nie benutzte Admin-Konten ohne Zwei-Faktor meldet die Übersicht
+- Doku: Der Update-Dienst braucht signierte Release-Tags `vX.Y.Z` ([UPDATES.md](docs/UPDATES.md))
+- Tests mit umbenannten Status und gesperrten Workflows, für Übersichten, Bezeichnungen und den Import (374)
+
 ## 2.0.0 – 23.11.2026
 
 **Zammad ist die einzige Datenquelle.** Alles, was Mitarbeitende und IT im Portal sehen, liegt jetzt im Ticketsystem; das Portal ist die Oberfläche dafür. Ausführlich: [ZAMMAD.md](docs/ZAMMAD.md).
