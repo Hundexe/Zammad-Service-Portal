@@ -73,7 +73,7 @@ export function setConnectorFetch(f: typeof fetch | undefined): void { fetchOver
 export function guardOptions(app: App) {
   return {
     allowPrivate: app.cfg.allowPrivateTicketUrls, allowLoopback: app.cfg.allowLoopbackTicketUrls,
-    blockedCidrs: app.cfg.ticketUrlBlockedCidrs, allowedHosts: app.cfg.ticketUrlAllowedHosts,
+    blockedCidrs: app.cfg.ticketUrlBlockedCidrs, allowedHosts: app.cfg.ticketUrlAllowedHosts, insecureHosts: app.cfg.ticketTlsInsecureHosts,
   };
 }
 

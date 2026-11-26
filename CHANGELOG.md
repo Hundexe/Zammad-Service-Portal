@@ -1,5 +1,9 @@
 # Änderungen
 
+## 2.1.1 – 26.11.2026
+
+- **Testsysteme mit selbst signiertem Zertifikat:** `TICKET_TLS_INSECURE_HOSTS` (in `portal.env` bzw. `deploy/.env`) schaltet die Zertifikatsprüfung für genau die genannten Zammad-Server ab – Name oder IP, exakt wie in der Zammad-Adresse. Alle anderen Ziele werden weiter geprüft; die Verwaltungsübersicht warnt, solange der Eintrag gesetzt ist. Im Betrieb weiterhin dem Zertifikat vertrauen (`NODE_EXTRA_CA_CERTS`, jetzt in [INSTALLATION.md](docs/INSTALLATION.md) beschrieben)
+
 ## 2.1.0 – 23.11.2026
 
 Korrekturen aus dem ersten Einsatz mit einer gewachsenen Zammad-Installation, dazu anpassbare Bezeichnungen und eigene Übersichten in Zammad.

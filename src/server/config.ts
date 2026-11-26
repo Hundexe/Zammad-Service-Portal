@@ -98,6 +98,8 @@ export interface Config {
   /** Zusätzlich gesperrte Netze und erlaubte Hostnamen für Zammad-Adressen */
   ticketUrlBlockedCidrs: string[];
   ticketUrlAllowedHosts: string[];
+  /** Nur Testsysteme: Zammad-Hosts ohne Zertifikatsprüfung */
+  ticketTlsInsecureHosts: string[];
   /** Ticketsysteme auf 127.0.0.1/localhost erlauben – nur für Demo und Entwicklung */
   allowLoopbackTicketUrls: boolean;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
@@ -194,6 +196,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     allowPrivateTicketUrls: bool('ALLOW_PRIVATE_TICKET_URLS', true),
     ticketUrlBlockedCidrs: cidrList('TICKET_URL_BLOCKED_CIDRS', errors),
     ticketUrlAllowedHosts: list('TICKET_URL_ALLOWED_HOSTS').map((h) => h.toLowerCase()),
+    ticketTlsInsecureHosts: list('TICKET_TLS_INSECURE_HOSTS').map((h) => h.replace(/^\[|\]$/g, '').toLowerCase()),
     allowLoopbackTicketUrls: (overrides.env ?? env) === 'test' || bool('ALLOW_LOOPBACK_TICKET_URLS', false),
     logLevel: (process.env.LOG_LEVEL as Config['logLevel']) || 'info',
     ticketWatchSeconds: process.env.TICKET_WATCH_SECONDS === '0' ? 0 : range('TICKET_WATCH_SECONDS', 60, 15, 3600, errors),

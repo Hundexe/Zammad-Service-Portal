@@ -27,6 +27,8 @@ export interface GuardOptions {
   blockedCidrs?: string[];
   /** Wenn gesetzt: nur diese Hostnamen (exakt oder „.domain“ für alle Unterdomains) */
   allowedHosts?: string[];
+  /** Nur für Testsysteme: bei diesen Hosts (exakt, Name oder IP) Zertifikat und Hostname NICHT prüfen */
+  insecureHosts?: string[];
   /** Höchstdauer für Namensauflösung und Verbindungsaufbau (Standard 5 s) – unabhängig von der Gesamtdauer */
   connectTimeoutMs?: number;
 }
@@ -49,6 +51,13 @@ function extraBlocked(ip: string, cidrs: string[] | undefined): boolean {
   }
   const plain = ip.replace(/^\[|\]$/g, '').replace(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i, '$1');
   return isIP(plain) === 4 ? bl.check(plain, 'ipv4') : isIP(plain) === 6 ? bl.check(plain, 'ipv6') : false;
+}
+
+/** Zertifikatsprüfung für diesen Host abgeschaltet? Nur exakte Treffer, keine Muster. */
+export function insecureHost(host: string, list: string[] | undefined): boolean {
+  if (!list?.length) return false;
+  const h = host.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();
+  return list.includes(h);
 }
 
 /** Hostname erlaubt? (Allowlist leer = alle) */
@@ -207,8 +216,10 @@ export function guardedFetch(opts: GuardOptions): typeof fetch {
       // TLS: Zertifikat und Hostname werden immer geprüft (rejectUnauthorized bleibt an). Bei einem Namen geht er
       // als SNI mit und muss im Zertifikat stehen – auch wenn die Verbindung zur vorher geprüften IP geht.
       // Bei einer IP-Adresse in der URL wird kein SNI gesendet und die IP muss als IP-SAN im Zertifikat stehen.
+      // Ausnahme nur für ausdrücklich genannte Testsysteme (TICKET_TLS_INSECURE_HOSTS)
+      const verify = !insecureHost(host, opts.insecureHosts);
       const tlsOpts = url.protocol === 'https:'
-        ? { rejectUnauthorized: true, ...(isIP(host) ? {} : { servername: host }), ...(opts.ca ? { ca: opts.ca } : {}) }
+        ? { rejectUnauthorized: verify, ...(isIP(host) ? {} : { servername: host }), ...(opts.ca ? { ca: opts.ca } : {}) }
         : {};
       const req = mod.request(url, { method, headers, lookup: lookup as any, signal: init.signal ?? undefined, agent, ...tlsOpts }, (res) => {
         const status = res.statusCode ?? 0;

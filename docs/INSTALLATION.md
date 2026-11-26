@@ -298,6 +298,18 @@ Die App lauscht nur auf `127.0.0.1:3000`; von außen erreichbar ist nur Caddy. E
 
 **Eigenes Zertifikat:** in `/etc/zammad-service-portal/portal.env` `TLS_CERT_FILE` und `TLS_KEY_FILE` eintragen (Pfade auf dem Server, für den Benutzer `caddy` lesbar) und das Installationsskript erneut ausführen. Eine von Hand in `/etc/caddy/zammad-service-portal.caddy` eingetragene `tls`-Zeile übernimmt das Skript ebenfalls, statt sie auf `tls internal` zurückzusetzen.
 
+**Zammad mit eigenem oder selbst signiertem Zertifikat:** Das Portal prüft das Zertifikat von Zammad immer. Steht in der Zammad-Adresse eine IP, muss sie als IP-Adresse im Zertifikat stehen, sonst den Namen aus dem Zertifikat verwenden. Dem Zertifikat vertrauen:
+
+```bash
+F=/etc/zammad-service-portal/zammad-ca.pem
+openssl s_client -connect ZAMMAD-SERVER:443 -showcerts </dev/null 2>/dev/null | sed -n '/BEGIN CERT/,/END CERT/p' | sudo tee $F >/dev/null
+sudo chmod 644 $F
+echo "NODE_EXTRA_CA_CERTS=$F" | sudo tee -a /etc/zammad-service-portal/portal.env
+sudo systemctl restart zammad-service-portal zammad-service-portal-worker
+```
+
+Den Fingerabdruck (`openssl x509 -in $F -noout -fingerprint -sha256`) einmal mit dem Zertifikat auf dem Zammad-Server vergleichen. Nur für Testsysteme: `TICKET_TLS_INSECURE_HOSTS=ZAMMAD-SERVER` in `portal.env` schaltet die Prüfung für genau diesen Server ab. Zeigt `openssl x509 -noout -subject` ein „TRAEFIK DEFAULT CERT“, hat der Proxy vor Zammad kein Zertifikat eingerichtet – vertrauen hilft dann nicht (es ändert sich bei jedem Neustart). Dort ein Zertifikat einrichten oder im Testsystem Zammad direkt per HTTP ansprechen (`ALLOW_HTTP_TICKET_URLS=true`).
+
 **Erneut ausführen** legt kein weiteres Admin-Konto an, wenn es schon ein lokales Super-Admin-Konto gibt. Nie benutzte Admin-Konten ohne Zwei-Faktor-Anmeldung meldet die Verwaltungsübersicht.
 
 ```bash

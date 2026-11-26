@@ -191,6 +191,7 @@ export function registerAdminRoutes(router: Router, app: App): void {
     }
     if (!app.cfg.lockout.progressive) warnings.push('Die Kontosperre wird bei wiederholten Angriffen nicht länger (LOGIN_LOCK_PROGRESSIVE=false).');
     if (!app.cfg.adminAllowedCidrs.length) warnings.push('Der Admin-Bereich und die lokale Anmeldung von Admins sind nicht auf Admin-Netze beschränkt (ADMIN_ALLOWED_CIDRS) – sie sind von überall erreichbar, wo das Portal erreichbar ist.');
+    if (app.cfg.ticketTlsInsecureHosts.length) warnings.push(`Zertifikatsprüfung abgeschaltet für ${app.cfg.ticketTlsInsecureHosts.join(', ')} (TICKET_TLS_INSECURE_HOSTS) – nur für Testsysteme. Im Betrieb stattdessen das Zertifikat vertrauen (NODE_EXTRA_CA_CERTS).`);
     if (app.cfg.allowPrivateTicketUrls && !app.cfg.ticketUrlAllowedHosts.length) warnings.push('Zammad-Adressen sind nicht auf bestimmte Server beschränkt (TICKET_URL_ALLOWED_HOSTS). Wer Ticketsysteme verwalten darf, kann das Portal mit beliebigen internen Servern sprechen lassen – empfohlen: den Hostnamen eures Zammad eintragen.');
     for (const sys of listSystems(app)) {
       if (sys.status !== 'inactive' && !allowedGroups(sys).length) warnings.push(`Ticketsystem „${sys.name}“: keine erlaubten Zammad-Gruppen festgelegt – Formulare können Tickets in jede Gruppe legen, die der API-Benutzer sieht.`);

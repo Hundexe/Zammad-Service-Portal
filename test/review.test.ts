@@ -414,6 +414,10 @@ describe('#7 SSRF: Prüfung der aufgelösten Adresse bei jeder Verbindung', () =
         assert.equal(good.seen.at(-1), 'localhost', 'SNI = Hostname, obwohl zur geprüften IP verbunden wird');
         await assert.rejects(open(`https://127.0.0.1:${good.port}/`), /IP|altname|match/i, 'IP in der URL, aber nicht im Zertifikat');
         await assert.rejects(guardedFetch({ allowPrivate: true, allowLoopback: true })(`https://localhost:${good.port}/`), /self-signed|certificate|issuer/i, 'fremde CA');
+        // Ausnahme nur für genau genannte Testsysteme
+        const lax = guardedFetch({ allowPrivate: true, allowLoopback: true, insecureHosts: ['localhost'] });
+        assert.deepEqual(await (await lax(`https://localhost:${good.port}/`)).json(), { ok: true }, 'ohne Prüfung');
+        await assert.rejects(lax(`https://127.0.0.1:${good.port}/`), /self-signed|certificate|issuer/i, 'andere Hosts weiter geprüft');
       } finally { await good.close(); }
       const other = await serve(leaf('zammad', 'DNS:zammad.example.org'));
       try {
